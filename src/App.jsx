@@ -50,6 +50,23 @@ export default function App() {
 
   return (
     <div className="app-shell">
+      {/* MEDIA QUERY STIL ZA TELEFON */}
+      <style>{`
+        @media (max-width: 768px) {
+          .brand-header {
+            padding-top: 50px; /* spusti ceo header */
+            padding-bottom: 8px;
+          }
+          .brand-header .logo-wrap {
+            display: flex;
+            justify-content: center;
+          }
+          .brand-header .logo-header {
+            height: 150px; /* smanji/sredi visinu po želji */
+          }
+        }
+      `}</style>
+
       {showTopBrand && (
         <header className={`brand-header ${scrolled ? "scrolled" : ""}`}>
           <Link to="/home">

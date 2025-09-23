@@ -200,7 +200,10 @@ export default function AdminClients() {
     <div className="admin-clients">
       <style>{`
         .admin-clients{
+          /* dno je ostalo isto zbog donje navigacije */
           padding: 0 0 90px;
+          /* blago spuštanje početka + iOS safe area */
+          padding-top: env(safe-area-inset-top, 0px);
           background: #fdfaf7;
         }
 
@@ -225,7 +228,7 @@ export default function AdminClients() {
         }
         .btn{
           padding: 10px 12px; border-radius: 12px; border:1px solid #ddd6cc; background:#fff; cursor:pointer;
-          font-weight:600;
+          font-weight:500;
         }
         .btn:hover{ background:#faf6f0; }
         .import-label{ display:inline-flex; align-items:center; gap:8px; }
@@ -256,9 +259,19 @@ export default function AdminClients() {
         }
         .status-badge.blocked{ color:#ef4444; border-color:#ef4444; }
 
-        /* ---------- MOBILE (≤720px): card-style rows ---------- */
+        /* ---------- MOBILE (≤720px): card-style rows + dodatni razmak gore ---------- */
         @media (max-width: 720px){
-          .header{ font-size:18px; padding: 10px 14px 4px; }
+          /* dodatno spusti početak na telefonu */
+          .admin-clients{
+            padding-top: calc(env(safe-area-inset-top, 0px) + 40px);
+          }
+
+          .header{
+            font-size:18px;
+            /* više gornjeg prostora za naslov */
+            padding: 20px 14px 8px;
+          }
+
           .clients-list{ border:none; background:transparent; margin: 8px 8px 60px; }
           .clients-header{ display:none; }
 

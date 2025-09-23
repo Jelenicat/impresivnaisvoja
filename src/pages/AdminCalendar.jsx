@@ -1,3 +1,4 @@
+// src/pages/AdminCalendar.jsx
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import {
   collection, query, where, orderBy, onSnapshot,
@@ -14,6 +15,7 @@ function isSameDay(a,b){ const x=startOfDay(a), y=startOfDay(b); return x.getTim
 function fmtTime(d){ const x=toJsDate(d); if(!x) return ""; const hh=String(x.getHours()).padStart(2,"0"); const mm=String(x.getMinutes()).padStart(2,"0"); return `${hh}:${mm}`; }
 function minsInDay(dt, dayStart){ const t = toJsDate(dt)?.getTime?.() ?? 0; return Math.round((t - dayStart.getTime())/60000); }
 const fmtPrice = (n)=> (Number(n)||0).toLocaleString("sr-RS");
+const isMobile = () => (typeof window !== "undefined" ? window.matchMedia("(max-width: 900px)").matches : false);
 
 const DAY_START_MIN = 8*60, DAY_END_MIN = 22*60, PX_PER_MIN = 1.1;
 const yFromMinutes=(m)=> (m-DAY_START_MIN)*PX_PER_MIN;
@@ -374,12 +376,10 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
       const dx = t.clientX - startX;
       const dy = t.clientY - startY;
 
-      // Ako je pokret više vertikalan — pusti skrol i izađi
       if (Math.abs(dy) > Math.abs(dx)) return;
 
-      // Spriječi horizontalni “rubber band” dok klizi
       if (Math.abs(dx) > 10) {
-        e.preventDefault(); // traži {passive:false} listener (dodajemo dole)
+        e.preventDefault();
         moved = true;
       }
     }
@@ -393,18 +393,16 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
       const dx = t.clientX - startX;
       const dy = t.clientY - startY;
 
-      // opet: ignoriši ako je vertikala dominantna
       if (Math.abs(dy) > Math.abs(dx)) return;
 
-      const THRESH = 80; // prag u pikselima
+      const THRESH = 80;
       if (dx <= -THRESH) {
-        nextDay(); // swipe levo → sledeći dan
+        nextDay();
       } else if (dx >= THRESH) {
-        prevDay(); // swipe desno → prethodni dan
+        prevDay();
       }
     }
 
-    // Važno: passive:false zbog preventDefault u move handleru
     el.addEventListener("touchstart", onTouchStart, { passive: true });
     el.addEventListener("touchmove", onTouchMove, { passive: false });
     el.addEventListener("touchend", onTouchEnd, { passive: true });
@@ -428,7 +426,6 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
     const d = new Date(dayStart); d.setMinutes(whenMin);
     setHover({ show:true, emp:empUsername, top:yFromMinutes(whenMin), text:fmtTime(d) });
 
-    // drag u toku → pomeraj ghost
     if (draggingRef.current) {
       const g = { id: draggingRef.current.id, emp: empUsername, topMin: whenMin };
       setDragGhost(g);
@@ -477,7 +474,7 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
     setTempEndMap(m=>{ const nm = new Map(m); nm.set(r.id, proposedEndMin); tempEndRef.current = nm; return nm; });
   }
   function onResizingTouchMove(ev) {
-    ev.preventDefault(); // Spreči skrol
+    ev.preventDefault();
     const coords = getClientCoords(ev);
     const r = resizingRef.current; if (!r) return;
     const offset = coords.clientY - r.bodyTop + r.scrollTop;
@@ -511,7 +508,7 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
   }
   function onResizingTouchEnd(ev) {
     ev.preventDefault();
-    onResizingMouseUp(); // Pozovi istu logiku
+    onResizingMouseUp();
   }
   function startResize(e, appt){
     e.stopPropagation(); e.preventDefault();
@@ -534,7 +531,7 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
     window.addEventListener("touchend", onResizingTouchEnd);
     window.addEventListener("click", swallowNextClick, true);
     document.body.style.userSelect = "none";
-    document.body.style.touchAction = "none"; // Spreči skrol na touch
+    document.body.style.touchAction = "none";
   }
   function cleanupResize(){
     resizingRef.current = null;
@@ -566,7 +563,7 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
     dragGhostRef.current = g;
   }
   function onDragTouchMove(ev) {
-    ev.preventDefault(); // Spreči skrol
+    ev.preventDefault();
     const coords = getClientCoords(ev);
     const d = draggingRef.current; if(!d) return;
     const targetEmp = pickColumnUnderPointer(coords.clientX, coords.clientY) ?? d.empFrom;
@@ -598,22 +595,14 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
     draggingRef.current = null;
     dragGhostRef.current = null;
 
-    if (!d || !ghost) {
-      console.log("Drag aborted: missing draggingRef or dragGhostRef", { d, ghost });
-      return;
-    }
+    if (!d || !ghost) return;
+    if (ghost.emp === d.empFrom && ghost.topMin === d.startMinInit) return;
 
-    if (ghost.emp === d.empFrom && ghost.topMin === d.startMinInit) {
-      console.log("Drag aborted: no change in position or employee", { emp: ghost.emp, topMin: ghost.topMin });
-      return;
-    }
-
-    // Calculate new start and end times
     const newStart = new Date(dayStart);
     newStart.setMinutes(ghost.topMin);
     const newEnd = new Date(newStart.getTime() + d.durationMin * 60000);
 
-    // Collision check
+    // Na telefonu DOZVOLI preklapanje; na desktopu i dalje blokiraj
     const targetEmp = ghost.emp;
     const existingAppts = (apptsByEmployee.get(targetEmp) || []).filter(a => a.id !== d.id);
     const hasCollision = existingAppts.some(a => {
@@ -621,9 +610,7 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
       const aEnd = toJsDate(a.end).getTime();
       return newStart.getTime() < aEnd && newEnd.getTime() > aStart;
     });
-
-    if (hasCollision) {
-      console.log("Drag aborted: collision detected", { newStart, newEnd, targetEmp });
+    if (hasCollision && !isMobile()) {
       alert("Greška: Termin se preklapa sa postojećim terminom.");
       return;
     }
@@ -632,20 +619,12 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
     setTimeout(() => { justDraggedRef.current = false; }, 300);
 
     try {
-      console.log("Saving drag changes:", {
-        id: d.id,
-        start: newStart.toISOString(),
-        end: newEnd.toISOString(),
-        employeeUsername: ghost.emp,
-      });
-
       await updateDoc(doc(db, "appointments", d.id), {
         start: newStart,
         end: newEnd,
         employeeUsername: ghost.emp,
         updatedAt: serverTimestamp(),
       });
-      console.log("Drag saved successfully");
     } catch (err) {
       console.error("Drag save failed:", err);
       alert("Greška pri pomeranju termina: " + err.message);
@@ -658,7 +637,7 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
   }
 
   function startDrag(ev, appt, top) {
-    if ((ev.target)?.classList?.contains("resize-handle")) return; // ako hvatište, onda resize
+    if ((ev.target)?.classList?.contains("resize-handle")) return;
     if (role === "worker" && appt.employeeUsername !== currentUsername) return;
 
     const body = colBodyRefs.current.get(appt.employeeUsername);
@@ -674,7 +653,6 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
     const coords = getClientCoords(ev);
     const offsetY = coords.clientY - rect.top + (body.scrollTop || 0) - (top ?? 0);
 
-    // Detekcija tap vs drag
     let isDragging = false;
     let startX = coords.clientX;
     let startY = coords.clientY;
@@ -698,16 +676,15 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
       const dy = Math.abs(coords.clientY - startY);
       const distance = Math.sqrt(dx * dx + dy * dy);
 
-      if (distance > 10) { // Prag za drag
+      if (distance > 10) {
         isDragging = true;
-        ev.preventDefault(); // Spreči skrol samo ako je drag
+        ev.preventDefault();
         onDragTouchMove(ev);
       }
     };
 
     const onTouchEndHandler = (ev) => {
       const touchDuration = Date.now() - touchStartTime;
-      console.log("Touch ended:", { isDragging, touchDuration });
       window.removeEventListener("mousemove", onDragMove);
       window.removeEventListener("mouseup", onDragEnd);
       window.removeEventListener("touchmove", onTouchMoveHandler);
@@ -718,7 +695,7 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
 
       if (isDragging) {
         onDragEnd();
-      } else if (touchDuration < 300) { // Tap kraći od 300ms
+      } else if (touchDuration < 300) {
         setHoverAppt(null);
         openEdit(appt);
       }
@@ -743,11 +720,9 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
       if (!body) continue;
       const r = body.getBoundingClientRect();
       if (clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom) {
-        console.log("Picked column:", emp.username);
         return emp.username;
       }
     }
-    console.log("No column picked under:", { clientX, clientY });
     return null;
   }
 
@@ -789,159 +764,154 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
       <style>{`
         /* ===== BASE STYLES ===== */
         .admin-cal{ padding:20px 16px 80px; }
-        .cal-bar{ 
-          display:flex; gap:10px; align-items:center; margin-bottom:16px; 
-          flex-wrap:wrap; 
+        .cal-bar{
+          position: sticky; top: 0;
+          z-index: 20;
+          display:flex; gap:10px; align-items:center; margin-bottom:16px;
+          flex-wrap:wrap;
+          background: transparent;
         }
-        .btn{ 
-          padding:8px 12px; border-radius:10px; border:1px solid #ddd6cc; 
-          background:#fff; cursor:pointer; font-size:14px; 
+        .cal-bar-inner{
+          width:100%;
+          background:#ffffff;
+          border:1px solid #e6e0d7; border-radius:16px;
+          box-shadow: 0 6px 18px rgba(0,0,0,.06);
+          padding:10px;
+          display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+        }
+        .btn{
+          padding:8px 12px; border-radius:12px; border:1px solid #ddd6cc;
+          background:#fff; cursor:pointer; font-size:14px;
           touch-action:manipulation;
         }
         .btn:hover{ background:#faf6f0; }
         .btn:active{ transform:translateY(1px); }
-        .title{ 
-          font-weight:800; font-size:18px; letter-spacing:.2px; 
-          flex:1; text-align:center; 
+        .btn-group{ display:flex; gap:8px; }
+        .title{
+          font-weight:800; font-size:18px; letter-spacing:.2px;
+          flex:1; text-align:center;
         }
-        .select{ 
-          padding:8px 12px; border-radius:10px; border:1px solid #ddd6cc; 
-          background:#fff; font-size:16px; /* touch-friendly */
+        .select{
+          padding:8px 12px; border-radius:12px; border:1px solid #ddd6cc;
+          background:#fff; font-size:16px;
         }
-        .top-actions{ 
-          margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; 
-        }
-
-        .grid-wrap{ 
-          display:grid; grid-template-columns:80px 1fr; gap:10px; 
-          height: calc(100vh - 160px); /* responsive height */
+        .top-actions{
+          margin-left:auto; display:flex; gap:8px; flex-wrap:wrap;
         }
 
-        /* ===== Timeline ===== */
-        .timeline{ 
-          border:1px solid #e6e0d7; border-radius:12px; background:#fff; 
+        .grid-wrap{
+          display:grid; grid-template-columns:80px 1fr; gap:10px;
+          height: calc(100vh - 160px);
+        }
+
+        /* ===== Timeline (desktop) ===== */
+        .timeline{
+          border:1px solid #e6e0d7; border-radius:12px; background:#fff;
         }
         .timeline-inner{ position:relative; height:100%; }
-        .timeline-header{ 
-          position:sticky; top:0; height:${HEADER_H}px; 
-          background:#faf6f0; border-bottom:1px solid #e6e0d7; z-index:2; 
+        .timeline-header{
+          position:sticky; top:0; height:${HEADER_H}px;
+          background:#faf6f0; border-bottom:1px solid #e6e0d7; z-index:2;
         }
-        .timeline-viewport{ 
-          position:relative; overflow:hidden; 
+        .timeline-viewport{ position:relative; overflow:hidden; }
+        .timeline-body{ position:relative; height:${CONTENT_H}px; will-change: transform; }
+        .timeline .hour{
+          position:absolute; left:8px; font-size:12px; color:#6b7280;
+          transform:translateY(-50%);
         }
-        .timeline-body{ 
-          position:relative; height:${CONTENT_H}px; 
-          will-change: transform; 
-        }
-        .timeline .hour{ 
-          position:absolute; left:8px; font-size:12px; color:#6b7280; 
-          transform:translateY(-50%); 
-        }
-        .timeline .line{ 
-          position:absolute; left:0; right:0; height:1px; background:#eee; 
-        }
-        .now-line-left{ 
-          position:absolute; left:6px; right:6px; height:0; 
-          border-top:3px solid #ef4444; z-index:5; 
+        .timeline .line{ position:absolute; left:0; right:0; height:1px; background:#eee; }
+        .now-line-left{
+          position:absolute; left:6px; right:6px; height:0;
+          border-top:3px solid #ef4444; z-index:5;
         }
 
         /* ===== Columns ===== */
-        .columns-outer{ 
-          border:1px solid #e6e0d7; border-radius:12px; 
-          background:#fff; overflow:auto; 
+        .columns-outer{
+          border:1px solid #e6e0d7; border-radius:12px;
+          background:#fff; overflow:auto;
         }
-        .columns{ 
-          display:grid; grid-auto-flow:column; 
-          grid-auto-columns:minmax(240px,1fr); position:relative; 
+        .columns{
+          display:grid; grid-auto-flow:column;
+          grid-auto-columns:minmax(240px,1fr); position:relative;
         }
         .col{ position:relative; }
-        .col:not(:first-child)::before{ 
-          content:""; position:absolute; top:0; bottom:0; left:0; 
-          width:2px; background:#e6e0d7; opacity:.95; z-index:2; 
+        .col:not(:first-child)::before{
+          content:""; position:absolute; top:0; bottom:0; left:0;
+          width:2px; background:#e6e0d7; opacity:.95; z-index:2;
         }
 
-        .col-header{ 
-          position: sticky; top:0; height:${HEADER_H}px; 
-          display:flex; align-items:center; justify-content:center; 
-          font-weight:700; background:#faf6f0; 
-          border-bottom:1px solid #e6e0d7; z-index:3; 
+        .col-header{
+          position: sticky; top:0; height:${HEADER_H}px;
+          display:flex; align-items:center; justify-content:center;
+          font-weight:700; background:#faf6f0;
+          border-bottom:1px solid #e6e0d7; z-index:3;
           font-size:14px; padding:0 8px; text-align:center;
           white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
         }
-        .col-body{ 
-          position:relative; height:${CONTENT_H}px; 
+        .col-body{ position:relative; height:${CONTENT_H}px; }
+
+        /* Linije i mobilne oznake sata u koloni */
+        .grid-hour{
+          position:absolute; left:0; right:0; height:1px;
+          background:#eee; z-index:0;
+        }
+        .col-hour{
+          position:absolute; left:6px; font-size:12px; color:#6b7280;
+          transform:translateY(-50%); z-index:0; display:none;
+          user-select:none; pointer-events:none;
         }
 
-        .grid-hour{ 
-          position:absolute; left:0; right:0; height:1px; 
-          background:#eee; z-index:0; 
+        .hover-line{
+          position:absolute; left:6px; right:6px; height:0;
+          border-top:1px dashed rgba(0,0,0,.25);
+          pointer-events:none; z-index:2;
+        }
+        .hover-badge{
+          position:absolute; left:50%; transform:translate(-50%,-50%);
+          padding:3px 8px; font-size:12px; font-weight:700;
+          background:#1f1f1f; color:#fff; border-radius:999px;
+          border:1px solid rgba(255,255,255,.4); white-space:nowrap;
+          box-shadow:0 2px 10px rgba(0,0,0,.15);
         }
 
-        .hover-line{ 
-          position:absolute; left:6px; right:6px; height:0; 
-          border-top:1px dashed rgba(0,0,0,.25); 
-          pointer-events:none; z-index:2; 
-        }
-        .hover-badge{ 
-          position:absolute; left:50%; transform:translate(-50%,-50%); 
-          padding:3px 8px; font-size:12px; font-weight:700; 
-          background:#1f1f1f; color:#fff; border-radius:999px; 
-          border:1px solid rgba(255,255,255,.4); white-space:nowrap; 
-          box-shadow:0 2px 10px rgba(0,0,0,.15); 
-        }
-
-        .now-line-global{ 
-          position:absolute; left:0; right:0; height:0; 
-          border-top:3px solid #ef4444; z-index:4; pointer-events:none; 
+        .now-line-global{
+          position:absolute; left:0; right:0; height:0;
+          border-top:3px solid #ef4444; z-index:4; pointer-events:none;
         }
 
         /* ===== Appointments ===== */
-        .appt{ 
-          position:absolute; left:8px; right:8px; 
-          border-radius:12px; padding:8px 10px; 
-          background: var(--col,#fff); color:#1f1f1f; 
-          box-shadow:0 1px 2px rgba(0,0,0,.06); 
-          cursor:grab; overflow:hidden; 
-          border:1px solid #ddd6cc; z-index:1; 
+        .appt{
+          position:absolute; left:8px; right:8px;
+          border-radius:12px; padding:8px 10px;
+          background: var(--col,#fff); color:#1f1f1f;
+          box-shadow:0 1px 2px rgba(0,0,0,.06);
+          cursor:grab; overflow:hidden;
+          border:1px solid #ddd6cc; z-index:1;
           touch-action:manipulation;
         }
         .appt:active{ cursor:grabbing; }
-        .appt.block{ 
-          background:#fff !important; border:2px solid #ef4444; 
-          color:#ef4444; 
-        }
-        .appt.paid{ 
-          background:#f3f4f6 !important; color:#6b7280; 
+        .appt.block{ background:#fff !important; border:2px solid #ef4444; color:#ef4444; }
+        .appt.paid{ background:#f3f4f6 !important; color:#6b7280; }
+
+        .appt .time{ font-weight:800; font-size:12px; }
+        .appt .title{ font-size:13px; margin-top:2px; line-height:1.2; }
+        .appt .muted{ color:inherit; opacity:.8; font-size:12px; margin-top:2px; }
+        .appt .tag{
+          display:inline-block; margin-top:4px; font-size:11px;
+          border:1px solid #e6e0d7; padding:2px 6px;
+          border-radius:999px; background:#faf6f0;
         }
 
-        .appt .time{ 
-          font-weight:800; font-size:12px; 
+        .resize-handle{
+          position:absolute; left:0; right:0; height:10px;
+          bottom:0; cursor:ns-resize;
         }
-        .appt .title{ 
-          font-size:13px; margin-top:2px; 
-          line-height:1.2;
-        }
-        .appt .muted{ 
-          color:inherit; opacity:.8; font-size:12px; 
-          margin-top:2px; 
-        }
-        .appt .tag{ 
-          display:inline-block; margin-top:4px; font-size:11px; 
-          border:1px solid #e6e0d7; padding:2px 6px; 
-          border-radius:999px; background:#faf6f0; 
+        .resize-handle:before{
+          content:""; display:block; width:36px; height:4px;
+          margin:3px auto 0; border-radius:4px;
+          background:rgba(0,0,0,0.12);
         }
 
-        .resize-handle{ 
-          position:absolute; left:0; right:0; height:10px; 
-          bottom:0; cursor:ns-resize; 
-        }
-        .resize-handle:before{ 
-          content:""; display:block; width:36px; height:4px; 
-          margin:3px auto 0; border-radius:4px; 
-          background:rgba(0,0,0,0.12); 
-        }
-
-        /* Ikonice u uglu (online / specific / plaćanje) */
         .corner-icons{
           position:absolute; top:6px; right:8px;
           display:flex; gap:6px; font-size:16px; line-height:1;
@@ -950,109 +920,62 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
         }
 
         /* ===== Chooser ===== */
-        .chooser-backdrop{ 
-          position:fixed; inset:0; background:rgba(0,0,0,.25); 
-          display:flex; align-items:center; justify-content:center; 
-          z-index:50; 
-        }
-        .chooser-card{ 
-          background:#fff; border-radius:16px; padding:16px; 
-          border:1px solid #e6e0d7; box-shadow:0 12px 30px rgba(0,0,0,.18); 
-          min-width:260px; max-width:90vw; 
-        }
-        .chooser-title{ 
-          font-weight:800; margin-bottom:10px; 
-          text-align:center; font-size:16px;
-        }
-        .chooser-actions{ 
-          display:flex; gap:10px; 
-        }
-        .btn-ghost{ 
-          padding:10px 12px; border-radius:12px; 
-          border:1px solid #ddd6cc; background:#fff; cursor:pointer; 
-          flex:1; font-size:14px;
-        }
-        .btn-dark{ 
-          padding:10px 12px; border-radius:12px; 
-          background:#1f1f1f; color:#fff; 
-          border:1px solid #1f1f1f; cursor:pointer; 
-          flex:1; font-size:14px;
-        }
+        .chooser-backdrop{ position:fixed; inset:0; background:rgba(0,0,0,.25); display:flex; align-items:center; justify-content:center; z-index:50; }
+        .chooser-card{ background:#fff; border-radius:16px; padding:16px; border:1px solid #e6e0d7; box-shadow:0 12px 30px rgba(0,0,0,.18); min-width:260px; max-width:90vw; }
+        .chooser-title{ font-weight:800; margin-bottom:10px; text-align:center; font-size:16px; }
+        .chooser-actions{ display:flex; gap:10px; }
+        .btn-ghost{ padding:10px 12px; border-radius:12px; border:1px solid #ddd6cc; background:#fff; cursor:pointer; flex:1; font-size:14px; }
+        .btn-dark{ padding:10px 12px; border-radius:12px; background:#1f1f1f; color:#fff; border:1px solid #1f1f1f; cursor:pointer; flex:1; font-size:14px; }
 
         /* ===== Hover kartica ===== */
-        .hover-appt{ 
-          position: fixed; z-index: 200; pointer-events: none; 
-          width: 320px; background: #ffffff; 
-          border: 1px solid #e6e0d7; border-radius: 16px; 
-          box-shadow: 0 14px 34px rgba(0,0,0,.20); overflow: hidden; 
+        .hover-appt{
+          position: fixed; z-index: 200; pointer-events: none;
+          width: 320px; background: #ffffff;
+          border: 1px solid #e6e0d7; border-radius: 16px;
+          box-shadow: 0 14px 34px rgba(0,0,0,.20); overflow: hidden;
         }
-        .hover-appt .stripe{ 
-          position:absolute; left:0; top:0; bottom:0; width:6px; 
-          background:#e6e0d7; 
+        .hover-appt .stripe{ position:absolute; left:0; top:0; bottom:0; width:6px; background:#e6e0d7; }
+        .hover-appt .inner{ padding: 12px 14px 12px 18px; }
+        .hover-appt .time{ font-weight:800; font-size:13px; margin-bottom:6px; }
+        .hover-appt .title{ font-weight:800; font-size:15px; }
+        .hover-appt .sub{ color:#6b7280; font-size:13px; margin-top:2px; }
+        .hover-appt .chips{ display:flex; gap:6px; flex-wrap:wrap; margin:8px 0 2px; }
+        .hover-appt .chip{
+          font-size:11px; font-weight:700; line-height:1;
+          padding:4px 8px; border-radius:999px;
+          border:1px solid #e6e0d7; background:#faf6f0;
         }
-        .hover-appt .inner{ 
-          padding: 12px 14px 12px 18px; 
-        }
-        .hover-appt .time{ 
-          font-weight:800; font-size:13px; margin-bottom:6px; 
-        }
-        .hover-appt .title{ 
-          font-weight:800; font-size:15px; 
-        }
-        .hover-appt .sub{ 
-          color:#6b7280; font-size:13px; margin-top:2px; 
-        }
-        .hover-appt .chips{ 
-          display:flex; gap:6px; flex-wrap:wrap; margin:8px 0 2px; 
-        }
-        .hover-appt .chip{ 
-          font-size:11px; font-weight:700; line-height:1; 
-          padding:4px 8px; border-radius:999px; 
-          border:1px solid #e6e0d7; background:#faf6f0; 
-        }
-        .hover-appt .price{ 
-          font-weight:800; margin-top:6px; font-size:14px; 
-        }
-        .hover-appt .hr{ 
-          height:1px; background:#f1ebe4; margin:10px 0; 
-        }
-        .hover-appt .note-row{ 
-          display:flex; gap:8px; align-items:flex-start; 
-        }
+        .hover-appt .price{ font-weight:800; margin-top:6px; font-size:14px; }
+        .hover-appt .hr{ height:1px; background:#f1ebe4; margin:10px 0; }
+        .hover-appt .note-row{ display:flex; gap:8px; align-items:flex-start; }
         .hover-appt .note-ico{ opacity:.7; }
-        .hover-appt .note-text{ 
-          font-size:13px; color:#374151; white-space:pre-wrap; 
-        }
+        .hover-appt .note-text{ font-size:13px; color:#374151; white-space:pre-wrap; }
 
         /* ===== OFF maske ===== */
-        .off-mask{ 
-          position:absolute; left:0; right:0; 
-          background: rgba(0,0,0,0.06); pointer-events:none; 
-          border-radius: 0; z-index: 0; 
-        }
+        .off-mask{ position:absolute; left:0; right:0; background: rgba(0,0,0,0.06); pointer-events:none; border-radius: 0; z-index: 0; }
 
         /* ===== DND ghost ===== */
-        .drag-ghost{ 
-          position:absolute; left:8px; right:8px; 
-          border:2px dashed #2563eb; background: rgba(59,130,246,0.08); 
-          border-radius:12px; pointer-events:none; z-index: 3; 
-        }
+        .drag-ghost{ position:absolute; left:8px; right:8px; border:2px dashed #2563eb; background: rgba(59,130,246,0.08); border-radius:12px; pointer-events:none; z-index: 3; }
 
         /* ===== MOBILE OPTIMIZATIONS ===== */
         @media (max-width: 900px) {
-          .admin-cal { padding: 12px 8px 80px; }
-          .cal-bar { gap: 8px; margin-bottom: 12px; justify-content: space-between; padding: 0 4px; }
-          .title { font-size: 16px; flex: none; order: 3; }
-          .select { min-width: 120px; font-size: 16px; }
-          .top-actions { order: 4; margin-left: 0; gap: 4px; }
+          .admin-cal { padding: max(8px, env(safe-area-inset-top)) 8px 80px; }
+          .cal-bar { margin-bottom: 10px; }
+          .cal-bar-inner { padding: 10px 12px; gap: 8px; }
+          .btn { padding: 10px 12px; font-size: 14px; min-height: 40px; }
+          .btn-group { order: 1; }
+          .title { font-size: 16px; order: 2; text-align:center; }
+          .select { min-width: 120px; font-size: 16px; order: 3; }
+          .top-actions { order: 4; margin-left: 0; gap: 6px; }
+
+          /* Sakrij levi globalni timeline na telefonu */
+          .timeline { display: none; }
           .grid-wrap { grid-template-columns: 1fr; grid-template-rows: auto 1fr; gap: 8px; height: calc(100vh - 140px); }
-          .timeline { order: 2; grid-row: 2; }
-          .timeline-header { display: none; }
-          .timeline .hour { font-size: 11px; left: 4px; }
-          .timeline .line { left: 4px; right: 4px; }
-          .columns { grid-auto-columns: 1fr; min-width: 100%; }
-          .columns-outer { order: 1; grid-row: 1; }
-          .col-header { height: 48px; font-size: 13px; padding: 0 4px; justify-content: flex-start; text-align: left; }
+
+          /* Prikaži sate u svakoj koloni */
+          .col-hour { display: block; }
+
+          .col-header { height: 52px; font-size: 13px; padding: 0 6px; justify-content: flex-start; text-align: left; }
           .appt { left: 4px; right: 4px; padding: 10px 8px; min-height: 44px; font-size: 13px; }
           .appt .time { font-size: 11px; line-height: 1.2; }
           .appt .title { font-size: 12px; margin-top: 2px; -webkit-line-clamp: 2; -webkit-box-orient: vertical; display:-webkit-box; overflow:hidden; }
@@ -1077,13 +1000,12 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
         }
 
         @media (max-width: 480px) {
-          .admin-cal { padding: 8px 4px 80px; }
-          .cal-bar { gap: 4px; padding: 0 2px; }
-          .btn { padding: 10px 8px; font-size: 14px; min-height: 40px; }
+          .admin-cal { padding: max(6px, env(safe-area-inset-top)) 6px 80px; }
+          .cal-bar-inner { padding: 10px; }
+          .btn { padding: 10px 10px; font-size: 14px; min-height: 40px; }
           .title { font-size: 15px; }
           .select { min-width: 100px; padding: 10px 8px; }
-          .top-actions { gap: 2px; }
-          .grid-wrap { gap: 4px; height: calc(100vh - 120px); }
+          .grid-wrap { gap: 6px; height: calc(100vh - 120px); }
           .col-header { height: 52px; font-size: 12px; }
           .appt { padding: 12px 6px; min-height: 48px; }
           .appt .time { font-size: 10px; }
@@ -1119,74 +1041,76 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
           .appt { -webkit-touch-callout: none; -webkit-user-select: none; }
           .col-body { -webkit-overflow-scrolling: touch; }
         }
-          .admin-cal input,
-.admin-cal select,
-.admin-cal button,
-.admin-cal .hour,
-.admin-cal .col-header,
-.admin-cal .appt,
-.admin-cal .muted {
-  color: #1f1f1f !important;
-  -webkit-text-fill-color: #1f1f1f !important; /* iOS fix */
-}
+
+        /* iOS/Android – crna slova */
+        .admin-cal input,
+        .admin-cal select,
+        .admin-cal button,
+        .admin-cal .hour,
+        .admin-cal .col-header,
+        .admin-cal .col-hour,
+        .admin-cal .appt,
+        .admin-cal .muted {
+          color: #1f1f1f !important;
+          -webkit-text-fill-color: #1f1f1f !important;
+        }
       `}</style>
 
       <div className="admin-cal">
         <div className="cal-bar">
-          <button className="btn" onClick={()=>setDay(d=>{const x=new Date(d); x.setDate(x.getDate()-1); return startOfDay(x);})}>◀</button>
-          <button className="btn" onClick={()=>setDay(startOfDay(new Date()))}>Danas</button>
-          <button className="btn" onClick={()=>setDay(d=>{const x=new Date(d); x.setDate(x.getDate()+1); return startOfDay(x);})}>▶</button>
+          <div className="cal-bar-inner">
+            <div className="btn-group">
+              <button className="btn" onClick={()=>setDay(d=>{const x=new Date(d); x.setDate(x.getDate()-1); return startOfDay(x);})}>◀</button>
+              <button className="btn" onClick={()=>setDay(startOfDay(new Date()))}>Danas</button>
+              <button className="btn" onClick={()=>setDay(d=>{const x=new Date(d); x.setDate(x.getDate()+1); return startOfDay(x);})}>▶</button>
+            </div>
 
-          <input 
-            type="date" 
-            className="select" 
-            value={dateToInputValue(dayStart)} 
-            onChange={e => {
-              const v = e.target.value; 
-              if (v) { 
-                const next = new Date(v + "T00:00:00"); 
-                setDay(startOfDay(next)); 
-              }
-            }}
-          />
-          
-          <div className="title">
-            {dayStart.toLocaleDateString("sr-RS",{
-              weekday:"long", 
-              day:"2-digit", 
-              month:"long", 
-              year:"numeric"
-            })}
-          </div>
+            <div className="title">
+              {dayStart.toLocaleDateString("sr-RS",{ weekday:"long", day:"2-digit", month:"long", year:"numeric" })}
+            </div>
 
-          <div className="top-actions">
-            {showEmployeeFilter && (
-              <select 
-                className="select" 
-                value={employeeFilter} 
-                onChange={e=>setEmployeeFilter(e.target.value)}
-              >
-                <option value="all">Sve radnice</option>
-                {(employees||[]).map(e=>(
-                  <option key={e.username} value={e.username}>
-                    {e.firstName} {e.lastName}
-                  </option>
-                ))}
-              </select>
-            )}
+            <input
+              type="date"
+              className="select"
+              value={dateToInputValue(dayStart)}
+              onChange={e => {
+                const v = e.target.value;
+                if (v) {
+                  const next = new Date(v + "T00:00:00");
+                  setDay(startOfDay(next));
+                }
+              }}
+            />
+
+            <div className="top-actions">
+              {showEmployeeFilter && (
+                <select
+                  className="select"
+                  value={employeeFilter}
+                  onChange={e=>setEmployeeFilter(e.target.value)}
+                >
+                  <option value="all">Sve radnice</option>
+                  {(employees||[]).map(e=>(
+                    <option key={e.username} value={e.username}>
+                      {e.firstName} {e.lastName}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
           </div>
         </div>
 
         <div className="grid-wrap" ref={gridWrapRef}>
-          {/* timeline levo */}
+          {/* timeline levo (desktop only; na telefonu je display:none kroz CSS) */}
           <div className="timeline" style={{ height: paneH }}>
             <div className="timeline-inner">
               <div className="timeline-header" />
               <div className="timeline-viewport" style={{height: paneH - HEADER_H}}>
                 <div className="timeline-body" style={{ transform: `translateY(${-scrollY}px)` }}>
                   {Array.from({length:(DAY_END_MIN-DAY_START_MIN)/60+1}).map((_,i)=>{
-                    const m=DAY_START_MIN+i*60; 
-                    const y=yFromMinutes(m); 
+                    const m=DAY_START_MIN+i*60;
+                    const y=yFromMinutes(m);
                     const hh=String(Math.floor(m/60)).padStart(2,"0");
                     return (
                       <React.Fragment key={m}>
@@ -1204,10 +1128,10 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
           </div>
 
           {/* kolone desno */}
-          <div 
-            className="columns-outer" 
-            ref={columnsOuterRef} 
-            onScroll={handleColumnsScroll} 
+          <div
+            className="columns-outer"
+            ref={columnsOuterRef}
+            onScroll={handleColumnsScroll}
             style={{ height: paneH }}
           >
             <div className="columns">
@@ -1218,9 +1142,9 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
                     key={emp.username}
                     className="col"
                     onMouseMove={(e)=>handleColumnMove(e, emp.username)}
-                    onMouseLeave={()=>{ 
-                      handleColumnLeave(); 
-                      setHoverAppt(null); 
+                    onMouseLeave={()=>{
+                      handleColumnLeave();
+                      setHoverAppt(null);
                     }}
                     onClick={(e)=>handleColumnClick(e, emp.username)}
                   >
@@ -1235,9 +1159,16 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
                       }}
                     >
                       {Array.from({length:(DAY_END_MIN-DAY_START_MIN)/60+1}).map((_,i)=>{
-                        const m=DAY_START_MIN+i*60; 
+                        const m=DAY_START_MIN+i*60;
                         const y=yFromMinutes(m);
-                        return <div key={`g-${m}`} className="grid-hour" style={{ top:y }} />;
+                        const hh=String(Math.floor(m/60)).padStart(2,"0");
+                        return (
+                          <React.Fragment key={`g-${m}`}>
+                            <div className="grid-hour" style={{ top:y }} />
+                            {/* Sat u koloni (samo telefon - vidi CSS .col-hour {display:block}) */}
+                            <div className="col-hour" style={{ top:y }}>{hh}:00</div>
+                          </React.Fragment>
+                        );
                       })}
 
                       {/* off maske */}
@@ -1248,10 +1179,10 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
                           const top = yFromMinutes(Math.max(DAY_START_MIN, s));
                           const h = (Math.min(DAY_END_MIN, e) - Math.max(DAY_START_MIN, s)) * PX_PER_MIN;
                           return (
-                            <div 
-                              key={`off-${idx}`} 
-                              className="off-mask" 
-                              style={{ top, height:h }} 
+                            <div
+                              key={`off-${idx}`}
+                              className="off-mask"
+                              style={{ top, height:h }}
                             />
                           );
                         });
@@ -1273,9 +1204,9 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
                         const d = draggingRef.current;
                         const h = (d ? d.durationMin : 30) * PX_PER_MIN - 2;
                         return (
-                          <div 
-                            className="drag-ghost" 
-                            style={{ top: gTop, height: Math.max(18, h)} } 
+                          <div
+                            className="drag-ghost"
+                            style={{ top: gTop, height: Math.max(18, h)} }
                           />
                         );
                       })()}
@@ -1289,7 +1220,6 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
 
                         const client=(clients||[]).filter(Boolean).find(c=>c.id===a.clientId);
 
-                        // normalizovane usluge (radi i za id stringove i za objekte)
                         const items = normalizeServices(a, services);
                         const total = (a.totalAmountRsd ?? a.priceRsd ?? 0) || items.reduce((sum,s)=>sum + (Number(s.priceRsd)||0),0);
                         const col = apptColorFrom(items, categoriesMap);
@@ -1297,18 +1227,17 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
                         const isBlock=a.type==="block";
                         const isPaid=!!a.paid;
 
-                        // heuristike za prikaz ikonica (radi i sa starijim zapisima)
                         const isOnline = a.isOnline || a.bookedVia === "public_app" || a.source === "online" || a.createdBy === "public";
                         const pickedSpecific = a.pickedMode === "specific" || a.pickedEmployee === true;
 
                         const placeHover = (ev)=>{
-                          const padding = 16; 
+                          const padding = 16;
                           const estW = 320, estH = 190;
-                          let left = ev.clientX + 12; 
+                          let left = ev.clientX + 12;
                           let topPx = ev.clientY + 12;
-                          if (left + estW + padding > window.innerWidth) 
+                          if (left + estW + padding > window.innerWidth)
                             left = window.innerWidth - estW - padding;
-                          if (topPx + estH + padding > window.innerHeight) 
+                          if (topPx + estH + padding > window.innerHeight)
                             topPx = window.innerHeight - estH - padding;
                           setHoverAppt({ appt:a, left, top: topPx });
                         };
@@ -1320,25 +1249,25 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
                             style={{ top, height, '--col': col }}
                             onMouseDown={(ev)=>!isBlock && startDrag(ev, a, top)}
                             onTouchStart={(ev)=>!isBlock && startDrag(ev, a, top)}
-                            onClick={(ev)=>{ 
-                              ev.stopPropagation(); 
-                              if (justResizedRef.current || justDraggedRef.current) return; 
-                              setHoverAppt(null); 
-                              openEdit(a); 
+                            onClick={(ev)=>{
+                              ev.stopPropagation();
+                              if (justResizedRef.current || justDraggedRef.current) return;
+                              setHoverAppt(null);
+                              openEdit(a);
                             }}
                             onMouseEnter={placeHover}
                             onMouseMove={placeHover}
                             onMouseLeave={()=>setHoverAppt(null)}
                           >
                             <div className="time">
-                              {fmtTime(a.start)}–{(() => { 
-                                const d=new Date(dayStart); 
-                                d.setMinutes(endMin); 
-                                return fmtTime(d); 
+                              {fmtTime(a.start)}–{(() => {
+                                const d=new Date(dayStart);
+                                d.setMinutes(endMin);
+                                return fmtTime(d);
                               })()}
                             </div>
 
-                            {/* Ugao sa ikonama: online, specific, plaćanje */}
+                            {/* Ugao sa ikonama */}
                             <div className="corner-icons">
                               {isOnline && <span title="Online rezervacija">💬</span>}
                               {pickedSpecific && <span title="Klijent je izabrao konkretnu radnicu">❤️</span>}
@@ -1359,12 +1288,12 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
                                   {client ? formatClient(client, role) : "—"}
                                 </div>
                                 <div className="muted">
-                                  {items.map(s=>s.name).join(", ") || a.servicesLabel || "—"} 
+                                  {items.map(s=>s.name).join(", ") || a.servicesLabel || "—"}
                                   {total?` · ${fmtPrice(total)} RSD`:""}
                                 </div>
                                 {a.noShow && (
-                                  <span 
-                                    className="tag" 
+                                  <span
+                                    className="tag"
                                     style={{borderColor:"#ef4444",color:"#ef4444",background:"#fff"}}
                                   >
                                     NO-SHOW
@@ -1375,11 +1304,11 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
                             )}
 
                             {!isBlock && (
-                              <div 
-                                className="resize-handle" 
-                                title="Povuci za skraćivanje/produžavanje" 
+                              <div
+                                className="resize-handle"
+                                title="Povuci za skraćivanje/produžavanje"
                                 onMouseDown={(e)=>startResize(e,a)}
-                                onTouchStart={(e)=>startResize(e,a)} 
+                                onTouchStart={(e)=>startResize(e,a)}
                               />
                             )}
                           </div>
@@ -1395,8 +1324,8 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
 
         {/* Izbor: Termin ili Blokada */}
         {chooser.open && (
-          <div 
-            className="chooser-backdrop" 
+          <div
+            className="chooser-backdrop"
             onClick={()=>setChooser({open:false,start:null,emp:null})}
           >
             <div className="chooser-card" onClick={(e)=>e.stopPropagation()}>
@@ -1404,20 +1333,20 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
                 Šta želiš da dodaš u {fmtTime(chooser.start)}?
               </div>
               <div className="chooser-actions">
-                <button 
-                  className="btn-dark" 
-                  onClick={()=>{ 
-                    openCreateAt(chooser.start, chooser.emp); 
-                    setChooser({open:false,start:null,emp:null}); 
+                <button
+                  className="btn-dark"
+                  onClick={()=>{
+                    openCreateAt(chooser.start, chooser.emp);
+                    setChooser({open:false,start:null,emp:null});
                   }}
                 >
                   Termin
                 </button>
-                <button 
-                  className="btn-ghost" 
-                  onClick={()=>{ 
-                    openBlock(chooser.emp, chooser.start); 
-                    setChooser({open:false,start:null,emp:null}); 
+                <button
+                  className="btn-ghost"
+                  onClick={()=>{
+                    openBlock(chooser.emp, chooser.start);
+                    setChooser({open:false,start:null,emp:null});
                   }}
                 >
                   Blokada
@@ -1461,8 +1390,8 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
                 <div className="title">{client ? formatClient(client, role) : "—"}</div>
                 <div className="sub">
                   {client ? (
-                    role==="admin" ? 
-                      (client.phone ? `📞 ${client.phone}` : "") : 
+                    role==="admin" ?
+                      (client.phone ? `📞 ${client.phone}` : "") :
                       (client.phone ? `📞 ***${client.phone.toString().replace(/\D/g,"").slice(-3)}` : "")
                   ) : ""}
                   {emp ? `  ·  👩‍💼 ${emp.firstName} ${emp.lastName}` : ""}
@@ -1489,8 +1418,8 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
                     <span className="chip">Plaćeno uplatom na račun</span>
                   )}
                   {a.noShow && (
-                    <span 
-                      className="chip" 
+                    <span
+                      className="chip"
                       style={{borderColor:"#ef4444", color:"#ef4444", background:"#fff"}}
                     >
                       NO-SHOW
