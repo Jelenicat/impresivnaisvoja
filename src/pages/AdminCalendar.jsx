@@ -628,18 +628,6 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
       return;
     }
 
-    // Work hours check
-    const workIntervals = getWorkIntervalsFor(targetEmp, dayStart, latestSchedules);
-    const newStartMin = minsInDay(newStart, dayStart);
-    const newEndMin = minsInDay(newEnd, dayStart);
-    const isWithinWorkHours = workIntervals.some(([start, end]) => newStartMin >= start && newEndMin <= end);
-
-    if (!isWithinWorkHours) {
-      console.log("Drag aborted: outside work hours", { newStartMin, newEndMin, workIntervals });
-      alert("Greška: Termin je izvan radnog vremena radnika.");
-      return;
-    }
-
     justDraggedRef.current = true;
     setTimeout(() => { justDraggedRef.current = false; }, 300);
 
@@ -1143,393 +1131,395 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
 }
       `}</style>
 
-      <div className="cal-bar">
-        <button className="btn" onClick={()=>setDay(d=>{const x=new Date(d); x.setDate(x.getDate()-1); return startOfDay(x);})}>◀</button>
-        <button className="btn" onClick={()=>setDay(startOfDay(new Date()))}>Danas</button>
-        <button className="btn" onClick={()=>setDay(d=>{const x=new Date(d); x.setDate(x.getDate()+1); return startOfDay(x);})}>▶</button>
+      <div className="admin-cal">
+        <div className="cal-bar">
+          <button className="btn" onClick={()=>setDay(d=>{const x=new Date(d); x.setDate(x.getDate()-1); return startOfDay(x);})}>◀</button>
+          <button className="btn" onClick={()=>setDay(startOfDay(new Date()))}>Danas</button>
+          <button className="btn" onClick={()=>setDay(d=>{const x=new Date(d); x.setDate(x.getDate()+1); return startOfDay(x);})}>▶</button>
 
-        <input 
-          type="date" 
-          className="select" 
-          value={dateToInputValue(dayStart)} 
-          onChange={e => {
-            const v = e.target.value; 
-            if (v) { 
-              const next = new Date(v + "T00:00:00"); 
-              setDay(startOfDay(next)); 
-            }
-          }}
-        />
-        
-        <div className="title">
-          {dayStart.toLocaleDateString("sr-RS",{
-            weekday:"long", 
-            day:"2-digit", 
-            month:"long", 
-            year:"numeric"
-          })}
-        </div>
-
-        <div className="top-actions">
-          {showEmployeeFilter && (
-            <select 
-              className="select" 
-              value={employeeFilter} 
-              onChange={e=>setEmployeeFilter(e.target.value)}
-            >
-              <option value="all">Sve radnice</option>
-              {(employees||[]).map(e=>(
-                <option key={e.username} value={e.username}>
-                  {e.firstName} {e.lastName}
-                </option>
-              ))}
-            </select>
-          )}
-        </div>
-      </div>
-
-      <div className="grid-wrap" ref={gridWrapRef}>
-        {/* timeline levo */}
-        <div className="timeline" style={{ height: paneH }}>
-          <div className="timeline-inner">
-            <div className="timeline-header" />
-            <div className="timeline-viewport" style={{height: paneH - HEADER_H}}>
-              <div className="timeline-body" style={{ transform: `translateY(${-scrollY}px)` }}>
-                {Array.from({length:(DAY_END_MIN-DAY_START_MIN)/60+1}).map((_,i)=>{
-                  const m=DAY_START_MIN+i*60; 
-                  const y=yFromMinutes(m); 
-                  const hh=String(Math.floor(m/60)).padStart(2,"0");
-                  return (
-                    <React.Fragment key={m}>
-                      <div className="line" style={{top:y}} />
-                      <div className="hour" style={{top:y}}>{hh}:00</div>
-                    </React.Fragment>
-                  );
-                })}
-                {isSameDay(dayStart, new Date()) && (
-                  <div className="now-line-left" style={{ top: yFromMinutes(nowMinAbs) }} />
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* kolone desno */}
-        <div 
-          className="columns-outer" 
-          ref={columnsOuterRef} 
-          onScroll={handleColumnsScroll} 
-          style={{ height: paneH }}
-        >
-          <div className="columns">
-            {visibleEmployees.map(emp=>{
-              const list=apptsByEmployee.get(emp.username)||[];
-              return (
-                <div
-                  key={emp.username}
-                  className="col"
-                  onMouseMove={(e)=>handleColumnMove(e, emp.username)}
-                  onMouseLeave={()=>{ 
-                    handleColumnLeave(); 
-                    setHoverAppt(null); 
-                  }}
-                  onClick={(e)=>handleColumnClick(e, emp.username)}
-                >
-                  <div className="col-header">
-                    {emp.firstName} {emp.lastName}
-                  </div>
-                  <div
-                    className="col-body"
-                    ref={el=>{
-                      if (el) colBodyRefs.current.set(emp.username, el);
-                      else colBodyRefs.current.delete(emp.username);
-                    }}
-                  >
-                    {Array.from({length:(DAY_END_MIN-DAY_START_MIN)/60+1}).map((_,i)=>{
-                      const m=DAY_START_MIN+i*60; 
-                      const y=yFromMinutes(m);
-                      return <div key={`g-${m}`} className="grid-hour" style={{ top:y }} />;
-                    })}
-
-                    {/* off maske */}
-                    {(() => {
-                      const work = getWorkIntervalsFor(emp.username, dayStart, latestSchedules);
-                      const off = getOffIntervals(work);
-                      return off.map(([s,e], idx) => {
-                        const top = yFromMinutes(Math.max(DAY_START_MIN, s));
-                        const h = (Math.min(DAY_END_MIN, e) - Math.max(DAY_START_MIN, s)) * PX_PER_MIN;
-                        return (
-                          <div 
-                            key={`off-${idx}`} 
-                            className="off-mask" 
-                            style={{ top, height:h }} 
-                          />
-                        );
-                      });
-                    })()}
-
-                    {showNow && (
-                      <div className="now-line-global" style={{ top: yFromMinutes(nowMinAbs) }} />
-                    )}
-
-                    {hover.show && hover.emp===emp.username && (
-                      <div className="hover-line" style={{ top: hover.top }}>
-                        <div className="hover-badge">{hover.text}</div>
-                      </div>
-                    )}
-
-                    {/* drag ghost */}
-                    {dragGhost && dragGhost.emp===emp.username && (() => {
-                      const gTop = yFromMinutes(dragGhost.topMin);
-                      const d = draggingRef.current;
-                      const h = (d ? d.durationMin : 30) * PX_PER_MIN - 2;
-                      return (
-                        <div 
-                          className="drag-ghost" 
-                          style={{ top: gTop, height: Math.max(18, h)} } 
-                        />
-                      );
-                    })()}
-
-                    {list.map(a=>{
-                      const startMin = Math.max(DAY_START_MIN, minsInDay(a.start, dayStart));
-                      const actualEndMin = Math.min(DAY_END_MIN, minsInDay(a.end, dayStart));
-                      const endMin = (overrideEndMap.get(a.id) ?? tempEndMap.get(a.id) ?? actualEndMin);
-                      const top = yFromMinutes(startMin);
-                      const height=Math.max(18,(endMin-startMin)*PX_PER_MIN-2);
-
-                      const client=(clients||[]).filter(Boolean).find(c=>c.id===a.clientId);
-
-                      // normalizovane usluge (radi i za id stringove i za objekte)
-                      const items = normalizeServices(a, services);
-                      const total = (a.totalAmountRsd ?? a.priceRsd ?? 0) || items.reduce((sum,s)=>sum + (Number(s.priceRsd)||0),0);
-                      const col = apptColorFrom(items, categoriesMap);
-
-                      const isBlock=a.type==="block";
-                      const isPaid=!!a.paid;
-
-                      // heuristike za prikaz ikonica (radi i sa starijim zapisima)
-                      const isOnline = a.isOnline || a.bookedVia === "public_app" || a.source === "online" || a.createdBy === "public";
-                      const pickedSpecific = a.pickedMode === "specific" || a.pickedEmployee === true;
-
-                      const placeHover = (ev)=>{
-                        const padding = 16; 
-                        const estW = 320, estH = 190;
-                        let left = ev.clientX + 12; 
-                        let topPx = ev.clientY + 12;
-                        if (left + estW + padding > window.innerWidth) 
-                          left = window.innerWidth - estW - padding;
-                        if (topPx + estH + padding > window.innerHeight) 
-                          topPx = window.innerHeight - estH - padding;
-                        setHoverAppt({ appt:a, left, top: topPx });
-                      };
-
-                      return (
-                        <div
-                          key={a.id}
-                          className={`appt ${isBlock?"block":""} ${isPaid && canSeePayment?"paid":""}`}
-                          style={{ top, height, '--col': col }}
-                          onMouseDown={(ev)=>!isBlock && startDrag(ev, a, top)}
-                          onTouchStart={(ev)=>!isBlock && startDrag(ev, a, top)}
-                          onClick={(ev)=>{ 
-                            ev.stopPropagation(); 
-                            if (justResizedRef.current || justDraggedRef.current) return; 
-                            setHoverAppt(null); 
-                            openEdit(a); 
-                          }}
-                          onMouseEnter={placeHover}
-                          onMouseMove={placeHover}
-                          onMouseLeave={()=>setHoverAppt(null)}
-                        >
-                          <div className="time">
-                            {fmtTime(a.start)}–{(() => { 
-                              const d=new Date(dayStart); 
-                              d.setMinutes(endMin); 
-                              return fmtTime(d); 
-                            })()}
-                          </div>
-
-                          {/* Ugao sa ikonama: online, specific, plaćanje */}
-                          <div className="corner-icons">
-                            {isOnline && <span title="Online rezervacija">💬</span>}
-                            {pickedSpecific && <span title="Klijent je izabrao konkretnu radnicu">❤️</span>}
-                            {canSeePayment && a.paid === "card" && <span title="Plaćeno karticom">💳</span>}
-                            {canSeePayment && a.paid === "cash" && <span title="Plaćeno kešom">💵</span>}
-                            {canSeePayment && a.paid === "bank" && <span title="Plaćeno uplatom na račun">🏦</span>}
-                          </div>
-
-                          {isBlock ? (
-                            <>
-                              <div className="title">Blokirano vreme</div>
-                              {a.note && <div className="muted">📝 {a.note}</div>}
-                              <span className="tag">Blokada</span>
-                            </>
-                          ) : (
-                            <>
-                              <div className="title">
-                                {client ? formatClient(client, role) : "—"}
-                              </div>
-                              <div className="muted">
-                                {items.map(s=>s.name).join(", ") || a.servicesLabel || "—"} 
-                                {total?` · ${fmtPrice(total)} RSD`:""}
-                              </div>
-                              {a.noShow && (
-                                <span 
-                                  className="tag" 
-                                  style={{borderColor:"#ef4444",color:"#ef4444",background:"#fff"}}
-                                >
-                                  NO-SHOW
-                                </span>
-                              )}
-                              {a.note && <span className="tag">📝 {a.note}</span>}
-                            </>
-                          )}
-
-                          {!isBlock && (
-                            <div 
-                              className="resize-handle" 
-                              title="Povuci za skraćivanje/produžavanje" 
-                              onMouseDown={(e)=>startResize(e,a)}
-                              onTouchStart={(e)=>startResize(e,a)} 
-                            />
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
+          <input 
+            type="date" 
+            className="select" 
+            value={dateToInputValue(dayStart)} 
+            onChange={e => {
+              const v = e.target.value; 
+              if (v) { 
+                const next = new Date(v + "T00:00:00"); 
+                setDay(startOfDay(next)); 
+              }
+            }}
+          />
+          
+          <div className="title">
+            {dayStart.toLocaleDateString("sr-RS",{
+              weekday:"long", 
+              day:"2-digit", 
+              month:"long", 
+              year:"numeric"
             })}
           </div>
-        </div>
-      </div>
 
-      {/* Izbor: Termin ili Blokada */}
-      {chooser.open && (
-        <div 
-          className="chooser-backdrop" 
-          onClick={()=>setChooser({open:false,start:null,emp:null})}
-        >
-          <div className="chooser-card" onClick={(e)=>e.stopPropagation()}>
-            <div className="chooser-title">
-              Šta želiš da dodaš u {fmtTime(chooser.start)}?
-            </div>
-            <div className="chooser-actions">
-              <button 
-                className="btn-dark" 
-                onClick={()=>{ 
-                  openCreateAt(chooser.start, chooser.emp); 
-                  setChooser({open:false,start:null,emp:null}); 
-                }}
+          <div className="top-actions">
+            {showEmployeeFilter && (
+              <select 
+                className="select" 
+                value={employeeFilter} 
+                onChange={e=>setEmployeeFilter(e.target.value)}
               >
-                Termin
-              </button>
-              <button 
-                className="btn-ghost" 
-                onClick={()=>{ 
-                  openBlock(chooser.emp, chooser.start); 
-                  setChooser({open:false,start:null,emp:null}); 
-                }}
-              >
-                Blokada
-              </button>
-            </div>
+                <option value="all">Sve radnice</option>
+                {(employees||[]).map(e=>(
+                  <option key={e.username} value={e.username}>
+                    {e.firstName} {e.lastName}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
         </div>
-      )}
 
-      {open && (
-        <CalendarEventModal
-          role={role === "worker" ? "worker" : role === "salon" ? "salon" : "admin"}
-          value={modalValue}
-          employees={role==="worker" ? (employees||[]).filter(e=>e.username===currentUsername) : (employees||[])}
-          services={services||[]}
-          clients={clients||[]}
-          categoriesMap={categoriesMap||new Map()}
-          onClose={()=>setOpen(false)}
-          onSaved={()=>setOpen(false)}
-          onDelete={(id)=>handleDelete(id)}
-        />
-      )}
-
-      {/* Hover kartica */}
-      {hoverAppt && (()=> {
-        const a = hoverAppt.appt;
-        const client = (clients||[]).filter(Boolean).find(c=>c.id===a.clientId);
-        const items = normalizeServices(a, services);
-        const total = (a.totalAmountRsd ?? a.priceRsd ?? 0) || items.reduce((sum,s)=>sum + (Number(s.priceRsd)||0),0);
-        const emp = (employees||[]).find(e=>e.username===a.employeeUsername);
-        const catColor = apptColorFrom(items, categoriesMap);
-
-        const isOnline = a.isOnline || a.bookedVia === "public_app" || a.source === "online" || a.createdBy === "public";
-        const pickedSpecific = a.pickedMode === "specific" || a.pickedEmployee === true;
-
-        return (
-          <div className="hover-appt" style={{ left: hoverAppt.left, top: hoverAppt.top }}>
-            <div className="stripe" style={{ background: catColor }} />
-            <div className="inner">
-              <div className="time">{fmtTime(a.start)} – {fmtTime(a.end)}</div>
-              <div className="title">{client ? formatClient(client, role) : "—"}</div>
-              <div className="sub">
-                {client ? (
-                  role==="admin" ? 
-                    (client.phone ? `📞 ${client.phone}` : "") : 
-                    (client.phone ? `📞 ***${client.phone.toString().replace(/\D/g,"").slice(-3)}` : "")
-                ) : ""}
-                {emp ? `  ·  👩‍💼 ${emp.firstName} ${emp.lastName}` : ""}
+        <div className="grid-wrap" ref={gridWrapRef}>
+          {/* timeline levo */}
+          <div className="timeline" style={{ height: paneH }}>
+            <div className="timeline-inner">
+              <div className="timeline-header" />
+              <div className="timeline-viewport" style={{height: paneH - HEADER_H}}>
+                <div className="timeline-body" style={{ transform: `translateY(${-scrollY}px)` }}>
+                  {Array.from({length:(DAY_END_MIN-DAY_START_MIN)/60+1}).map((_,i)=>{
+                    const m=DAY_START_MIN+i*60; 
+                    const y=yFromMinutes(m); 
+                    const hh=String(Math.floor(m/60)).padStart(2,"0");
+                    return (
+                      <React.Fragment key={m}>
+                        <div className="line" style={{top:y}} />
+                        <div className="hour" style={{top:y}}>{hh}:00</div>
+                      </React.Fragment>
+                    );
+                  })}
+                  {isSameDay(dayStart, new Date()) && (
+                    <div className="now-line-left" style={{ top: yFromMinutes(nowMinAbs) }} />
+                  )}
+                </div>
               </div>
-              <div className="sub">
-                {items.map(s=>s.name).join(", ") || a.servicesLabel || "—"}
-                {items?.length ? ` · ${items.length} usl.` : ""}
-              </div>
-              <div className="chips">
-                {a.source && (
-                  <span className="chip">
-                    {a.source === "manual" ? "Zakazano: admin" : "Zakazano: online"}
-                  </span>
-                )}
-                {isOnline && <span className="chip">Online rezervacija 💬</span>}
-                {pickedSpecific && <span className="chip">Izabrana radnica ❤️</span>}
-                {canSeePayment && a.paid === "card" && (
-                  <span className="chip">Plaćeno karticom</span>
-                )}
-                {canSeePayment && a.paid === "cash" && (
-                  <span className="chip">Plaćeno kešom</span>
-                )}
-                {canSeePayment && a.paid === "bank" && (
-                  <span className="chip">Plaćeno uplatom na račun</span>
-                )}
-                {a.noShow && (
-                  <span 
-                    className="chip" 
-                    style={{borderColor:"#ef4444", color:"#ef4444", background:"#fff"}}
+            </div>
+          </div>
+
+          {/* kolone desno */}
+          <div 
+            className="columns-outer" 
+            ref={columnsOuterRef} 
+            onScroll={handleColumnsScroll} 
+            style={{ height: paneH }}
+          >
+            <div className="columns">
+              {visibleEmployees.map(emp=>{
+                const list=apptsByEmployee.get(emp.username)||[];
+                return (
+                  <div
+                    key={emp.username}
+                    className="col"
+                    onMouseMove={(e)=>handleColumnMove(e, emp.username)}
+                    onMouseLeave={()=>{ 
+                      handleColumnLeave(); 
+                      setHoverAppt(null); 
+                    }}
+                    onClick={(e)=>handleColumnClick(e, emp.username)}
                   >
-                    NO-SHOW
-                  </span>
-                )}
-              </div>
-              <div className="price">RSD {fmtPrice(total)}</div>
-              {(client?.note || a.note) && <div className="hr" />}
-              {client?.note && (
-                <div className="note-row" style={{marginTop:2}}>
-                  <div className="note-ico">🗒️</div>
-                  <div className="note-text">
-                    <b>Beleška klijenta:</b> {client.note}
+                    <div className="col-header">
+                      {emp.firstName} {emp.lastName}
+                    </div>
+                    <div
+                      className="col-body"
+                      ref={el=>{
+                        if (el) colBodyRefs.current.set(emp.username, el);
+                        else colBodyRefs.current.delete(emp.username);
+                      }}
+                    >
+                      {Array.from({length:(DAY_END_MIN-DAY_START_MIN)/60+1}).map((_,i)=>{
+                        const m=DAY_START_MIN+i*60; 
+                        const y=yFromMinutes(m);
+                        return <div key={`g-${m}`} className="grid-hour" style={{ top:y }} />;
+                      })}
+
+                      {/* off maske */}
+                      {(() => {
+                        const work = getWorkIntervalsFor(emp.username, dayStart, latestSchedules);
+                        const off = getOffIntervals(work);
+                        return off.map(([s,e], idx) => {
+                          const top = yFromMinutes(Math.max(DAY_START_MIN, s));
+                          const h = (Math.min(DAY_END_MIN, e) - Math.max(DAY_START_MIN, s)) * PX_PER_MIN;
+                          return (
+                            <div 
+                              key={`off-${idx}`} 
+                              className="off-mask" 
+                              style={{ top, height:h }} 
+                            />
+                          );
+                        });
+                      })()}
+
+                      {showNow && (
+                        <div className="now-line-global" style={{ top: yFromMinutes(nowMinAbs) }} />
+                      )}
+
+                      {hover.show && hover.emp===emp.username && (
+                        <div className="hover-line" style={{ top: hover.top }}>
+                          <div className="hover-badge">{hover.text}</div>
+                        </div>
+                      )}
+
+                      {/* drag ghost */}
+                      {dragGhost && dragGhost.emp===emp.username && (() => {
+                        const gTop = yFromMinutes(dragGhost.topMin);
+                        const d = draggingRef.current;
+                        const h = (d ? d.durationMin : 30) * PX_PER_MIN - 2;
+                        return (
+                          <div 
+                            className="drag-ghost" 
+                            style={{ top: gTop, height: Math.max(18, h)} } 
+                          />
+                        );
+                      })()}
+
+                      {list.map(a=>{
+                        const startMin = Math.max(DAY_START_MIN, minsInDay(a.start, dayStart));
+                        const actualEndMin = Math.min(DAY_END_MIN, minsInDay(a.end, dayStart));
+                        const endMin = (overrideEndMap.get(a.id) ?? tempEndMap.get(a.id) ?? actualEndMin);
+                        const top = yFromMinutes(startMin);
+                        const height=Math.max(18,(endMin-startMin)*PX_PER_MIN-2);
+
+                        const client=(clients||[]).filter(Boolean).find(c=>c.id===a.clientId);
+
+                        // normalizovane usluge (radi i za id stringove i za objekte)
+                        const items = normalizeServices(a, services);
+                        const total = (a.totalAmountRsd ?? a.priceRsd ?? 0) || items.reduce((sum,s)=>sum + (Number(s.priceRsd)||0),0);
+                        const col = apptColorFrom(items, categoriesMap);
+
+                        const isBlock=a.type==="block";
+                        const isPaid=!!a.paid;
+
+                        // heuristike za prikaz ikonica (radi i sa starijim zapisima)
+                        const isOnline = a.isOnline || a.bookedVia === "public_app" || a.source === "online" || a.createdBy === "public";
+                        const pickedSpecific = a.pickedMode === "specific" || a.pickedEmployee === true;
+
+                        const placeHover = (ev)=>{
+                          const padding = 16; 
+                          const estW = 320, estH = 190;
+                          let left = ev.clientX + 12; 
+                          let topPx = ev.clientY + 12;
+                          if (left + estW + padding > window.innerWidth) 
+                            left = window.innerWidth - estW - padding;
+                          if (topPx + estH + padding > window.innerHeight) 
+                            topPx = window.innerHeight - estH - padding;
+                          setHoverAppt({ appt:a, left, top: topPx });
+                        };
+
+                        return (
+                          <div
+                            key={a.id}
+                            className={`appt ${isBlock?"block":""} ${isPaid && canSeePayment?"paid":""}`}
+                            style={{ top, height, '--col': col }}
+                            onMouseDown={(ev)=>!isBlock && startDrag(ev, a, top)}
+                            onTouchStart={(ev)=>!isBlock && startDrag(ev, a, top)}
+                            onClick={(ev)=>{ 
+                              ev.stopPropagation(); 
+                              if (justResizedRef.current || justDraggedRef.current) return; 
+                              setHoverAppt(null); 
+                              openEdit(a); 
+                            }}
+                            onMouseEnter={placeHover}
+                            onMouseMove={placeHover}
+                            onMouseLeave={()=>setHoverAppt(null)}
+                          >
+                            <div className="time">
+                              {fmtTime(a.start)}–{(() => { 
+                                const d=new Date(dayStart); 
+                                d.setMinutes(endMin); 
+                                return fmtTime(d); 
+                              })()}
+                            </div>
+
+                            {/* Ugao sa ikonama: online, specific, plaćanje */}
+                            <div className="corner-icons">
+                              {isOnline && <span title="Online rezervacija">💬</span>}
+                              {pickedSpecific && <span title="Klijent je izabrao konkretnu radnicu">❤️</span>}
+                              {canSeePayment && a.paid === "card" && <span title="Plaćeno karticom">💳</span>}
+                              {canSeePayment && a.paid === "cash" && <span title="Plaćeno kešom">💵</span>}
+                              {canSeePayment && a.paid === "bank" && <span title="Plaćeno uplatom na račun">🏦</span>}
+                            </div>
+
+                            {isBlock ? (
+                              <>
+                                <div className="title">Blokirano vreme</div>
+                                {a.note && <div className="muted">📝 {a.note}</div>}
+                                <span className="tag">Blokada</span>
+                              </>
+                            ) : (
+                              <>
+                                <div className="title">
+                                  {client ? formatClient(client, role) : "—"}
+                                </div>
+                                <div className="muted">
+                                  {items.map(s=>s.name).join(", ") || a.servicesLabel || "—"} 
+                                  {total?` · ${fmtPrice(total)} RSD`:""}
+                                </div>
+                                {a.noShow && (
+                                  <span 
+                                    className="tag" 
+                                    style={{borderColor:"#ef4444",color:"#ef4444",background:"#fff"}}
+                                  >
+                                    NO-SHOW
+                                  </span>
+                                )}
+                                {a.note && <span className="tag">📝 {a.note}</span>}
+                              </>
+                            )}
+
+                            {!isBlock && (
+                              <div 
+                                className="resize-handle" 
+                                title="Povuci za skraćivanje/produžavanje" 
+                                onMouseDown={(e)=>startResize(e,a)}
+                                onTouchStart={(e)=>startResize(e,a)} 
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              )}
-              {a.note && (
-                <div className="note-row" style={{marginTop: client?.note ? 6 : 2}}>
-                  <div className="note-ico">✍️</div>
-                  <div className="note-text">
-                    <b>Beleška termina:</b> {a.note}
-                  </div>
-                </div>
-              )}
+                );
+              })}
             </div>
           </div>
-        );
-      })()}
+        </div>
+
+        {/* Izbor: Termin ili Blokada */}
+        {chooser.open && (
+          <div 
+            className="chooser-backdrop" 
+            onClick={()=>setChooser({open:false,start:null,emp:null})}
+          >
+            <div className="chooser-card" onClick={(e)=>e.stopPropagation()}>
+              <div className="chooser-title">
+                Šta želiš da dodaš u {fmtTime(chooser.start)}?
+              </div>
+              <div className="chooser-actions">
+                <button 
+                  className="btn-dark" 
+                  onClick={()=>{ 
+                    openCreateAt(chooser.start, chooser.emp); 
+                    setChooser({open:false,start:null,emp:null}); 
+                  }}
+                >
+                  Termin
+                </button>
+                <button 
+                  className="btn-ghost" 
+                  onClick={()=>{ 
+                    openBlock(chooser.emp, chooser.start); 
+                    setChooser({open:false,start:null,emp:null}); 
+                  }}
+                >
+                  Blokada
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {open && (
+          <CalendarEventModal
+            role={role === "worker" ? "worker" : role === "salon" ? "salon" : "admin"}
+            value={modalValue}
+            employees={role==="worker" ? (employees||[]).filter(e=>e.username===currentUsername) : (employees||[])}
+            services={services||[]}
+            clients={clients||[]}
+            categoriesMap={categoriesMap||new Map()}
+            onClose={()=>setOpen(false)}
+            onSaved={()=>setOpen(false)}
+            onDelete={(id)=>handleDelete(id)}
+          />
+        )}
+
+        {/* Hover kartica */}
+        {hoverAppt && (()=> {
+          const a = hoverAppt.appt;
+          const client = (clients||[]).filter(Boolean).find(c=>c.id===a.clientId);
+          const items = normalizeServices(a, services);
+          const total = (a.totalAmountRsd ?? a.priceRsd ?? 0) || items.reduce((sum,s)=>sum + (Number(s.priceRsd)||0),0);
+          const emp = (employees||[]).find(e=>e.username===a.employeeUsername);
+          const catColor = apptColorFrom(items, categoriesMap);
+
+          const isOnline = a.isOnline || a.bookedVia === "public_app" || a.source === "online" || a.createdBy === "public";
+          const pickedSpecific = a.pickedMode === "specific" || a.pickedEmployee === true;
+
+          return (
+            <div className="hover-appt" style={{ left: hoverAppt.left, top: hoverAppt.top }}>
+              <div className="stripe" style={{ background: catColor }} />
+              <div className="inner">
+                <div className="time">{fmtTime(a.start)} – {fmtTime(a.end)}</div>
+                <div className="title">{client ? formatClient(client, role) : "—"}</div>
+                <div className="sub">
+                  {client ? (
+                    role==="admin" ? 
+                      (client.phone ? `📞 ${client.phone}` : "") : 
+                      (client.phone ? `📞 ***${client.phone.toString().replace(/\D/g,"").slice(-3)}` : "")
+                  ) : ""}
+                  {emp ? `  ·  👩‍💼 ${emp.firstName} ${emp.lastName}` : ""}
+                </div>
+                <div className="sub">
+                  {items.map(s=>s.name).join(", ") || a.servicesLabel || "—"}
+                  {items?.length ? ` · ${items.length} usl.` : ""}
+                </div>
+                <div className="chips">
+                  {a.source && (
+                    <span className="chip">
+                      {a.source === "manual" ? "Zakazano: admin" : "Zakazano: online"}
+                    </span>
+                  )}
+                  {isOnline && <span className="chip">Online rezervacija 💬</span>}
+                  {pickedSpecific && <span className="chip">Izabrana radnica ❤️</span>}
+                  {canSeePayment && a.paid === "card" && (
+                    <span className="chip">Plaćeno karticom</span>
+                  )}
+                  {canSeePayment && a.paid === "cash" && (
+                    <span className="chip">Plaćeno kešom</span>
+                  )}
+                  {canSeePayment && a.paid === "bank" && (
+                    <span className="chip">Plaćeno uplatom na račun</span>
+                  )}
+                  {a.noShow && (
+                    <span 
+                      className="chip" 
+                      style={{borderColor:"#ef4444", color:"#ef4444", background:"#fff"}}
+                    >
+                      NO-SHOW
+                    </span>
+                  )}
+                </div>
+                <div className="price">RSD {fmtPrice(total)}</div>
+                {(client?.note || a.note) && <div className="hr" />}
+                {client?.note && (
+                  <div className="note-row" style={{marginTop:2}}>
+                    <div className="note-ico">🗒️</div>
+                    <div className="note-text">
+                      <b>Beleška klijenta:</b> {client.note}
+                    </div>
+                  </div>
+                )}
+                {a.note && (
+                  <div className="note-row" style={{marginTop: client?.note ? 6 : 2}}>
+                    <div className="note-ico">✍️</div>
+                    <div className="note-text">
+                      <b>Beleška termina:</b> {a.note}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+      </div>
     </div>
   );
 }

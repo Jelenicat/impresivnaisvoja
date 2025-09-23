@@ -254,7 +254,7 @@ export default function AdminShifts() {
           min-height:100vh;
           padding-bottom:80px;
           overflow-x:hidden;
-          overflow-y:visible; /* >>> dozvoli Y */
+          overflow-y:auto; /* Changed from visible for better mobile scrolling */
         }
         h1{
           font-family:"Playfair Display",serif;
@@ -277,6 +277,7 @@ export default function AdminShifts() {
           max-width:100%;
           width:100%;
           overflow:visible; /* >>> nikad ne seci sadržaj */
+          box-sizing:border-box; /* Reinforce box-sizing */
         }
         .card h3{
           margin:0 0 16px;
@@ -338,10 +339,11 @@ export default function AdminShifts() {
         .week-head .title{ font-weight:700; font-size:16px; color:#2c261f; width:100%; }
         .week-body{ padding:12px; display:grid; gap:12px; }
 
-        /* === DayRow default (MOBILE-FIRST) === */
+        /* === DayRow default (MOBILE-First) === */
         .day-row{
-          display:flex; flex-direction:column; gap:8px;
-          padding:12px 0; border-bottom:1px solid #f5f3ef;
+          display:flex; flex-direction:column; gap:6px; /* Reduced from 8px */
+          padding:8px 0; /* Reduced from 12px */
+          border-bottom:1px solid #f5f3ef;
         }
         .day-row:last-child{ border-bottom:none; }
 
@@ -349,7 +351,7 @@ export default function AdminShifts() {
         .time-grid{
           display:grid;
           grid-template-columns: 1fr 18px 1fr; /* from | – | to */
-          gap:8px;
+          gap:6px; /* Match day-row gap */
           align-items:center;
         }
         .time{
@@ -368,29 +370,29 @@ export default function AdminShifts() {
 
         /* ====== MOBILNI (≤768px) ====== */
         @media(max-width:768px){
-          .shifts-page{ padding:8px 0 84px; }
+          .shifts-page{ padding:4px 0 84px; } /* Reduced top padding */
           .card{ padding:12px; border-radius:16px; }
-            .card--bleed{
-    border-left:0; border-right:0; border-radius:0;
-    margin-left:max(-12px,-env(safe-area-inset-left));
-    margin-right:max(-12px,-env(safe-area-inset-right));
-    width:100vw; max-width:100vw;
-  }
-  /* da "Početak / Kraj" ne sabija polja u jedan red */
-  .field.two{ flex-direction:column; gap:10px !important; }
-}
-          h1{ font-size:20px; margin:8px 0 12px; }
-          .card h3{ font-size:14px; margin-bottom:10px; padding-bottom:6px; }
-
+          .card--bleed{
+            border-left:0; border-right:0; border-radius:0;
+            margin-left:calc(-8px - env(safe-area-inset-left)); /* Adjusted */
+            margin-right:calc(-8px - env(safe-area-inset-right));
+            width:100vw; max-width:100vw;
+            padding:8px; /* Reduced from 12px */
+          }
+          /* da "Početak / Kraj" ne sabija polja u jedan red */
+          .field.two{ flex-direction:column; gap:10px !important; }
+          h1{ font-size:18px; margin:4px 0 8px; } /* Reduced margins */
+          .card h3{ font-size:13px; margin-bottom:8px; padding-bottom:6px; }
           .day-label{ font-size:13px; }
           .time{ height:38px; font-size:13px; }
-          .day-closed{ font-size:12px; }
+          .day-closed{ font-size:11.5px; } /* Adjusted */
         }
 
         /* VEOMA USKI (≤380px) */
         @media(max-width:380px){
-          .time{ height:36px; font-size:12.5px; }
-          .dash{ font-size:12px; }
+          .time{ height:38px; font-size:13px; padding:8px; } /* Improved touch target */
+          .dash{ font-size:13px; } /* Adjusted */
+          .seg-btn{ padding:8px 10px; font-size:12.5px; } /* Improved touch target */
         }
 
         /* ====== DESKTOP ====== */
@@ -432,7 +434,6 @@ export default function AdminShifts() {
       <div className="grid">
         {/* LEVO – konfiguracija */}
         <div className="card config-card card--bleed">
-
           <h3>Nova / postojeća smena</h3>
 
           <div className="field">

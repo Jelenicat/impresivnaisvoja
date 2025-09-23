@@ -118,14 +118,18 @@ function ServicePickerDrawer({ open, onClose, categories, servicesByCat, value, 
         .drawer-veil{position:fixed;inset:0;background:rgba(0,0,0,.28);backdrop-filter:blur(2px);display:flex;justify-content:flex-end;z-index:1000;}
         .drawer{width:min(720px,96vw);height:100%;background:#fff;border-left:1px solid #eee;display:flex;flex-direction:column;animation:slideIn .2s ease;}
         @keyframes slideIn{from{transform:translateX(8px);opacity:.8}to{transform:translateX(0);opacity:1}}
-        @media (max-width:720px){ .drawer{width:100%;border-radius:18px 18px 0 0;align-self:flex-end;height:92vh;animation:rise .22s ease;} .drawer-veil{align-items:flex-end;} @keyframes rise{from{transform:translateY(8px);opacity:.9} to{transform:translateY(0);opacity:1}} }
-        .drawer__header{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid #f1eee8;background:#faf8f5;}
+        @media (max-width:720px){ 
+          .drawer{width:100%;border-radius:16px 16px 0 0;align-self:flex-end;height:90vh;animation:rise .22s ease;padding-bottom:8px;}
+          .drawer-veil{align-items:flex-end;}
+          @keyframes rise{from{transform:translateY(8px);opacity:.9} to{transform:translateY(0);opacity:1}}
+        }
+        .drawer__header{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid #f1eee8;background:#faf8f5;}
         .drawer__title{font-weight:700;font-size:16px;display:flex;gap:10px;align-items:center}
         .drawer__subtitle{font-weight:500;color:#8a8378;font-size:12px;background:#f1eee8;padding:4px 8px;border-radius:999px}
         .icon-btn{border:0;background:#fff;border:1px solid #ddd6cc;border-radius:10px;padding:8px 10px;cursor:pointer}
-        .search-wrap{padding:12px 14px;border-bottom:1px solid #f5f2ed}
+        .search-wrap{padding:10px 12px;border-bottom:1px solid #f5f2ed}
         .input{width:100%;padding:11px 12px;border-radius:12px;border:1px solid #e6e0d7;background:#fff}
-        .drawer__body{padding:10px 14px;overflow:auto}
+        .drawer__body{padding:8px 12px;overflow-y:auto}
         .cat{border:1px solid #eee;border-radius:14px;margin:10px 0;overflow:hidden}
         .cat__head{display:flex;align-items:center;justify-content:space-between;background:#fff;padding:10px 12px;cursor:pointer}
         .cat__title{display:flex;align-items:center;gap:8px;font-weight:600}
@@ -135,7 +139,7 @@ function ServicePickerDrawer({ open, onClose, categories, servicesByCat, value, 
         .pill{padding:8px 12px;border-radius:999px;border:1px solid #ddd6cc;background:#fff;cursor:pointer;font-size:13px}
         .pill--active{background:#1f1f1f;color:#fff;border-color:#1f1f1f}
         .empty{opacity:.65;font-size:13px;padding:8px}
-        .drawer__footer{display:flex;gap:10px;align-items:center;padding:12px 14px;border-top:1px solid #f1eee8;background:#faf8f5}
+        .drawer__footer{display:flex;gap:10px;align-items:center;padding:10px 12px;border-top:1px solid #f1eee8;background:#faf8f5}
         .spacer{flex:1}
         .btn{padding:10px 14px;border-radius:12px;cursor:pointer;border:1px solid transparent}
         .btn--ghost{background:#fff;border-color:#ddd6cc}
@@ -200,9 +204,9 @@ export default function AdminEmployees() {
         doc(db, "employees", u),
         {
           username: u,
-           role: "worker",
+          role: "worker",
           firstName: firstName.trim(),
-          lastName:  lastName.trim(),
+          lastName: lastName.trim(),
           tempPassword: password.trim(),
           active: true,
           serviceIds,
@@ -253,17 +257,59 @@ export default function AdminEmployees() {
   return (
     <div className="page">
       <style>{`
-        .page{ padding:16px clamp(10px,4vw,40px); background:linear-gradient(180deg,#f7f4ef 0,#f0ebe4 100%); min-height:100vh; }
-        h1{ font-family:"Playfair Display",serif; margin:8px 0 16px; font-size: clamp(22px,2.4vw,30px) }
-        .grid{ display:grid; gap:14px; grid-template-columns: 1fr; }
+        *,*::before,*::after{ box-sizing:border-box; }
+        html,body,#root{ min-height:100%; height:auto; }
+        html,body{ overflow-x:hidden; }
+
+        .page{ 
+          padding:16px clamp(10px,4vw,40px); 
+          background:linear-gradient(180deg,#f7f4ef 0,#f0ebe4 100%); 
+          min-height:100vh; 
+          overflow-x:hidden;
+          overflow-y:auto; /* Ensure smooth scrolling */
+        }
+        h1{ 
+          font-family:"Playfair Display",serif; 
+          margin:8px 0 16px; 
+          font-size: clamp(22px,2.4vw,30px); 
+          text-align:center;
+          color:#2c261f;
+        }
+        .grid{ display:grid; gap:14px; grid-template-columns: 1fr; min-width:0; }
         @media(min-width:980px){ .grid{ grid-template-columns: 420px 1fr; align-items:start; } }
 
-        .card{ background:#fff; border-radius:22px; box-shadow:0 12px 34px rgba(0,0,0,.08); padding:16px; }
-        .card h3{ margin:0 0 10px; font-size:16px }
+        .card{ 
+          background:#fff; 
+          border-radius:22px; 
+          box-shadow:0 12px 34px rgba(0,0,0,.08); 
+          padding:16px; 
+          width:100%;
+          box-sizing:border-box;
+        }
+        .card h3{ margin:0 0 10px; font-size:16px; font-weight:700; color:#2c261f; }
         .row{ display:grid; gap:10px; grid-template-columns: repeat(2,minmax(0,1fr)); }
-        .input{ width:100%; padding:12px 12px; border-radius:12px; border:1px solid #e6e0d7; background:#fff; }
-        .btn{ border:0; background:#1f1f1f; color:#fff; padding:11px 14px; border-radius:12px; cursor:pointer; }
+        .input{ 
+          width:100%; 
+          padding:12px; 
+          border-radius:12px; 
+          border:1px solid #e6e0d7; 
+          background:#fff; 
+          font-size:14px;
+        }
+        .input:focus{ outline:none; border-color:#1f1f1f; box-shadow:0 0 0 3px rgba(31,31,31,.05); }
+        .btn{ 
+          border:0; 
+          background:#1f1f1f; 
+          color:#fff; 
+          padding:11px 14px; 
+          border-radius:12px; 
+          cursor:pointer; 
+          font-weight:600;
+          font-size:14px;
+        }
         .btn--ghost{ background:#fff; color:#1f1f1f; border:1px solid #ddd6cc }
+        .btn:hover:not(:disabled){ background:#333; }
+        .btn:disabled{ opacity:.6; cursor:not-allowed; }
         .muted{ opacity:.7; font-size:13px; }
 
         .table{ width:100%; border-collapse: collapse; }
@@ -271,9 +317,38 @@ export default function AdminEmployees() {
         .table th{ font-weight:700; color:#36322b; background:#faf8f5 }
         .table__actions{ display:flex; gap:8px; flex-wrap:wrap }
 
-        .pill{ padding:8px 12px;border-radius:999px;border:1px solid #ddd6cc;background:#fff;cursor:pointer;font-size:13px }
+        .pill{ 
+          padding:8px 12px;
+          border-radius:999px;
+          border:1px solid #ddd6cc;
+          background:#fff;
+          cursor:pointer;
+          font-size:13px;
+          font-weight:600;
+        }
         .pill--active{ background:#1f1f1f;color:#fff;border-color:#1f1f1f }
-        .badge{ background:#f1eee8; border:1px solid #e7dfd4; color:#5c564c; padding:4px 8px; border-radius:999px; font-size:12px }
+        .badge{ 
+          background:#f1eee8; 
+          border:1px solid #e7dfd4; 
+          color:#5c564c; 
+          padding:4px 8px; 
+          border-radius:999px; 
+          font-size:12px 
+        }
+
+        @media(max-width:768px){
+          .page{ padding:4px clamp(8px,2vw,12px) 84px; }
+          h1{ font-size:18px; margin:4px 0 8px; }
+          .card{ padding:12px; border-radius:16px; }
+          .row{ gap:8px; grid-template-columns: 1fr; } /* Stack inputs */
+          .table th,.table td{ padding:8px 10px; font-size:13px; }
+          .table__actions{ gap:6px; }
+        }
+
+        @media(max-width:380px){
+          .input{ height:38px; font-size:13px; padding:10px; }
+          .btn, .pill{ font-size:12.5px; padding:8px 12px; }
+        }
       `}</style>
 
       <h1>Zaposleni</h1>
