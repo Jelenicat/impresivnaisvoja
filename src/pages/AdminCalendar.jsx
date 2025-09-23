@@ -773,7 +773,7 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
 
   return (
     <div className="admin-cal">
-      <style>{`
+     <style>{`
         /* ===== BASE STYLES ===== */
         .admin-cal{ padding:20px 16px 80px; }
         .cal-bar{ 
@@ -883,22 +883,22 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
         }
 
         /* ===== Appointments ===== */
-        .appt{ 
-          position:absolute; left:0px; right:0px; 
-          border-radius:12px; padding:8px 10px; 
-          background: var(--col,#fff); color:#1f1f1f; 
-          box-shadow:0 1px 2px rgba(0,0,0,.06); 
-          cursor:grab; overflow:hidden; 
-          border:1px solid #ddd6cc; z-index:1; 
-          touch-action:manipulation;
+        .appt {
+          position: absolute; left: 8px; right: 8px;
+          border-radius: 12px; padding: 8px 10px;
+          background: var(--col, #fff); color: #1f1f1f;
+          box-shadow: 0 1px 2px rgba(0, 0, 0, .06);
+          cursor: grab; overflow: hidden;
+          border: 1px solid #ddd6cc; z-index: 1; /* Bazni z-index za desktop */
+          touch-action: manipulation;
         }
-        .appt:active{ cursor:grabbing; }
-        .appt.block{ 
-          background:#fff !important; border:2px solid #ef4444; 
-          color:#ef4444; 
+        .appt:active { cursor: grabbing; }
+        .appt.block {
+          background: #fff !important; border: 2px solid #ef4444;
+          color: #ef4444;
         }
-        .appt.paid{ 
-          background:#f3f4f6 !important; color:#6b7280; 
+        .appt.paid {
+          background: #f3f4f6 !important; color: #6b7280;
         }
 
         .appt .time{ 
@@ -970,8 +970,9 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
         .hover-appt{ 
           position: fixed; z-index: 200; pointer-events: none; 
           width: 320px; background: #ffffff; 
-          border: 1px solid #e6e0d7; border-radius: 16px; 
+          border: 1px solid #e6e0d7; border-radius: 14px; 
           box-shadow: 0 14px 34px rgba(0,0,0,.20); overflow: hidden; 
+          background: var(--col,#fff); color:#1f1f1f; 
         }
         .hover-appt .stripe{ 
           position:absolute; left:0; top:0; bottom:0; width:6px; 
@@ -1040,11 +1041,15 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
           .columns { grid-auto-columns: 1fr; min-width: 100%; }
           .columns-outer { order: 1; grid-row: 1; }
           .col-header { height: 48px; font-size: 13px; padding: 0 4px; justify-content: flex-start; text-align: left; }
-          .appt { left: 0px; right: 0px; padding: 10px 8px; min-height: 44px; font-size: 13px; }
+          .appt {
+            left: 30px; right: 0; padding: 10px 8px; min-height: 44px; font-size: 13px;
+            border-radius: 14px; /* Zaobljeni uglovi na telefonu */
+            z-index: 10; /* Povećan z-index da prekriva vremensku osu */
+          }
           .appt .time { font-size: 11px; line-height: 1.2; }
-          .appt .title { font-size: 12px; margin-top: 2px; -webkit-line-clamp: 2; -webkit-box-orient: vertical; display:-webkit-box; overflow:hidden; }
+          .appt .title { font-size: 12px; margin-top: 10px; -webkit-line-clamp: 2; -webkit-box-orient: vertical; display:-webkit-box; overflow:hidden; }
           .appt .muted { font-size: 11px; margin-top: 2px; -webkit-line-clamp: 1; -webkit-box-orient: vertical; display:-webkit-box; overflow:hidden; }
-          .appt .tag { font-size: 10px; padding: 2px 4px; margin-top: 2px; }
+          .appt .tag { font-size: 8px; padding: 2px 4px; margin-top: 2px; }
           .resize-handle { height: 12px; }
           .resize-handle:before { width: 24px; height: 3px; }
           .corner-icons { font-size:14px; right:4px; top:4px; }
@@ -1061,16 +1066,19 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
           .hover-appt .chip { font-size: 12px; padding: 4px 6px; }
           .drag-ghost { left: 4px; right: 4px; min-height: 44px; }
           .off-mask { left: 4px; right: 4px; }
-          .col-body .hour { display: block; position: absolute; left: 4px; font-size: 11px; color: #6b7280; transform: translateY(-50%); z-index: 1; }
-          .appt { left: 50px; }
           .col-body .hour {
-    display: block; /* Show time markers on mobile */
-    left: 4px;
-    font-size: 11px;
-    color: #6b7280;
-    transform: translateY(-50%);
-    z-index: 1;
-  }
+            display: block; position: absolute; left: 2px; font-size: 10px; color: #6b7280;
+            transform: translateY(-50%); z-index: 1; width: 28px; text-align: right; overflow: hidden;
+          }
+          .grid-hour { left: 30px; right: 0; z-index: 1; } /* Ostaje ispod kartica */
+          .hover-line { left: 30px; right: 0; }
+          .now-line-global { left: 30px; right: 0; }
+          .off-mask { left: 30px; right: 0; }
+          .drag-ghost { left: 30px; right: 0; }
+        }
+
+        @media (min-width: 901px) {
+          .col-body .hour { display: none; }
         }
 
         @media (max-width: 480px) {
@@ -1082,7 +1090,11 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
           .top-actions { gap: 2px; }
           .grid-wrap { gap: 4px; height: calc(100vh - 120px); }
           .col-header { height: 52px; font-size: 12px; }
-          .appt { padding: 12px 6px; min-height: 48px; }
+          .appt {
+            padding: 12px 6px; min-height: 48px; left: 24px; right: 0;
+            border-radius: 14px; /* Zaobljeni uglovi */
+            z-index: 10; /* Povećan z-index */
+          }
           .appt .time { font-size: 10px; }
           .appt .title { font-size: 11px; }
           .appt .muted { font-size: 10px; }
@@ -1091,6 +1103,12 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
           .hover-appt .inner { padding: 12px; }
           .hover-appt .title { font-size: 15px; }
           .hover-appt .sub { font-size: 13px; }
+          .col-body .hour { font-size: 9px; left: 1px; width: 22px; }
+          .grid-hour { left: 24px; right: 0; z-index: 1; } /* Ostaje ispod kartica */
+          .hover-line { left: 24px; right: 0; }
+          .now-line-global { left: 24px; right: 0; }
+          .off-mask { left: 24px; right: 0; }
+          .drag-ghost { left: 24px; right: 0; }
         }
 
         @media (hover: none) and (pointer: coarse) {
@@ -1117,15 +1135,15 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
           .col-body { -webkit-overflow-scrolling: touch; }
         }
           .admin-cal input,
-.admin-cal select,
-.admin-cal button,
-.admin-cal .hour,
-.admin-cal .col-header,
-.admin-cal .appt,
-.admin-cal .muted {
-  color: #1f1f1f !important;
-  -webkit-text-fill-color: #1f1f1f !important; /* iOS fix */
-}
+          .admin-cal select,
+          .admin-cal button,
+          .admin-cal .hour,
+          .admin-cal .col-header,
+          .admin-cal .appt,
+          .admin-cal .muted {
+            color: #1f1f1f !important;
+            -webkit-text-fill-color: #1f1f1f !important; /* iOS fix */
+          }
       `}</style>
 
       <div className="admin-cal">
@@ -1238,7 +1256,7 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
                         return (
                           <React.Fragment key={`g-${m}`}>
                             <div className="grid-hour" style={{ top:y }} />
-                            <div className="hour" style={{ top:y, display: "none" }}>{hh}:00</div>
+                            <div className="hour" style={{ top:y }}>{hh}:00</div>
                           </React.Fragment>
                         );
                       })}
