@@ -1,5 +1,5 @@
 // src/pages/AdminLogin.jsx
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { db, getFcmToken } from "../firebase";
 import { doc, setDoc, serverTimestamp, getDoc } from "firebase/firestore";
@@ -10,6 +10,14 @@ export default function AdminLogin() {
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const nav = useNavigate();
+
+  /* === AUTO-REDIRECT: ako postoji trajna sesija (role), odmah vodi na /admin === */
+  useEffect(() => {
+    const role = localStorage.getItem("role"); // "admin" | "salon" | "worker"
+    if (role) {
+      nav("/admin", { replace: true });
+    }
+  }, [nav]);
 
   async function saveFcmTokenRecord({ token, ownerId, role, username }) {
     if (!token) return;

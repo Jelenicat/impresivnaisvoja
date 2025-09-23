@@ -1,5 +1,5 @@
 // src/pages/Home.jsx
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { db, getFcmToken } from "../firebase";
 import {
@@ -11,6 +11,14 @@ import AuthModal from "../components/AuthModal.jsx";
 export default function Home() {
   const nav = useNavigate();
   const [authOpen, setAuthOpen] = useState(false);
+
+  /* === AUTO-REDIRECT za admin/salon/radnik ako su već ulogovani === */
+  useEffect(() => {
+    const role = localStorage.getItem("role"); // "admin" | "salon" | "worker" (kako već snimaš)
+    if (role) {
+      nav("/admin", { replace: true });
+    }
+  }, [nav]);
 
   function goToServices() {
     nav("/booking");

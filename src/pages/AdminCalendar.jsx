@@ -456,28 +456,15 @@ useEffect(() => {
   }
   function swallowNextClick(ev){ ev.stopPropagation(); ev.preventDefault(); }
 
-  /* ---------- Resize ---------- */
-  function startResize(e, appt){
-    e.stopPropagation(); e.preventDefault();
-    if (role==="worker" && appt.employeeUsername !== currentUsername) return;
-    const body = colBodyRefs.current.get(appt.employeeUsername);
-    if(!body) return;
-    const rect = body.getBoundingClientRect();
-    const scrollTop = body.scrollTop || 0;
-    resizingRef.current = {
-      id: appt.id,
-      startMin: Math.max(DAY_START_MIN, minsInDay(appt.start, dayStart)),
-      bodyTop: rect.top,
-      scrollTop,
-      emp: appt.employeeUsername
-    };
-    window.addEventListener("mousemove", onResizingMouseMove);
-    window.addEventListener("mouseup", onResizingMouseUp);
-    window.addEventListener("touchmove", onResizingTouchMove);
-window.addEventListener("touchend", onResizingTouchEnd);
-    window.addEventListener("click", swallowNextClick, true);
-    document.body.style.userSelect = "none";
+  /* ---------- Helper for touch/mouse coords ---------- */
+  function getClientCoords(ev) {
+    if (ev.touches && ev.touches.length > 0) {
+      return { clientX: ev.touches[0].clientX, clientY: ev.touches[0].clientY };
+    }
+    return { clientX: ev.clientX, clientY: ev.clientY };
   }
+
+  /* ---------- Resize ---------- */
   function onResizingMouseMove(ev){
     const r = resizingRef.current; if(!r) return;
     const offset = ev.clientY - r.bodyTop + r.scrollTop;
@@ -487,6 +474,18 @@ window.addEventListener("touchend", onResizingTouchEnd);
     proposedEndMin = Math.min(proposedEndMin, DAY_END_MIN);
     proposedEndMin = Math.round(proposedEndMin / 5) * 5;
     setTempEndMap(m=>{ const nm = new Map(m); nm.set(r.id, proposedEndMin); tempEndRef.current = nm; return nm; });
+  }
+  function onResizingTouchMove(ev) {
+    ev.preventDefault(); // Spreči skrol
+    const coords = getClientCoords(ev);
+    const r = resizingRef.current; if (!r) return;
+    const offset = coords.clientY - r.bodyTop + r.scrollTop;
+    const minutesFromTop = Math.round(Math.max(0, offset) / PX_PER_MIN);
+    let proposedEndMin = DAY_START_MIN + minutesFromTop;
+    proposedEndMin = Math.max(proposedEndMin, r.startMin + 15);
+    proposedEndMin = Math.min(proposedEndMin, DAY_END_MIN);
+    proposedEndMin = Math.round(proposedEndMin / 5) * 5;
+    setTempEndMap(m => { const nm = new Map(m); nm.set(r.id, proposedEndMin); tempEndRef.current = nm; return nm; });
   }
   async function onResizingMouseUp(){
     const r = resizingRef.current; if(!r) return cleanupResize();
@@ -509,63 +508,47 @@ window.addEventListener("touchend", onResizingTouchEnd);
     }
     cleanupResize();
   }
+  function onResizingTouchEnd(ev) {
+    ev.preventDefault();
+    onResizingMouseUp(); // Pozovi istu logiku
+  }
+  function startResize(e, appt){
+    e.stopPropagation(); e.preventDefault();
+    if (role==="worker" && appt.employeeUsername !== currentUsername) return;
+    const body = colBodyRefs.current.get(appt.employeeUsername);
+    if(!body) return;
+    const rect = body.getBoundingClientRect();
+    const scrollTop = body.scrollTop || 0;
+    const coords = getClientCoords(e);
+    resizingRef.current = {
+      id: appt.id,
+      startMin: Math.max(DAY_START_MIN, minsInDay(appt.start, dayStart)),
+      bodyTop: rect.top,
+      scrollTop,
+      emp: appt.employeeUsername
+    };
+    window.addEventListener("mousemove", onResizingMouseMove);
+    window.addEventListener("mouseup", onResizingMouseUp);
+    window.addEventListener("touchmove", onResizingTouchMove, { passive: false });
+    window.addEventListener("touchend", onResizingTouchEnd);
+    window.addEventListener("click", swallowNextClick, true);
+    document.body.style.userSelect = "none";
+    document.body.style.touchAction = "none"; // Spreči skrol na touch
+  }
   function cleanupResize(){
     resizingRef.current = null;
     setTempEndMap(new Map());
     tempEndRef.current = new Map();
     window.removeEventListener("mousemove", onResizingMouseMove);
     window.removeEventListener("mouseup", onResizingMouseUp);
+    window.removeEventListener("touchmove", onResizingTouchMove);
+    window.removeEventListener("touchend", onResizingTouchEnd);
     window.removeEventListener("click", swallowNextClick, true);
     document.body.style.userSelect = "";
+    document.body.style.touchAction = "";
   }
 
   /* ---------- Drag & Drop ---------- */
-  function startDrag(ev, appt, top){
-    if ((ev.target)?.classList?.contains("resize-handle")) return; // ako hvatište, onda resize
-    if (role==="worker" && appt.employeeUsername !== currentUsername) return;
-
-    const body = colBodyRefs.current.get(appt.employeeUsername);
-    if(!body) return;
-
-    ev.stopPropagation(); ev.preventDefault();
-
-    const startMin = Math.max(DAY_START_MIN, minsInDay(appt.start, dayStart));
-    const endMin = Math.min(DAY_END_MIN, minsInDay(appt.end, dayStart));
-    const durationMin = Math.max(15, endMin - startMin);
-
-    const rect = body.getBoundingClientRect();
-    const offsetY = ev.clientY - rect.top + (body.scrollTop || 0) - (top ?? 0);
-
-    draggingRef.current = {
-      id: appt.id,
-      durationMin,
-      offsetY: Math.max(0, offsetY),
-      empFrom: appt.employeeUsername,
-      startMinInit: startMin
-    };
-
-    const g = { id: appt.id, emp: appt.employeeUsername, topMin: startMin };
-    setDragGhost(g);
-    dragGhostRef.current = g;
-
-    window.addEventListener("mousemove", onDragMove);
-    window.addEventListener("mouseup", onDragEnd);
-    window.addEventListener("click", swallowNextClick, true);
-    document.body.style.userSelect = "none";
-  }
-
-  function pickColumnUnderPointer(clientX, clientY){
-    for (const emp of visibleEmployees){
-      const body = colBodyRefs.current.get(emp.username);
-      if (!body) continue;
-      const r = body.getBoundingClientRect();
-      if (clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom) {
-        return emp.username;
-      }
-    }
-    return null;
-  }
-
   function onDragMove(ev){
     const d = draggingRef.current; if(!d) return;
     const targetEmp = pickColumnUnderPointer(ev.clientX, ev.clientY) ?? d.empFrom;
@@ -581,15 +564,34 @@ window.addEventListener("touchend", onResizingTouchEnd);
     setDragGhost(g);
     dragGhostRef.current = g;
   }
+  function onDragTouchMove(ev) {
+    ev.preventDefault();
+    const coords = getClientCoords(ev);
+    const d = draggingRef.current; if(!d) return;
+    const targetEmp = pickColumnUnderPointer(coords.clientX, coords.clientY) ?? d.empFrom;
+    const body = colBodyRefs.current.get(targetEmp);
+    if(!body) return;
 
+    const rect = body.getBoundingClientRect();
+    const offsetY = coords.clientY - rect.top + (body.scrollTop || 0);
+    let newTopMin = DAY_START_MIN + Math.round((offsetY - d.offsetY)/PX_PER_MIN);
+    newTopMin = Math.max(DAY_START_MIN, Math.min(DAY_END_MIN - d.durationMin, Math.round(newTopMin/5)*5));
+
+    const g = { id: d.id, emp: targetEmp, topMin: newTopMin };
+    setDragGhost(g);
+    dragGhostRef.current = g;
+  }
   async function onDragEnd(){
     const d = draggingRef.current;
     const ghost = dragGhostRef.current;
 
     window.removeEventListener("mousemove", onDragMove);
     window.removeEventListener("mouseup", onDragEnd);
+    window.removeEventListener("touchmove", onDragTouchMove);
+    window.removeEventListener("touchend", onDragTouchEnd);
     window.removeEventListener("click", swallowNextClick, true);
     document.body.style.userSelect = "";
+    document.body.style.touchAction = "";
 
     setDragGhost(null);
     draggingRef.current = null;
@@ -613,6 +615,59 @@ window.addEventListener("touchend", onResizingTouchEnd);
       console.error("Drag save failed:", err);
       alert("Greška pri pomeranju termina.");
     }
+  }
+  function onDragTouchEnd(ev) {
+    ev.preventDefault();
+    onDragEnd();
+  }
+  function startDrag(ev, appt, top){
+    if ((ev.target)?.classList?.contains("resize-handle")) return; // ako hvatište, onda resize
+    if (role==="worker" && appt.employeeUsername !== currentUsername) return;
+
+    const body = colBodyRefs.current.get(appt.employeeUsername);
+    if(!body) return;
+
+    ev.stopPropagation(); ev.preventDefault();
+
+    const startMin = Math.max(DAY_START_MIN, minsInDay(appt.start, dayStart));
+    const endMin = Math.min(DAY_END_MIN, minsInDay(appt.end, dayStart));
+    const durationMin = Math.max(15, endMin - startMin);
+
+    const rect = body.getBoundingClientRect();
+    const coords = getClientCoords(ev);
+    const offsetY = coords.clientY - rect.top + (body.scrollTop || 0) - (top ?? 0);
+
+    draggingRef.current = {
+      id: appt.id,
+      durationMin,
+      offsetY: Math.max(0, offsetY),
+      empFrom: appt.employeeUsername,
+      startMinInit: startMin
+    };
+
+    const g = { id: appt.id, emp: appt.employeeUsername, topMin: startMin };
+    setDragGhost(g);
+    dragGhostRef.current = g;
+
+    window.addEventListener("mousemove", onDragMove);
+    window.addEventListener("mouseup", onDragEnd);
+    window.addEventListener("touchmove", onDragTouchMove, { passive: false });
+    window.addEventListener("touchend", onDragTouchEnd);
+    window.addEventListener("click", swallowNextClick, true);
+    document.body.style.userSelect = "none";
+    document.body.style.touchAction = "none";
+  }
+
+  function pickColumnUnderPointer(clientX, clientY){
+    for (const emp of visibleEmployees){
+      const body = colBodyRefs.current.get(emp.username);
+      if (!body) continue;
+      const r = body.getBoundingClientRect();
+      if (clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom) {
+        return emp.username;
+      }
+    }
+    return null;
   }
 
   /* ---------- Dinamička visina ---------- */
@@ -1184,6 +1239,7 @@ window.addEventListener("touchend", onResizingTouchEnd);
                           className={`appt ${isBlock?"block":""} ${isPaid && canSeePayment?"paid":""}`}
                           style={{ top, height, '--col': col }}
                           onMouseDown={(ev)=>!isBlock && startDrag(ev, a, top)}
+                          onTouchStart={(ev)=>!isBlock && startDrag(ev, a, top)}
                           onClick={(ev)=>{ 
                             ev.stopPropagation(); 
                             if (justResizedRef.current || justDraggedRef.current) return; 
@@ -1242,7 +1298,8 @@ window.addEventListener("touchend", onResizingTouchEnd);
                             <div 
                               className="resize-handle" 
                               title="Povuci za skraćivanje/produžavanje" 
-                              onMouseDown={(e)=>startResize(e,a)} 
+                              onMouseDown={(e)=>startResize(e,a)}
+                              onTouchStart={(e)=>startResize(e,a)} 
                             />
                           )}
                         </div>
