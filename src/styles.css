@@ -1,0 +1,322 @@
+:root {
+  --bg: #ffffff;
+  --card: #f4efe9;     /* svetlo bež */
+  --ink: #1f1f1f;
+  --accent: #ac9574;   /* dugmad (ZAKAŽI, USLUGE, GALERIJA) */
+  --accent-ink: #000;
+  --dark: #040405;     /* ULOGUJ SE (admin) */
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  font-family: 'Montserrat', sans-serif; /* globalni minimalistički font */
+  font-weight: 300;                       /* Light kao default */
+  color: var(--ink);
+  background: var(--bg);
+}
+
+h1, h2, h3, h4, h5, h6 { font-weight: 500; }   /* naslovi Medium */
+.btn, .btn-big { font-weight: 400; }           /* dugmad Regular */
+
+/* ===== App shell ===== */
+.app-shell {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ===== Header sa logoom ===== */
+.brand-header {
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 5;
+  padding: 0;                 /* bez dodatnog belog prostora */
+  text-align: center;
+  border-bottom: 1px solid #eee;
+}
+
+/* Fiksna visina belog prostora; višak slike se seče */
+.logo-wrap {
+  height: 80px;               /* (MOBILE default) belina oko logoa */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.logo-header {
+  height: 170px;              /* (MOBILE default) veća slova */
+  width: auto;
+  display: block;
+}
+
+/* ===== Stranica ===== */
+.page {
+  padding: 0;                 /* full-width layout */
+  max-width: 100%;
+  width: 100%;
+  margin: 0;
+}
+
+/* ===== Hero (full-width bez zaobljenja) ===== */
+.hero {
+  margin: 0;
+  border-radius: 0;
+  overflow: hidden;
+}
+
+.hero img {
+  width: 100%;
+  display: block;
+  height: auto;
+}
+
+/* ===== Sekcije (full-width, bez zaobljenja) ===== */
+/* Animacija fade-in za sekcije */
+.section {
+  background: var(--card);
+  padding: 22px 16px;
+  margin: 22px 0;
+  border-radius: 0;
+  width: 100%;
+  max-width: 100%;
+  opacity: 0;
+  transform: translateY(20px);
+  animation: fadeInUp 0.8s ease forwards;
+}
+
+@keyframes fadeInUp {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.section h2 { text-align: center; letter-spacing: 1px; }
+.section p  { text-align: center; }
+
+/* ===== Opcione kartice ===== */
+.cards-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.card {
+  background: #ddd0;
+  border-radius: 0;           /* bez zaobljenja za doslednost */
+  overflow: hidden;
+  aspect-ratio: 1.6/1;
+  background-position: center;
+  background-size: cover;
+}
+
+/* ===== Dugmad ===== */
+.cta-wrap {
+  display: flex;
+  justify-content: center;
+  margin: 24px 0 26px;
+}
+
+.btn {
+  appearance: none;
+  border: none;
+  border-radius: 32px;
+  padding: 14px 26px;
+  font-size: 18px;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: transform .05s ease-in-out;
+}
+
+.btn:active { transform: translateY(1px); }
+.btn-accent { background: var(--accent); color: var(--accent-ink); }
+.btn-dark   { background: var(--dark);   color: #fff; }
+.btn-wide   { width: 100%; max-width: 320px; }
+
+/* Veliko dugme za ZAKAŽI TERMIN */
+.btn-big {
+  font-size: 20px;
+  padding: 18px 36px;
+  border-radius: 32px;
+  letter-spacing: 1px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+  transition: all 0.2s ease-in-out;
+}
+
+.btn-big:hover {
+  transform: translateY(-2px) scale(1.03);
+  box-shadow: 0 6px 14px rgba(0,0,0,0.25);
+}
+
+.btn-big:active {
+  transform: translateY(1px) scale(0.98);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+}
+/* Dugmad sa obrubom (USLUGE, GALERIJA) */
+.btn-outline {
+  background: transparent;
+  color: var(--accent);
+  border: 2px solid var(--accent);
+  transition: all 0.3s ease;
+}
+
+.btn-outline:hover {
+  background: var(--accent);
+  color: #fff;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 14px rgba(0,0,0,0.15);
+}
+
+.btn-outline:active {
+  transform: translateY(1px) scale(0.98);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+/* Manje dugme za ULOGUJ SE */
+.btn-small {
+  padding: 10px 20px;
+  font-size: 14px;
+  border-radius: 20px;
+  width: auto;          /* ne razvlači se kao btn-wide */
+  min-width: 200px;     /* da ipak ima malo širine */
+  text-align: center;   /* centrira tekst */
+  display: inline-block;
+}
+/* header defaultno providan */
+.brand-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  padding: 0;
+  text-align: center;
+  border-bottom: 1px solid transparent;
+  background: transparent;
+  transition: background 0.3s ease, border-color 0.3s ease;
+}
+
+/* kad se skroluje dodajemo klasu scrolled */
+.brand-header.scrolled {
+  background: rgba(255, 255, 255, 0.5); /* blago providna bela */
+  border-bottom: 1px solid #eee;
+  backdrop-filter: blur(6px); /* daje lep "glass" efekat */
+}
+
+/* ===== Mapa (full-width, bez zaobljenja) ===== */
+.map {
+  width: 100%;
+  border: 0;
+  height: 220px;
+  border-radius: 0;
+}
+
+/* ===== Admin login dugme dole ===== */
+.footer-login {
+  margin: 50px auto 20px;
+  display: flex;
+  justify-content: center;
+}
+
+/* ===== Modal ===== */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+}
+
+.modal {
+  background: #fff;
+  width: 92%;
+  max-width: 440px;
+  border-radius: 16px;         /* modal može ostati nežno zaobljen */
+  padding: 18px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+}
+
+.modal h3 { margin-top: 0; text-align: center; }
+
+.field { display: grid; gap: 6px; margin-bottom: 12px; }
+.input { padding: 12px 12px; border-radius: 10px; outline: none; border: 1px solid #ddd; font-size: 16px; }
+
+.actions { display: flex; gap: 10px; margin-top: 10px; }
+.actions .btn { flex: 1; }
+
+.helper { font-size: 13px; color: #666; text-align: center; margin-bottom: 8px; }
+
+/* ===== Splash ===== */
+.splash {
+  min-height: 100vh;
+  background: url('/pozadina.webp') center/cover no-repeat fixed;
+  display: grid;
+  place-items: end center;
+  padding: 32px;
+}
+
+.splash .wordmark {
+  color: #0e0e0e;
+  letter-spacing: 6px;
+  font-weight: 500;
+  text-transform: uppercase;
+  background: rgba(255,255,255,0.7);
+  padding: 8px 14px;
+  border-radius: 12px;
+}
+
+/* ===== Responsive ===== */
+
+
+/* telefonski raspored */
+@media (max-width: 640px) {
+  .cards-row { grid-template-columns: 1fr 1fr; }
+}
+
+/* tablet */
+@media (min-width: 768px) {
+  .logo-wrap  { height: 90px; }
+  .logo-header{ height: 190px; }
+}
+
+/* desktop */
+@media (min-width: 1024px) {
+  /* Tekstualne sekcije uži container radi čitljivosti */
+  .section {
+    max-width: 960px;
+    margin: 32px auto;
+    padding: 28px 36px;
+  }
+
+  .section h2 {
+    font-size: 28px;
+    letter-spacing: .5px;
+  }
+
+  .cta-wrap { margin: 24px 0 40px; }
+  .btn-wide { max-width: 360px; }
+
+  .usluge-galerija {
+    display: flex !important;
+    gap: 16px !important;
+    justify-content: center;
+    padding: 28px 0 !important;
+  }
+
+  .map {
+    height: 360px;
+    display: block;
+    max-width: 960px;
+    margin: 0 auto;
+  }
+
+  .logo-wrap  { height: 120px; }
+  .logo-header{ height: 240px; }
+}
+
