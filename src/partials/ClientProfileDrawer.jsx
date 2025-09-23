@@ -1,516 +1,466 @@
-// src/partials/ClientProfileDrawer.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  collection, doc, onSnapshot, query, where, orderBy, setDoc
+  collection, query, where, onSnapshot, doc, setDoc
 } from "firebase/firestore";
 import { db } from "../firebase";
 
-/* ---------- helpers ---------- */
-function toJsDate(x){
-  return x?.toDate?.() ? x.toDate() : (x instanceof Date ? x : (x ? new Date(x) : null));
-}
-function fmtDateTime(d){
+function toJsDate(x) { return x?.toDate?.() ? x.toDate() : (x instanceof Date ? x : new Date(x)); }
+function fmtDateTime(d) {
   const x = toJsDate(d);
-  if (!x || isNaN(x)) return "—";
   return x.toLocaleString("sr-RS", { dateStyle: "medium", timeStyle: "short" });
 }
-function normPhone(p){ return String(p||"").replace(/\D+/g, ""); }
-function prettyPhone(s){
-  const d = normPhone(s);
-  if (!d) return "—";
-  if (d.startsWith("00")) return "+" + d.slice(2);
-  if (d.startsWith("381")) return "+" + d;
-  return d;
-}
-function initials(c){
-  const f = (c?.firstName||"").trim();
-  const l = (c?.lastName||"").trim();
-  return ((f[0]||"") + (l[0]||"")).toUpperCase();
-}
+function fmtMoney(n) { return Number(n || 0).toLocaleString("sr-RS"); }
+function normPhone(p) { return String(p || "").replace(/\D+/g, ""); }
 
-/**
- * Props:
- *  - client (object)  { id, firstName, lastName, phone/phoneNumber, email, blocked, createdAt, updatedAt, notes }
- *  - role ("admin" | "salon" | "worker")
- *  - onClose()
- *  - onDelete()          // poziva AdminClients parent
- *  - onToggleBlock()     // poziva AdminClients parent
- *
- * Napomena za termine:
- *  - Pokušavamo da nađemo termine po clientId ILI po clientPhone.
- *  - Kolekcija pretpostavljena: "appointments"
- *  - Polja koja očekujemo (best-effort): startAt, endAt, employeeName, employeeId, serviceName, status, clientId, clientPhone
- */
 export default function ClientProfileDrawer({
   client,
   role = "admin",
   onClose,
   onDelete,
   onToggleBlock
-}){
+}) {
+  const [clientLive, setClientLive] = useState(client);
   const [edit, setEdit] = useState(false);
-  const [form, setForm] = useState(() => ({
-    firstName: client?.firstName || "",
-    lastName : client?.lastName  || "",
-    phone    : client?.phone ?? client?.phoneNumber ?? "",
-    email    : client?.email || "",
-    notes    : client?.notes || ""
-  }));
+  const [form, setForm] = useState({
+    firstName: client.firstName || "",
+    lastName: client.lastName || "",
+    phone: client.phone || "",
+    email: client.email || "",
+    note: client.note || ""
+  });
 
-  // TERMMINI
-  const [appointments, setAppointments] = useState([]);
+  const [appts, setAppts] = useState([]);
+  const [servicesMap, setServicesMap] = useState(new Map());
+  const [categoriesMap, setCategoriesMap] = useState(new Map());
 
-  // Zaključavanje skrola pozadine dok je otvoren drawer
+  function maskedName(c) {
+    const f = c?.firstName || "";
+    const l = c?.lastName || "";
+    if (role === "admin") return `${f} ${l}`.trim();
+    return `${f} ${l ? (l[0].toUpperCase() + ".") : ""}`.trim();
+  }
+  function maskedPhone(p) {
+    const raw = (p || "").toString().replace(/\D/g, "");
+    if (role === "admin") return p || "—";
+    if (!raw) return "—";
+    return `***${raw.slice(-3)}`;
+  }
+  const canSeePaymentBadge = role !== "worker";
+  const canSeePriceBadge = role !== "worker";
+
   useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = prev; };
+    const ref = doc(db, "clients", client.id);
+    const unsub = onSnapshot(ref, snap => {
+      const data = { id: snap.id, ...snap.data() };
+      setClientLive(data);
+      if (!edit) {
+        setForm({
+          firstName: data.firstName || "",
+          lastName: data.lastName || "",
+          phone: data.phone || "",
+          email: data.email || "",
+          note: data.note || ""
+        });
+      }
+    });
+    return () => unsub && unsub();
+  }, [client.id, edit]);
+
+  useEffect(() => {
+    const unsubS = onSnapshot(collection(db, "services"), snap => {
+      const m = new Map();
+      snap.docs.forEach(d => m.set(d.id, { id: d.id, ...d.data() }));
+      setServicesMap(m);
+    });
+    const unsubC = onSnapshot(collection(db, "categories"), snap => {
+      const m = new Map();
+      snap.docs.forEach(d => m.set(d.id, { id: d.id, ...d.data() }));
+      setCategoriesMap(m);
+    });
+    return () => { unsubS && unsubS(); unsubC && unsubC(); };
   }, []);
 
-  // Sync forme kad se promeni klijent
   useEffect(() => {
-    setForm({
-      firstName: client?.firstName || "",
-      lastName : client?.lastName  || "",
-      phone    : client?.phone ?? client?.phoneNumber ?? "",
-      email    : client?.email || "",
-      notes    : client?.notes || ""
-    });
-  }, [client]);
+    const seen = new Map();
+    const push = (snap) => {
+      snap.forEach(d => {
+        const row = { id: d.id, ...d.data() };
+        seen.set(d.id, row);
+      });
+      const all = Array.from(seen.values()).sort((a, b) => toJsDate(b.start) - toJsDate(a.start));
+      setAppts(all);
+    };
 
-  // Učitaj termine — po clientId i (fallback) po telefonu
-  useEffect(() => {
-    if (!client) return;
-    const subs = [];
-
-    // 1) Po clientId
-    if (client.id){
-      const q1 = query(
-        collection(db, "appointments"),
-        where("clientId", "==", client.id),
-        orderBy("startAt", "desc")
-      );
-      subs.push(onSnapshot(q1, snap => {
-        setAppointments(prev => mergeAppts(prev, snap.docs));
-      }));
+    const unsubs = [];
+    if (client?.id) {
+      const q1 = query(collection(db, "appointments"), where("clientId", "==", client.id));
+      unsubs.push(onSnapshot(q1, push));
+    }
+    const phoneN = normPhone(client?.phone);
+    if (phoneN) {
+      const q2 = query(collection(db, "appointments"), where("clientPhoneNorm", "==", phoneN));
+      unsubs.push(onSnapshot(q2, push));
     }
 
-    // 2) Po clientPhone (fallback)
-    const cp = normPhone(client.phone ?? client.phoneNumber);
-    if (cp){
-      const q2 = query(
-        collection(db, "appointments"),
-        where("clientPhone", "==", cp),
-        orderBy("startAt", "desc")
-      );
-      subs.push(onSnapshot(q2, snap => {
-        setAppointments(prev => mergeAppts(prev, snap.docs));
-      }));
-    }
+    return () => unsubs.forEach(u => u && u());
+  }, [client?.id, client?.phone]);
 
-    return () => subs.forEach(u => u && u());
-  }, [client]);
+  const now = new Date();
+  const future = useMemo(() => appts
+    .filter(a => toJsDate(a.start) > now)
+    .sort((a, b) => toJsDate(a.start) - toJsDate(b.start)), [appts]);
 
-  function mergeAppts(prev, docs){
-    const incoming = docs.map(d => ({ id: d.id, ...d.data() }));
-    const map = new Map(prev.map(a => [a.id, a]));
-    for (const a of incoming) map.set(a.id, a);
-    // sort desc by startAt
-    const arr = Array.from(map.values());
-    arr.sort((a,b) => {
-      const ta = toJsDate(a.startAt)?.getTime() ?? 0;
-      const tb = toJsDate(b.startAt)?.getTime() ?? 0;
-      return tb - ta;
-    });
-    return arr;
-  }
+  const past = useMemo(() => appts
+    .filter(a => toJsDate(a.start) <= now)
+    .sort((a, b) => toJsDate(b.start) - toJsDate(a.start)), [appts]);
 
-  // Grupisanje: budući / prošli
-  const now = Date.now();
-  const upcoming = useMemo(() => appointments.filter(a => (toJsDate(a.startAt)?.getTime() ?? 0) >= now), [appointments, now]);
-  const past     = useMemo(() => appointments.filter(a => (toJsDate(a.startAt)?.getTime() ?? 0) <  now), [appointments, now]);
+  const totalEarned = useMemo(() => appts.reduce((s, a) => {
+    const n = Number(a.priceRsd ?? a.totalAmountRsd ?? 0);
+    return s + (isFinite(n) ? n : 0);
+  }, 0), [appts]);
 
-  const [tab, setTab] = useState("upcoming"); // "upcoming" | "past"
-  useEffect(() => { setTab("upcoming"); }, [client?.id]);
+  const nextAppt = future[0] || null;
+  const noShowCount = useMemo(() => appts.filter(a => a.noShow).length, [appts]);
 
-  const isBlocked = !!client?.blocked;
-
-  async function handleSave(){
-    if (!client?.id) return;
-    const dref = doc(db, "clients", client.id);
-    await setDoc(dref, {
-      firstName: (form.firstName||"").trim(),
-      lastName : (form.lastName ||"").trim(),
-      phone    : normPhone(form.phone) || null,
-      email    : (form.email||"").trim() || null,
-      notes    : (form.notes||"").trim(),
+  async function save() {
+    const ref = doc(db, "clients", client.id);
+    await setDoc(ref, {
+      firstName: (form.firstName || "").trim(),
+      lastName: (form.lastName || "").trim(),
+      phone: (form.phone || "").trim(),
+      email: (form.email || "").trim(),
+      note: (form.note || ""),
       updatedAt: new Date()
     }, { merge: true });
     setEdit(false);
   }
 
-  function handleCancel(){
-    setForm({
-      firstName: client?.firstName || "",
-      lastName : client?.lastName  || "",
-      phone    : client?.phone ?? client?.phoneNumber ?? "",
-      email    : client?.email || "",
-      notes    : client?.notes || ""
-    });
-    setEdit(false);
+  function serviceNames(ids = []) {
+    return (ids || []).map(id => servicesMap.get(id)?.name || "—").filter(Boolean).join(", ");
+  }
+  function cardColor(ids = []) {
+    const first = servicesMap.get((ids || [])[0]);
+    const col = first ? categoriesMap.get(first.categoryId)?.color : null;
+    return col || "#e9e5de";
+  }
+
+  function AppointmentCard({ a }) {
+    const col = cardColor(a.services);
+    const priceVal = Number(a.priceRsd ?? a.totalAmountRsd ?? 0);
+    const price = priceVal ? `${fmtMoney(priceVal)} RSD` : "—";
+    const paid = a.paid ? (a.paid === "cash" ? "💵 keš" : (a.paid === "card" ? "💳 kartica" : a.paid)) : "nije naplaćeno";
+    const src = a.source === "manual" ? "Admin" : (a.source || (a.isOnline ? "Online" : "—"));
+    const emp = a.employeeName || a.employeeUsername || "";
+    const sNames = a.servicesLabel || serviceNames(a.services) || a.servicesFirstName || "—";
+
+    return (
+      <div className="card" title={sNames || ""}>
+        <div className="stripe" style={{ background: col }} />
+        <div className="card-main">
+          <div className="card-top">
+            <div className="when">{fmtDateTime(a.start)}</div>
+            <div className="spacer" />
+            {canSeePriceBadge && <div className="price">{price}</div>}
+          </div>
+          <div className="card-subtop">
+            <div className="emp">{emp}</div>
+          </div>
+          <div className="services clamp-2">{sNames}</div>
+          <div className="meta">
+            {canSeePaymentBadge && <span className="badge">{paid}</span>}
+            {a.noShow && <span className="badge danger">⚠️ NO-SHOW</span>}
+            {a.pickedEmployee && <span className="badge">⭐ izabrana radnica</span>}
+            {src && <span className="badge">{src}</span>}
+          </div>
+          {a.note && <div className="note clamp-3">📝 {a.note}</div>}
+        </div>
+      </div>
+    );
   }
 
   return (
-    <>
-      {/* BACKDROP */}
-      <div className="drawer-backdrop" onClick={onClose} />
-
-      {/* DRAWER */}
-      <div className="drawer" role="dialog" aria-modal="true" aria-label="Profil klijenta">
+    <div className="backdrop" onClick={onClose}>
+      <div className="drawer" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         <style>{`
-          /* ===== KREMASTI STIL (bez roze) ===== */
-          :root{
-            --cream-bg: #fdfaf7;
-            --cream-card: #ffffff;
-            --cream-soft: #faf6f0;
-            --cream-line: #e6e0d7;
-            --cream-line-2: #efe9e2;
-            --text-1: #2f2f33;
-            --text-2: #4b5563;
-            --text-3: #6b7280;
-            --btn-border: #ddd6cc;
-            --danger: #b91c1c;
-            --danger-bg: #fff5f5;
-            --warn: #92400e;
-            --warn-bg: #fffaf0;
-            --badge: #374151;
-            --shadow: 0 10px 30px rgba(0,0,0,.14);
-          }
-
-          .drawer{
-            position: fixed;
-            inset: 0 0 0 auto;
-            width: min(760px, 100%);
-            background: var(--cream-bg);
-            border-left: 1px solid var(--cream-line);
-            box-shadow: -20px 0 40px rgba(0,0,0,.18);
-            display: grid;
-            grid-template-rows: auto 1fr auto; /* header, content, footer */
-            animation: slideIn .25s ease-out;
-            z-index: 1000;
-          }
-          .drawer-backdrop{
+          .backdrop {
             position: fixed;
             inset: 0;
-            background: rgba(0,0,0,.35);
-            backdrop-filter: blur(2px);
-            z-index: 999;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+          }
+          .drawer {
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: min(400px, 90vw);
+            height: 100%;
+            background: #fdfaf7;
+            border-left: 1px solid #e6e0d7;
+            box-shadow: -10px 0 20px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            animation: slideIn 0.3s ease-out;
+            z-index: 1001;
           }
           @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
 
-          /* Header (sticky) */
-          .drv-header{
-            position: sticky; top: 0; z-index: 1;
-            display: flex; align-items: center; gap: 12px;
-            padding: 12px 14px;
-            background: linear-gradient(to bottom, rgba(255,255,255,.9), rgba(253,250,247,.95));
-            -webkit-backdrop-filter: saturate(120%) blur(6px);
-            backdrop-filter: saturate(120%) blur(6px);
-            border-bottom: 1px solid var(--cream-line-2);
+          input, textarea, button { color: #1f1f1f; -webkit-text-fill-color: #1f1f1f; }
+          input:focus, textarea:focus {
+            border-color: #c7b299;
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(199, 178, 153, 0.2);
           }
-          .avatar{
-            width: 40px; height: 40px; border-radius: 10px;
-            display: inline-flex; align-items:center; justify-content:center;
-            font-weight: 800; color: var(--text-1);
-            background: linear-gradient(135deg, #fff, #f7efe6);
-            border: 1px solid var(--cream-line);
-            box-shadow: 0 6px 12px rgba(0,0,0,.05);
-            letter-spacing:.5px;
-          }
-          .title-wrap{ display:flex; flex-direction:column; gap:2px; }
-          .title{
-            font-size: 18px; font-weight: 900; color: var(--text-1);
-            line-height: 1.15;
-          }
-          .subtitle{
-            font-size: 12px; color: var(--text-3);
-          }
-          .status-badge{
-            margin-left: auto;
-            padding: 4px 10px; border-radius: 999px; border:1px solid var(--btn-border);
-            font-size: 12px; background:#fff; color: var(--badge);
-          }
-          .status-badge.blocked{ color:#ef4444; border-color:#ef4444; }
-          .x-btn{
-            margin-left: 10px;
-            width: 36px; height: 36px; border-radius: 10px; border:1px solid var(--btn-border);
-            background:#fff; cursor:pointer; font-size:16px; line-height:0;
-            display:flex; align-items:center; justify-content:center;
-          }
-          .x-btn:active{ transform: scale(.98); }
+          a, a:visited { color: #1f1f1f; text-decoration: none; }
+          a:hover { color: #000; }
 
-          /* Content */
-          .drv-content{
-            overflow: auto;
-            padding: 14px;
+          .head {
+            padding: 12px 16px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            border-bottom: 1px solid #e6e0d7;
+            background: #fff;
+            position: sticky;
+            top: 0;
+            z-index: 10;
           }
-          .card{
-            border:1px solid var(--cream-line); border-radius: 14px; background: var(--cream-card);
-            padding: 12px; margin-bottom: 12px; box-shadow: 0 8px 22px rgba(0,0,0,.04);
+          .title {
+            font-weight: 900;
+            font-size: 20px;
+            color: #1f1f1f;
+            flex: 1;
           }
-          .card h4{
-            margin: 0 0 8px; font-size: 13px; letter-spacing:.3px;
-            text-transform: uppercase; color: var(--text-3);
-          }
-          .field{ display:flex; flex-direction:column; gap:6px; }
-          .field label{ font-size:13px; color: var(--text-3); }
-          .field input, .field textarea{
-            width:100%; padding:10px 12px; border-radius:12px;
-            border:1px solid var(--btn-border); background:#fff; font-size:14px; color:#1f1f1f;
-          }
-          .field textarea{ min-height: 90px; resize: vertical; }
-          .row{ display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
-          .mono{ font-family: ui-monospace, Menlo, Consolas, monospace; }
+          .blocked { color: #dc2626; font-weight: 700; }
+          .no-show { font-size: 14px; color: #6b6b6b; margin-left: 8px; }
 
-          /* Tabs (budući / prošli) */
-          .tabs{
-            display:flex; gap:8px; align-items:center; flex-wrap:wrap;
-            padding: 6px 0 10px;
+          .toolbar {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
           }
-          .tab-btn{
-            height:36px; padding:0 12px; border-radius:12px; border:1px solid var(--btn-border);
-            background:#fff; cursor:pointer; font-weight:700; font-size:14px;
-            display:inline-flex; align-items:center; gap:8px;
+          .btn {
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid #ddd6cc;
+            background: #fff;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            min-height: 36px;
+            touch-action: manipulation;
           }
-          .tab-btn.active{
-            background: var(--cream-soft);
-            box-shadow: 0 6px 16px rgba(0,0,0,.04) inset;
+          .btn:hover { background: #f5f0e8; }
+          .btn.danger { color: #dc2626; border-color: #dc2626; }
+
+          .body {
+            padding: 16px;
+            overflow-y: auto;
+            flex: 1;
+            display: grid;
+            gap: 16px;
+            background: #fdfaf7;
           }
-          .badge{
-            min-width:22px; height:22px; padding:0 6px; border-radius:999px;
-            font-size:12px; display:inline-flex; align-items:center; justify-content:center;
-            background:#fff; border:1px solid var(--btn-border); color: var(--text-2);
+          .grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+          .panel {
+            background: #fff;
+            border: 1px solid #e6e0d7;
+            border-radius: 12px;
+            padding: 12px;
+            display: grid;
+            gap: 8px;
+          }
+          .line b { color: #1f1f1f; }
+          .muted { color: #6b6b6b; }
+          .input, .textarea {
+            width: 100%;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #ddd6cc;
+            background: #fff;
+            font-size: 14px;
+            color: #1f1f1f;
+          }
+          .textarea { min-height: 80px; resize: vertical; }
+          .section-title {
+            font-weight: 700;
+            font-size: 14px;
+            color: #1f1f1f;
+            margin-bottom: 8px;
+          }
+          .cards { display: grid; gap: 12px; }
+          .card {
+            display: grid;
+            grid-template-columns: 6px 1fr;
+            border: 1px solid #eee3d7;
+            border-radius: 12px;
+            overflow: hidden;
+            background: #fff;
+          }
+          .stripe { width: 6px; }
+          .card-main {
+            padding: 12px;
+            display: grid;
+            gap: 6px;
+          }
+          .card-top {
+            display: flex;
+            align-items: center;
+            font-size: 13px;
+            color: #1f1f1f;
+          }
+          .price {
+            background: #faf6f0;
+            border: 1px solid #e6e0d7;
+            border-radius: 999px;
+            padding: 2px 8px;
+            font-weight: 600;
+            font-size: 12px;
+            color: #1f1f1f;
+          }
+          .services {
+            font-size: 13px;
+            font-weight: 500;
+            color: #1f1f1f;
+            line-height: 1.4;
+          }
+          .meta {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            font-size: 11px;
+          }
+          .badge {
+            padding: 3px 8px;
+            border-radius: 999px;
+            border: 1px solid #ddd6cc;
+            background: #fdfaf7;
+            color: #1f1f1f;
+          }
+          .badge.danger {
+            color: #dc2626;
+            border-color: #dc2626;
+          }
+          .note {
+            background: #fafafa;
+            border: 1px solid #e5e7eb;
+            padding: 8px;
+            border-radius: 8px;
+            font-size: 12px;
+            color: #1f1f1f;
           }
 
-          .appt{
-            border:1px solid var(--cream-line); border-radius:12px; background:#fff;
-            padding:10px; display:grid; grid-template-columns: 1fr auto; gap:8px; align-items:center;
-          }
-          .appt + .appt{ margin-top:8px; }
-          .appt-title{ font-weight:800; color: var(--text-1); }
-          .appt-sub{ font-size:13px; color: var(--text-2); }
-          .appt-meta{ font-size:12px; color: var(--text-3); }
-          .appt-status{
-            padding:3px 8px; border-radius:999px; border:1px solid var(--btn-border); background:#fff; font-size:12px;
-            justify-self:end; white-space:nowrap; color: var(--text-2);
-          }
-
-          /* Footer (sticky) */
-          .drv-footer{
-            position: sticky; bottom: 0; z-index: 1;
-            display: flex; gap: 8px; align-items:center; justify-content: space-between; flex-wrap: wrap;
-            padding: 10px 14px;
-            background: linear-gradient(to top, rgba(255,255,255,.92), rgba(253,250,247,.95));
-            -webkit-backdrop-filter: saturate(120%) blur(6px);
-            backdrop-filter: saturate(120%) blur(6px);
-            border-top: 1px solid var(--cream-line-2);
-          }
-          .btn{
-            height: 40px; padding: 0 12px; border-radius: 12px; border:1px solid var(--btn-border);
-            background:#fff; cursor:pointer; font-weight:700; font-size:14px;
-            display:inline-flex; align-items:center; gap:8px;
-          }
-          .btn:active{ transform: translateY(1px); }
-          .btn-primary{
-            background: linear-gradient(135deg, #fff, #f7efe6);
-            color: var(--text-1); border: 1px solid var(--btn-border); box-shadow: var(--shadow);
-          }
-          .btn-danger{ border-color:#fca5a5; color: var(--danger); background: var(--danger-bg); }
-          .btn-ghost{ background:#fff; }
-          .btn-block{ border-color:#fbbf24; color: var(--warn); background: var(--warn-bg); }
-          .btn.wide{ justify-content:center; }
-
-          /* MOBILE */
-          @media (max-width: 720px){
-            .drawer{ inset: 0; width: 100%; border-left: none; box-shadow: none; }
-            .drv-header{ padding-top: calc(env(safe-area-inset-top, 0px) + 40px); }
-            .title{ font-size: 17px; }
-            .x-btn{ width: 36px; height: 36px; }
-            .drv-content{ padding: 12px; }
-            .card{ padding: 12px; border-radius: 14px; }
-            .row{ grid-template-columns: 1fr; }
-            .drv-footer{
-              gap: 8px;
-              padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
-            }
-            .btn{ height: 40px; font-size: 14px; }
-            .btn.wide{ flex: 1 1 auto; }
+          @media (min-width: 720px) {
+            .drawer { width: min(760px, 80vw); }
+            .grid { grid-template-columns: 1fr 1fr; }
+            .cards { grid-template-columns: repeat(2, 1fr); }
+            .title { font-size: 22px; }
+            .btn { font-size: 14px; padding: 8px 12px; }
+            .input, .textarea { font-size: 15px; }
+            .section-title { font-size: 15px; }
+            .card-top { font-size: 14px; }
+            .price { font-size: 13px; }
+            .services { font-size: 14px; }
+            .meta { font-size: 12px; }
+            .note { font-size: 13px; }
           }
 
-          /* DESKTOP */
-          @media (min-width: 721px){
-            .btn.wide{ min-width: 140px; }
+          @media (max-width: 480px) {
+            .drawer { width: 100vw; }
+            .head { padding: 10px 12px; border-bottom: 2px solid #e6e0d7; }
+            .title { font-size: 18px; }
+            .no-show { font-size: 12px; }
+            .toolbar { gap: 4px; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
+            .btn { padding: 6px 10px; font-size: 12px; min-height: 32px; white-space: nowrap; }
+            .body { padding: 12px; gap: 12px; }
+            .panel { padding: 10px; border-radius: 10px; }
+            .input, .textarea { padding: 8px; font-size: 13px; }
+            .textarea { min-height: 60px; }
+            .section-title { font-size: 13px; }
+            .cards { gap: 10px; }
+            .card-main { padding: 10px; }
+            .card-top { font-size: 12px; }
+            .price { font-size: 11px; padding: 2px 6px; }
+            .services { font-size: 12px; }
+            .meta { font-size: 10px; gap: 4px; }
+            .badge { padding: 2px 6px; }
+            .note { font-size: 11px; padding: 6px; }
+          }
+
+          @media (hover: none) and (pointer: coarse) {
+            .btn { min-height: 36px; touch-action: manipulation; }
+            .input, .textarea { min-height: 40px; }
+          }
+
+          @supports (-webkit-touch-callout: none) {
+            .body { -webkit-overflow-scrolling: touch; }
           }
         `}</style>
 
-        {/* HEADER */}
-        <div className="drv-header">
-          <div className="avatar">{initials(client)}</div>
-          <div className="title-wrap">
-            <div className="title">{client?.firstName} {client?.lastName}</div>
-            <div className="subtitle">
-              Kreiran: {fmtDateTime(client?.createdAt)}{client?.updatedAt ? ` • Ažuriran: ${fmtDateTime(client?.updatedAt)}` : ""}
-            </div>
+        <div className="head">
+          <div className="title">
+            {maskedName(clientLive)}
+            {clientLive.blocked && <span className="blocked"> · BLOKIRAN</span>}
+            <span className="no-show">No-Show: {noShowCount}</span>
           </div>
-          <span className={`status-badge ${isBlocked ? "blocked" : ""}`}>
-            {isBlocked ? "Blokiran" : "Aktivan"}
-          </span>
-          <button className="x-btn" aria-label="Zatvori" onClick={onClose}>✕</button>
-        </div>
-
-        {/* CONTENT */}
-        <div className="drv-content">
-          {/* Osnovni podaci */}
-          <div className="card">
-            <h4>Osnovno</h4>
+          <div className="toolbar">
             {!edit ? (
-              <div className="row">
-                <div className="field">
-                  <label>Ime i prezime</label>
-                  <div style={{fontWeight:800, fontSize:16, color:"#2f2f33"}}>
-                    {client?.firstName} {client?.lastName}
-                  </div>
-                </div>
-                <div className="field">
-                  <label>Status</label>
-                  <div>{isBlocked ? "Blokiran" : "Aktivan"}</div>
-                </div>
-              </div>
+              <>
+                <button className="btn" onClick={() => setEdit(true)}>Izmeni</button>
+                <button className="btn" onClick={onToggleBlock}>{clientLive.blocked ? "Odblokiraj" : "Blokiraj"}</button>
+                <button className="btn danger" onClick={onDelete}>Obriši</button>
+                <button className="btn" onClick={onClose}>❌</button>
+              </>
             ) : (
-              <div className="row">
-                <div className="field">
-                  <label>Ime</label>
-                  <input value={form.firstName} onChange={e=>setForm({...form, firstName:e.target.value})}/>
-                </div>
-                <div className="field">
-                  <label>Prezime</label>
-                  <input value={form.lastName} onChange={e=>setForm({...form, lastName:e.target.value})}/>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Kontakt */}
-          <div className="card">
-            <h4>Kontakt</h4>
-            {!edit ? (
-              <div className="row">
-                <div className="field">
-                  <label>Telefon</label>
-                  <div className="mono">{prettyPhone(client?.phone ?? client?.phoneNumber)}</div>
-                </div>
-                <div className="field">
-                  <label>E-mail</label>
-                  <div className="mono">{client?.email || "—"}</div>
-                </div>
-              </div>
-            ) : (
-              <div className="row">
-                <div className="field">
-                  <label>Telefon</label>
-                  <input value={form.phone} onChange={e=>setForm({...form, phone:e.target.value})} placeholder="+3816..."/>
-                </div>
-                <div className="field">
-                  <label>E-mail</label>
-                  <input type="email" value={form.email} onChange={e=>setForm({...form, email:e.target.value})} placeholder="email@domen.rs"/>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Napomena */}
-          <div className="card">
-            <h4>Napomena</h4>
-            {!edit ? (
-              <div className="field">
-                <div style={{whiteSpace:"pre-wrap"}}>{client?.notes || "—"}</div>
-              </div>
-            ) : (
-              <div className="field">
-                <textarea value={form.notes} onChange={e=>setForm({...form, notes:e.target.value})} placeholder="Unesi napomenu..."/>
-              </div>
-            )}
-          </div>
-
-          {/* Termini klijenta */}
-          <div className="card">
-            <h4>Termini</h4>
-            <div className="tabs">
-              <button
-                className={`tab-btn ${tab === "upcoming" ? "active" : ""}`}
-                onClick={()=>setTab("upcoming")}
-              >
-                Budući <span className="badge">{upcoming.length}</span>
-              </button>
-              <button
-                className={`tab-btn ${tab === "past" ? "active" : ""}`}
-                onClick={()=>setTab("past")}
-              >
-                Prošli <span className="badge">{past.length}</span>
-              </button>
-            </div>
-
-            {(tab === "upcoming" ? upcoming : past).length === 0 ? (
-              <div className="appt" style={{justifyContent:"center", gridTemplateColumns:"1fr"}}>
-                Nema zapisa.
-              </div>
-            ) : (
-              (tab === "upcoming" ? upcoming : past).map(a => {
-                const start = toJsDate(a.startAt);
-                const end   = toJsDate(a.endAt);
-                return (
-                  <div key={a.id} className="appt">
-                    <div>
-                      <div className="appt-title">{a?.serviceName || "Termin"}</div>
-                      <div className="appt-sub">
-                        {start ? start.toLocaleString("sr-RS", { dateStyle:"medium", timeStyle:"short" }) : "—"}
-                        {end ? ` • do ${end.toLocaleTimeString("sr-RS", { timeStyle:"short" })}` : ""}
-                      </div>
-                      <div className="appt-meta">
-                        {a?.employeeName ? `Izvođač: ${a.employeeName}` : (a?.employeeId ? `Zaposleni: ${a.employeeId}` : "")}
-                      </div>
-                    </div>
-                    <div className="appt-status">{a?.status || "—"}</div>
-                  </div>
-                );
-              })
+              <>
+                <button className="btn" onClick={save}>Sačuvaj</button>
+                <button className="btn" onClick={() => setEdit(false)}>Otkaži</button>
+                <button className="btn" onClick={onClose}>❌</button>
+              </>
             )}
           </div>
         </div>
 
-        {/* FOOTER AKCIJE */}
-        <div className="drv-footer">
+        <div className="body">
           {!edit ? (
-            <>
-              <button className="btn btn-ghost" onClick={onClose}>Zatvori</button>
-              <div style={{display:"flex", gap:8, marginLeft:"auto", flexWrap:"wrap"}}>
-                <button className="btn btn-block" onClick={onToggleBlock}>
-                  {isBlocked ? "Skini blokadu" : "Blokiraj"}
-                </button>
-                <button className="btn btn-danger" onClick={onDelete}>Obriši</button>
-                <button className="btn btn-primary wide" onClick={()=>setEdit(true)}>Uredi</button>
-              </div>
-            </>
+            <div className="panel">
+              <div className="line"><b>Telefon:</b> {maskedPhone(clientLive.phone)}</div>
+              <div className="line"><b>E-mail:</b> {role === "admin" ? (clientLive.email || "—") : "—"}</div>
+              <div className="line"><b>Beleška:</b> {clientLive.note || "—"}</div>
+              {role === "admin" && (
+                <div className="line"><b>Ukupno zarađeno:</b> {fmtMoney(totalEarned)} RSD</div>
+              )}
+              {nextAppt && (
+                <div className="line"><b>Naredni termin:</b> {fmtDateTime(nextAppt.start)} · {nextAppt.employeeName || nextAppt.employeeUsername || ""}</div>
+              )}
+            </div>
           ) : (
-            <>
-              <button className="btn btn-ghost" onClick={handleCancel}>Otkaži</button>
-              <div style={{display:"flex", gap:8, marginLeft:"auto", flexWrap:"wrap"}}>
-                <button className="btn btn-primary wide" onClick={handleSave}>Sačuvaj</button>
+            <div className="grid">
+              <input className="input" placeholder="Ime" value={form.firstName} onChange={e => setForm(s => ({ ...s, firstName: e.target.value }))} />
+              <input className="input" placeholder="Prezime" value={form.lastName} onChange={e => setForm(s => ({ ...s, lastName: e.target.value }))} />
+              <input className="input" placeholder="Telefon" value={form.phone} onChange={e => setForm(s => ({ ...s, phone: e.target.value }))} />
+              <input className="input" placeholder="E-mail" value={form.email} onChange={e => setForm(s => ({ ...s, email: e.target.value }))} />
+              <div style={{ gridColumn: "1 / -1" }}>
+                <textarea className="textarea" placeholder="Beleška o klijentu…" value={form.note} onChange={e => setForm(s => ({ ...s, note: e.target.value }))} />
               </div>
-            </>
+            </div>
           )}
+
+          <div>
+            <div className="section-title">Naredni termini</div>
+            <div className="cards">
+              {future.length ? future.map(a => <AppointmentCard key={a.id} a={a} />) : <div className="muted">Nema budućih termina.</div>}
+            </div>
+          </div>
+
+          <div>
+            <div className="section-title">Prošli termini</div>
+            <div className="cards">
+              {past.length ? past.map(a => <AppointmentCard key={a.id} a={a} />) : <div className="muted">Nema prošlih termina.</div>}
+            </div>
+          </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }

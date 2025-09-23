@@ -884,7 +884,7 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
 
         /* ===== Appointments ===== */
         .appt{ 
-          position:absolute; left:8px; right:8px; 
+          position:absolute; left:0px; right:0px; 
           border-radius:12px; padding:8px 10px; 
           background: var(--col,#fff); color:#1f1f1f; 
           box-shadow:0 1px 2px rgba(0,0,0,.06); 
@@ -1040,7 +1040,7 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
           .columns { grid-auto-columns: 1fr; min-width: 100%; }
           .columns-outer { order: 1; grid-row: 1; }
           .col-header { height: 48px; font-size: 13px; padding: 0 4px; justify-content: flex-start; text-align: left; }
-          .appt { left: 4px; right: 4px; padding: 10px 8px; min-height: 44px; font-size: 13px; }
+          .appt { left: 0px; right: 0px; padding: 10px 8px; min-height: 44px; font-size: 13px; }
           .appt .time { font-size: 11px; line-height: 1.2; }
           .appt .title { font-size: 12px; margin-top: 2px; -webkit-line-clamp: 2; -webkit-box-orient: vertical; display:-webkit-box; overflow:hidden; }
           .appt .muted { font-size: 11px; margin-top: 2px; -webkit-line-clamp: 1; -webkit-box-orient: vertical; display:-webkit-box; overflow:hidden; }
@@ -1063,6 +1063,14 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
           .off-mask { left: 4px; right: 4px; }
           .col-body .hour { display: block; position: absolute; left: 4px; font-size: 11px; color: #6b7280; transform: translateY(-50%); z-index: 1; }
           .appt { left: 50px; }
+          .col-body .hour {
+    display: block; /* Show time markers on mobile */
+    left: 4px;
+    font-size: 11px;
+    color: #6b7280;
+    transform: translateY(-50%);
+    z-index: 1;
+  }
         }
 
         @media (max-width: 480px) {

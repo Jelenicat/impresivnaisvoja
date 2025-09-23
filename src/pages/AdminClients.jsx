@@ -228,7 +228,7 @@ export default function AdminClients() {
         }
         .btn{
           padding: 10px 12px; border-radius: 12px; border:1px solid #ddd6cc; background:#fff; cursor:pointer;
-          font-weight:500;
+          font-weight:600;
         }
         .btn:hover{ background:#faf6f0; }
         .import-label{ display:inline-flex; align-items:center; gap:8px; }
