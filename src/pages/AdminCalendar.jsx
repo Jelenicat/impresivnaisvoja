@@ -194,8 +194,8 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
         const data = { id:d.id, ...d.data() };
         const k = data.employeeUsername;
         const prev = perEmp.get(k);
-        const created = data.createdAt?.toMillis?.() || 0;
-        if (!prev || created > (prev.createdAt?.toMillis?.() || 0)) perEmp.set(k, data);
+        const created = data.createdAt?.toDate?.()?.getTime?.() || 0;
+        if (!prev || created > (prev.createdAt?.toDate?.()?.getTime?.() || 0)) perEmp.set(k, data);
       }
       setLatestSchedules(perEmp);
     });
@@ -297,6 +297,7 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
     );
     const unsub=onSnapshot(q,snap=>{
       const docs = snap.docs.map(d=>({id:d.id,...d.data()}));
+      console.log("Appointments updated:", docs.length, docs);
       setAppointments(docs);
       setOverrideEndMap(prev => {
         if (prev.size===0) return prev;
@@ -349,70 +350,71 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
   function prevDay(){ const d=new Date(dayStart); d.setDate(d.getDate()-1); setDay(d); }
   function nextDay(){ const d=new Date(dayStart); d.setDate(d.getDate()+1); setDay(d); }
   function today(){ setDay(startOfDay(new Date())); }
-// SWIPE: levo/desno za promenu dana (samo telefon/tablet)
-useEffect(() => {
-  const el = gridWrapRef.current;
-  if (!el) return;
 
-  let startX = 0;
-  let startY = 0;
-  let moved = false;
+  // SWIPE: levo/desno za promenu dana (samo telefon/tablet)
+  useEffect(() => {
+    const el = gridWrapRef.current;
+    if (!el) return;
 
-  function onTouchStart(e) {
-    if (resizingRef.current || draggingRef.current) return; // ne tokom resize/drag
-    const t = e.touches[0];
-    startX = t.clientX;
-    startY = t.clientY;
-    moved = false;
-  }
+    let startX = 0;
+    let startY = 0;
+    let moved = false;
 
-  function onTouchMove(e) {
-    if (resizingRef.current || draggingRef.current) return;
-    const t = e.touches[0];
-    const dx = t.clientX - startX;
-    const dy = t.clientY - startY;
-
-    // Ako je pokret više vertikalan — pusti skrol i izađi
-    if (Math.abs(dy) > Math.abs(dx)) return;
-
-    // Spriječi horizontalni “rubber band” dok klizi
-    if (Math.abs(dx) > 10) {
-      e.preventDefault(); // traži {passive:false} listener (dodajemo dole)
-      moved = true;
+    function onTouchStart(e) {
+      if (resizingRef.current || draggingRef.current) return; // ne tokom resize/drag
+      const t = e.touches[0];
+      startX = t.clientX;
+      startY = t.clientY;
+      moved = false;
     }
-  }
 
-  function onTouchEnd(e) {
-    if (resizingRef.current || draggingRef.current) return;
-    if (justResizedRef.current || justDraggedRef.current) return;
+    function onTouchMove(e) {
+      if (resizingRef.current || draggingRef.current) return;
+      const t = e.touches[0];
+      const dx = t.clientX - startX;
+      const dy = t.clientY - startY;
 
-    if (!moved) return;
-    const t = e.changedTouches[0];
-    const dx = t.clientX - startX;
-    const dy = t.clientY - startY;
+      // Ako je pokret više vertikalan — pusti skrol i izađi
+      if (Math.abs(dy) > Math.abs(dx)) return;
 
-    // opet: ignoriši ako je vertikala dominantna
-    if (Math.abs(dy) > Math.abs(dx)) return;
-
-    const THRESH = 80; // prag u pikselima
-    if (dx <= -THRESH) {
-      nextDay(); // swipe levo → sledeći dan
-    } else if (dx >= THRESH) {
-      prevDay(); // swipe desno → prethodni dan
+      // Spriječi horizontalni “rubber band” dok klizi
+      if (Math.abs(dx) > 10) {
+        e.preventDefault(); // traži {passive:false} listener (dodajemo dole)
+        moved = true;
+      }
     }
-  }
 
-  // Važno: passive:false zbog preventDefault u move handleru
-  el.addEventListener("touchstart", onTouchStart, { passive: true });
-  el.addEventListener("touchmove", onTouchMove, { passive: false });
-  el.addEventListener("touchend", onTouchEnd, { passive: true });
+    function onTouchEnd(e) {
+      if (resizingRef.current || draggingRef.current) return;
+      if (justResizedRef.current || justDraggedRef.current) return;
 
-  return () => {
-    el.removeEventListener("touchstart", onTouchStart);
-    el.removeEventListener("touchmove", onTouchMove);
-    el.removeEventListener("touchend", onTouchEnd);
-  };
-}, [dayStart, visibleEmployees]);
+      if (!moved) return;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - startX;
+      const dy = t.clientY - startY;
+
+      // opet: ignoriši ako je vertikala dominantna
+      if (Math.abs(dy) > Math.abs(dx)) return;
+
+      const THRESH = 80; // prag u pikselima
+      if (dx <= -THRESH) {
+        nextDay(); // swipe levo → sledeći dan
+      } else if (dx >= THRESH) {
+        prevDay(); // swipe desno → prethodni dan
+      }
+    }
+
+    // Važno: passive:false zbog preventDefault u move handleru
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    el.addEventListener("touchend", onTouchEnd, { passive: true });
+
+    return () => {
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove", onTouchMove);
+      el.removeEventListener("touchend", onTouchEnd);
+    };
+  }, [dayStart, visibleEmployees]);
 
   /* ---------- HUD vreme ---------- */
   function handleColumnMove(e, empUsername){
@@ -564,6 +566,7 @@ useEffect(() => {
     dragGhostRef.current = g;
   }
   function onDragTouchMove(ev) {
+    ev.preventDefault(); // Spreči skrol
     const coords = getClientCoords(ev);
     const d = draggingRef.current; if(!d) return;
     const targetEmp = pickColumnUnderPointer(coords.clientX, coords.clientY) ?? d.empFrom;
@@ -579,7 +582,7 @@ useEffect(() => {
     setDragGhost(g);
     dragGhostRef.current = g;
   }
-  async function onDragEnd(){
+  async function onDragEnd() {
     const d = draggingRef.current;
     const ghost = dragGhostRef.current;
 
@@ -595,34 +598,83 @@ useEffect(() => {
     draggingRef.current = null;
     dragGhostRef.current = null;
 
-    if(!d || !ghost || (ghost.emp === d.empFrom && ghost.topMin === d.startMinInit)) return;
+    if (!d || !ghost) {
+      console.log("Drag aborted: missing draggingRef or dragGhostRef", { d, ghost });
+      return;
+    }
+
+    if (ghost.emp === d.empFrom && ghost.topMin === d.startMinInit) {
+      console.log("Drag aborted: no change in position or employee", { emp: ghost.emp, topMin: ghost.topMin });
+      return;
+    }
+
+    // Calculate new start and end times
+    const newStart = new Date(dayStart);
+    newStart.setMinutes(ghost.topMin);
+    const newEnd = new Date(newStart.getTime() + d.durationMin * 60000);
+
+    // Collision check
+    const targetEmp = ghost.emp;
+    const existingAppts = (apptsByEmployee.get(targetEmp) || []).filter(a => a.id !== d.id);
+    const hasCollision = existingAppts.some(a => {
+      const aStart = toJsDate(a.start).getTime();
+      const aEnd = toJsDate(a.end).getTime();
+      return newStart.getTime() < aEnd && newEnd.getTime() > aStart;
+    });
+
+    if (hasCollision) {
+      console.log("Drag aborted: collision detected", { newStart, newEnd, targetEmp });
+      alert("Greška: Termin se preklapa sa postojećim terminom.");
+      return;
+    }
+
+    // Work hours check
+    const workIntervals = getWorkIntervalsFor(targetEmp, dayStart, latestSchedules);
+    const newStartMin = minsInDay(newStart, dayStart);
+    const newEndMin = minsInDay(newEnd, dayStart);
+    const isWithinWorkHours = workIntervals.some(([start, end]) => newStartMin >= start && newEndMin <= end);
+
+    if (!isWithinWorkHours) {
+      console.log("Drag aborted: outside work hours", { newStartMin, newEndMin, workIntervals });
+      alert("Greška: Termin je izvan radnog vremena radnika.");
+      return;
+    }
 
     justDraggedRef.current = true;
-    setTimeout(()=>{ justDraggedRef.current = false; }, 300);
+    setTimeout(() => { justDraggedRef.current = false; }, 300);
 
-    try{
-      const newStart = new Date(dayStart); newStart.setMinutes(ghost.topMin);
-      const newEnd = new Date(newStart.getTime() + d.durationMin*60000);
-      await updateDoc(doc(db,"appointments", d.id), {
+    try {
+      console.log("Saving drag changes:", {
+        id: d.id,
+        start: newStart.toISOString(),
+        end: newEnd.toISOString(),
+        employeeUsername: ghost.emp,
+      });
+
+      await updateDoc(doc(db, "appointments", d.id), {
         start: newStart,
         end: newEnd,
         employeeUsername: ghost.emp,
-        updatedAt: serverTimestamp()
+        updatedAt: serverTimestamp(),
       });
-    }catch(err){
+      console.log("Drag saved successfully");
+    } catch (err) {
       console.error("Drag save failed:", err);
-      alert("Greška pri pomeranju termina.");
+      alert("Greška pri pomeranju termina: " + err.message);
     }
   }
+
   function onDragTouchEnd(ev) {
+    ev.preventDefault();
     onDragEnd();
   }
-  function startDrag(ev, appt, top){
+
+  function startDrag(ev, appt, top) {
     if ((ev.target)?.classList?.contains("resize-handle")) return; // ako hvatište, onda resize
-    if (role==="worker" && appt.employeeUsername !== currentUsername) return;
+    if (role === "worker" && appt.employeeUsername !== currentUsername) return;
 
     const body = colBodyRefs.current.get(appt.employeeUsername);
-    if(!body) return;
+    if (!body) return;
 
     ev.stopPropagation();
 
@@ -645,21 +697,20 @@ useEffect(() => {
       durationMin,
       offsetY: Math.max(0, offsetY),
       empFrom: appt.employeeUsername,
-      startMinInit: startMin
+      startMinInit: startMin,
     };
 
     const g = { id: appt.id, emp: appt.employeeUsername, topMin: startMin };
     setDragGhost(g);
     dragGhostRef.current = g;
 
-    // Dodaj listenere, ali proveri tap
     const onTouchMoveHandler = (ev) => {
       const coords = getClientCoords(ev);
       const dx = Math.abs(coords.clientX - startX);
       const dy = Math.abs(coords.clientY - startY);
       const distance = Math.sqrt(dx * dx + dy * dy);
 
-      if (distance > 10) { // Prag za drag (10 piksela)
+      if (distance > 10) { // Prag za drag
         isDragging = true;
         ev.preventDefault(); // Spreči skrol samo ako je drag
         onDragTouchMove(ev);
@@ -668,6 +719,7 @@ useEffect(() => {
 
     const onTouchEndHandler = (ev) => {
       const touchDuration = Date.now() - touchStartTime;
+      console.log("Touch ended:", { isDragging, touchDuration });
       window.removeEventListener("mousemove", onDragMove);
       window.removeEventListener("mouseup", onDragEnd);
       window.removeEventListener("touchmove", onTouchMoveHandler);
@@ -676,18 +728,16 @@ useEffect(() => {
       document.body.style.userSelect = "";
       document.body.style.touchAction = "";
 
+      if (isDragging) {
+        onDragEnd();
+      } else if (touchDuration < 300) { // Tap kraći od 300ms
+        setHoverAppt(null);
+        openEdit(appt);
+      }
+
       setDragGhost(null);
       draggingRef.current = null;
       dragGhostRef.current = null;
-
-      if (isDragging) {
-        justDraggedRef.current = true;
-        setTimeout(() => { justDraggedRef.current = false; }, 300);
-        onDragEnd();
-      } else if (touchDuration < 300) { // Tap kraći od 300ms
-        // Ako nije drag, dozvoli otvaranje modala
-        openEdit(appt);
-      }
     };
 
     window.addEventListener("mousemove", onDragMove);
@@ -705,9 +755,11 @@ useEffect(() => {
       if (!body) continue;
       const r = body.getBoundingClientRect();
       if (clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom) {
+        console.log("Picked column:", emp.username);
         return emp.username;
       }
     }
+    console.log("No column picked under:", { clientX, clientY });
     return null;
   }
 
@@ -1021,8 +1073,7 @@ useEffect(() => {
           .resize-handle { height: 12px; }
           .resize-handle:before { width: 24px; height: 3px; }
           .corner-icons { font-size:14px; right:4px; top:4px; }
-          .hover-line { left: 4px; right: 4px; }
-          .hover-badge { font-size: 11px; padding: 2px 6px; }
+          .hover-line, .hover-badge { display: none; }
           .chooser-card { min-width: auto; max-width: 280px; margin: 20px; padding: 20px; }
           .chooser-title { font-size: 16px; margin-bottom: 16px; }
           .chooser-actions { flex-direction: column; gap: 8px; }
@@ -1090,7 +1141,6 @@ useEffect(() => {
   color: #1f1f1f !important;
   -webkit-text-fill-color: #1f1f1f !important; /* iOS fix */
 }
-
       `}</style>
 
       <div className="cal-bar">
