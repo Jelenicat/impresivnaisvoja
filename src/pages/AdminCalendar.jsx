@@ -350,6 +350,70 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
   function prevDay(){ const d=new Date(dayStart); d.setDate(d.getDate()-1); setDay(d); }
   function nextDay(){ const d=new Date(dayStart); d.setDate(d.getDate()+1); setDay(d); }
   function today(){ setDay(startOfDay(new Date())); }
+// SWIPE: levo/desno za promenu dana (samo telefon/tablet)
+useEffect(() => {
+  const el = gridWrapRef.current;
+  if (!el) return;
+
+  let startX = 0;
+  let startY = 0;
+  let moved = false;
+
+  function onTouchStart(e) {
+    if (resizingRef.current || draggingRef.current) return; // ne tokom resize/drag
+    const t = e.touches[0];
+    startX = t.clientX;
+    startY = t.clientY;
+    moved = false;
+  }
+
+  function onTouchMove(e) {
+    if (resizingRef.current || draggingRef.current) return;
+    const t = e.touches[0];
+    const dx = t.clientX - startX;
+    const dy = t.clientY - startY;
+
+    // Ako je pokret više vertikalan — pusti skrol i izađi
+    if (Math.abs(dy) > Math.abs(dx)) return;
+
+    // Spriječi horizontalni “rubber band” dok klizi
+    if (Math.abs(dx) > 10) {
+      e.preventDefault(); // traži {passive:false} listener (dodajemo dole)
+      moved = true;
+    }
+  }
+
+  function onTouchEnd(e) {
+    if (resizingRef.current || draggingRef.current) return;
+    if (justResizedRef.current || justDraggedRef.current) return;
+
+    if (!moved) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - startX;
+    const dy = t.clientY - startY;
+
+    // opet: ignoriši ako je vertikala dominantna
+    if (Math.abs(dy) > Math.abs(dx)) return;
+
+    const THRESH = 80; // prag u pikselima
+    if (dx <= -THRESH) {
+      nextDay(); // swipe levo → sledeći dan
+    } else if (dx >= THRESH) {
+      prevDay(); // swipe desno → prethodni dan
+    }
+  }
+
+  // Važno: passive:false zbog preventDefault u move handleru
+  el.addEventListener("touchstart", onTouchStart, { passive: true });
+  el.addEventListener("touchmove", onTouchMove, { passive: false });
+  el.addEventListener("touchend", onTouchEnd, { passive: true });
+
+  return () => {
+    el.removeEventListener("touchstart", onTouchStart);
+    el.removeEventListener("touchmove", onTouchMove);
+    el.removeEventListener("touchend", onTouchEnd);
+  };
+}, [dayStart, visibleEmployees]);
 
   /* ---------- HUD vreme ---------- */
   function handleColumnMove(e, empUsername){
@@ -409,6 +473,8 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
     };
     window.addEventListener("mousemove", onResizingMouseMove);
     window.addEventListener("mouseup", onResizingMouseUp);
+    window.addEventListener("touchmove", onResizingTouchMove);
+window.addEventListener("touchend", onResizingTouchEnd);
     window.addEventListener("click", swallowNextClick, true);
     document.body.style.userSelect = "none";
   }
@@ -918,6 +984,17 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
           .appt { -webkit-touch-callout: none; -webkit-user-select: none; }
           .col-body { -webkit-overflow-scrolling: touch; }
         }
+          .admin-cal input,
+.admin-cal select,
+.admin-cal button,
+.admin-cal .hour,
+.admin-cal .col-header,
+.admin-cal .appt,
+.admin-cal .muted {
+  color: #1f1f1f !important;
+  -webkit-text-fill-color: #1f1f1f !important; /* iOS fix */
+}
+
       `}</style>
 
       <div className="cal-bar">
