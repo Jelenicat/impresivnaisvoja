@@ -33,7 +33,9 @@ function RequireFinance({ children }) {
 
 export default function App() {
   const { pathname } = useLocation();
-  const showTopBrand = pathname !== "/";
+
+  // HEADER SAMO NA HOME (/home) I NIGDE VIŠE
+  const showTopBrand = pathname === "/home";
 
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {

@@ -8,32 +8,33 @@ export default function AdminHome() {
   const role = localStorage.getItem("role") || "salon"; // admin | salon | employee
   const username = localStorage.getItem("username") || role;
 
-  const items = useMemo(() => {
-    if (role === "employee") {
-      return [
-        { label: "KALENDAR", to: "/admin/kalendar" },
-        { label: "FINANSIJE", to: "/admin/finansije" },
-      ];
-    }
-
-    if (role === "admin") {
-      return [
-        { label: "KALENDAR", to: "/admin/kalendar" },
-        { label: "USLUGE", to: "/admin/usluge" },
-        { label: "ZAPOSLENI", to: "/admin/zaposleni" },
-        { label: "KLIJENTI", to: "/admin/klijenti" },
-        { label: "SMENE", to: "/admin/smene" },
-        { label: "FINANSIJE", to: "/admin/finansije" },
-      ];
-    }
-
-    // role === "salon"
+const items = useMemo(() => {
+  if (role === "employee") {
     return [
       { label: "KALENDAR", to: "/admin/kalendar" },
       { label: "FINANSIJE", to: "/admin/finansije" },
     ];
-  }, [role]);
+  }
 
+  if (role === "admin") {
+    return [
+      { label: "KALENDAR", to: "/admin/kalendar" },
+      { label: "USLUGE",   to: "/admin/usluge" },
+      { label: "ZAPOSLENI",to: "/admin/zaposleni" },
+      { label: "KLIJENTI", to: "/admin/klijenti" },
+      { label: "SMENE",    to: "/admin/smene" },    // ⬅️ NOVO
+      { label: "FINANSIJE",to: "/admin/finansije" },
+    ];
+  }
+
+  // role === "salon"
+  return [
+    { label: "KALENDAR", to: "/admin/kalendar" },
+    { label: "FINANSIJE", to: "/admin/finansije" },
+  ];
+}, [role]);
+
+  
   function logout() {
     // UI logout
     localStorage.removeItem("role");
@@ -44,6 +45,11 @@ export default function AdminHome() {
 
   return (
     <div className="admin-home" style={{ backgroundImage: `url(${bg})` }}>
+      <div className="admin-home__topbar">
+        <div className="admin-home__who">{username}</div>
+        <button className="admin-home__logout" onClick={logout}>Odjavi se</button>
+      </div>
+
       <div className="admin-home__buttons">
         {items.map((it) => (
           <Link key={it.label} to={it.to} className="admin-home__btn">

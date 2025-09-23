@@ -1,4 +1,3 @@
-// src/pages/AdminCalendar.jsx
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import {
   collection, query, where, orderBy, onSnapshot,
@@ -565,7 +564,6 @@ useEffect(() => {
     dragGhostRef.current = g;
   }
   function onDragTouchMove(ev) {
-    ev.preventDefault();
     const coords = getClientCoords(ev);
     const d = draggingRef.current; if(!d) return;
     const targetEmp = pickColumnUnderPointer(coords.clientX, coords.clientY) ?? d.empFrom;
@@ -617,7 +615,6 @@ useEffect(() => {
     }
   }
   function onDragTouchEnd(ev) {
-    ev.preventDefault();
     onDragEnd();
   }
   function startDrag(ev, appt, top){
@@ -627,7 +624,7 @@ useEffect(() => {
     const body = colBodyRefs.current.get(appt.employeeUsername);
     if(!body) return;
 
-    ev.stopPropagation(); ev.preventDefault();
+    ev.stopPropagation();
 
     const startMin = Math.max(DAY_START_MIN, minsInDay(appt.start, dayStart));
     const endMin = Math.min(DAY_END_MIN, minsInDay(appt.end, dayStart));
@@ -636,6 +633,12 @@ useEffect(() => {
     const rect = body.getBoundingClientRect();
     const coords = getClientCoords(ev);
     const offsetY = coords.clientY - rect.top + (body.scrollTop || 0) - (top ?? 0);
+
+    // Detekcija tap vs drag
+    let isDragging = false;
+    let startX = coords.clientX;
+    let startY = coords.clientY;
+    const touchStartTime = Date.now();
 
     draggingRef.current = {
       id: appt.id,
@@ -649,10 +652,48 @@ useEffect(() => {
     setDragGhost(g);
     dragGhostRef.current = g;
 
+    // Dodaj listenere, ali proveri tap
+    const onTouchMoveHandler = (ev) => {
+      const coords = getClientCoords(ev);
+      const dx = Math.abs(coords.clientX - startX);
+      const dy = Math.abs(coords.clientY - startY);
+      const distance = Math.sqrt(dx * dx + dy * dy);
+
+      if (distance > 10) { // Prag za drag (10 piksela)
+        isDragging = true;
+        ev.preventDefault(); // Spreči skrol samo ako je drag
+        onDragTouchMove(ev);
+      }
+    };
+
+    const onTouchEndHandler = (ev) => {
+      const touchDuration = Date.now() - touchStartTime;
+      window.removeEventListener("mousemove", onDragMove);
+      window.removeEventListener("mouseup", onDragEnd);
+      window.removeEventListener("touchmove", onTouchMoveHandler);
+      window.removeEventListener("touchend", onTouchEndHandler);
+      window.removeEventListener("click", swallowNextClick, true);
+      document.body.style.userSelect = "";
+      document.body.style.touchAction = "";
+
+      setDragGhost(null);
+      draggingRef.current = null;
+      dragGhostRef.current = null;
+
+      if (isDragging) {
+        justDraggedRef.current = true;
+        setTimeout(() => { justDraggedRef.current = false; }, 300);
+        onDragEnd();
+      } else if (touchDuration < 300) { // Tap kraći od 300ms
+        // Ako nije drag, dozvoli otvaranje modala
+        openEdit(appt);
+      }
+    };
+
     window.addEventListener("mousemove", onDragMove);
     window.addEventListener("mouseup", onDragEnd);
-    window.addEventListener("touchmove", onDragTouchMove, { passive: false });
-    window.addEventListener("touchend", onDragTouchEnd);
+    window.addEventListener("touchmove", onTouchMoveHandler, { passive: false });
+    window.addEventListener("touchend", onTouchEndHandler);
     window.addEventListener("click", swallowNextClick, true);
     document.body.style.userSelect = "none";
     document.body.style.touchAction = "none";
@@ -1195,7 +1236,7 @@ useEffect(() => {
                       return (
                         <div 
                           className="drag-ghost" 
-                          style={{ top: gTop, height: Math.max(18, h) }} 
+                          style={{ top: gTop, height: Math.max(18, h)} } 
                         />
                       );
                     })()}
