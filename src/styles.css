@@ -273,7 +273,6 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }   /* naslovi Medium */
 
 /* ===== Responsive ===== */
 
-
 /* telefonski raspored */
 @media (max-width: 640px) {
   .cards-row { grid-template-columns: 1fr 1fr; }
@@ -319,4 +318,3 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }   /* naslovi Medium */
   .logo-wrap  { height: 120px; }
   .logo-header{ height: 240px; }
 }
-

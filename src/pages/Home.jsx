@@ -67,59 +67,67 @@ export default function Home() {
   }
 
   async function saveClientProfile(profile) {
-    try {
-      const phoneNorm = (profile?.phone || "").replace(/\D+/g, "");
-      const emailNorm = (profile?.email || "").trim().toLowerCase();
+    const phoneNorm = (profile?.phone || "").replace(/\D+/g, "");
+    const emailNorm = (profile?.email || "").trim().toLowerCase();
+    const tempId = phoneNorm || emailNorm || crypto.randomUUID();
 
-      let fcmToken = null;
-      try { fcmToken = await getFcmToken(); } catch {}
+    // 1) Odmah snimi sesiju lokalno
+    localStorage.setItem("clientProfile", JSON.stringify({
+      firstName: profile.firstName || "",
+      lastName : profile.lastName  || "",
+      phone    : phoneNorm || "",
+      email    : emailNorm || "",
+      id       : tempId
+    }));
 
-      const existingId = await resolveExistingClientId({ phoneNorm, emailNorm });
-      const docId = existingId || phoneNorm || emailNorm || crypto.randomUUID();
-      const ref = doc(db, "clients", docId);
+    // 2) Odmah vodi korisnika dalje
+    goToServices();
 
-      if (existingId) {
-        const curSnap = await getDoc(ref);
-        const cur = curSnap.exists() ? curSnap.data() : {};
-        const patch = { lastLoginAt: serverTimestamp() };
-        if (!cur.firstName && profile.firstName) patch.firstName = profile.firstName;
-        if (!cur.lastName  && profile.lastName)  patch.lastName  = profile.lastName;
-        if (!cur.phone     && phoneNorm)         patch.phone     = phoneNorm;
-        if (!cur.email     && emailNorm)         patch.email     = emailNorm;
-        await setDoc(ref, patch, { merge: true });
-      } else {
-        await setDoc(ref, {
-          firstName  : profile.firstName || null,
-          lastName   : profile.lastName  || null,
-          phone      : phoneNorm || null,
-          email      : emailNorm || null,
-          id         : docId,
-          fcmToken   : fcmToken || null,
-          createdAt  : serverTimestamp(),
-          lastLoginAt: serverTimestamp(),
-        }, { merge: true });
+    // 3) U pozadini rešavaj Firestore + FCM
+    (async () => {
+      try {
+        let fcmToken = null;
+        try { fcmToken = await getFcmToken(); } catch {}
+
+        const existingId = await resolveExistingClientId({ phoneNorm, emailNorm });
+        const docId = existingId || tempId;
+        const ref = doc(db, "clients", docId);
+
+        if (existingId) {
+          const curSnap = await getDoc(ref);
+          const cur = curSnap.exists() ? curSnap.data() : {};
+          const patch = { lastLoginAt: serverTimestamp() };
+          if (!cur.firstName && profile.firstName) patch.firstName = profile.firstName;
+          if (!cur.lastName  && profile.lastName)  patch.lastName  = profile.lastName;
+          if (!cur.phone     && phoneNorm)         patch.phone     = phoneNorm;
+          if (!cur.email     && emailNorm)         patch.email     = emailNorm;
+          if (fcmToken) patch.fcmToken = fcmToken;
+          await setDoc(ref, patch, { merge: true });
+        } else {
+          await setDoc(ref, {
+            firstName  : profile.firstName || null,
+            lastName   : profile.lastName  || null,
+            phone      : phoneNorm || null,
+            email      : emailNorm || null,
+            id         : docId,
+            fcmToken   : fcmToken || null,
+            createdAt  : serverTimestamp(),
+            lastLoginAt: serverTimestamp(),
+          }, { merge: true });
+        }
+
+        if (fcmToken) {
+          await saveFcmTokenRecord({
+            token: fcmToken,
+            ownerId: docId,
+            role: "client",
+            username: emailNorm || phoneNorm || docId,
+          });
+        }
+      } catch (e) {
+        console.warn("Pozadinski upis nije uspeo:", e);
       }
-
-      await saveFcmTokenRecord({
-        token: fcmToken,
-        ownerId: docId,
-        role: "client",
-        username: emailNorm || phoneNorm || docId,
-      });
-
-      localStorage.setItem("clientProfile", JSON.stringify({
-        firstName: profile.firstName || "",
-        lastName : profile.lastName  || "",
-        phone    : phoneNorm || "",
-        email    : emailNorm || "",
-        id       : docId
-      }));
-
-      goToServices();
-    } catch (e) {
-      console.error("Greška pri čuvanju profila:", e);
-      alert("Ups, došlo je do greške pri čuvanju profila.");
-    }
+    })();
   }
 
   const isClientLogged = !!localStorage.getItem("clientProfile");
