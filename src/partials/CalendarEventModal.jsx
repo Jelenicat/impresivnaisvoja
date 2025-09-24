@@ -478,6 +478,30 @@ export default function CalendarEventModal({
 
         @media(max-width:820px){ .cal-modal .grid{ grid-template-columns:1fr; gap:12px; } }
         @media(max-width:480px){
+        /* Header actions — u jednom redu na telefonu */
+.cal-modal .h-actions{
+  display:flex;
+  gap:6px;
+  align-items:center;
+  flex-wrap:nowrap;           /* sve u jednom redu */
+  overflow-x:auto;            /* ako ne stane, blagi horizontalni scroll samo za ovaj red */
+  -webkit-overflow-scrolling:touch;
+  padding-bottom:2px;
+}
+
+.cal-modal .h-actions .pill,
+.cal-modal .h-actions .danger{
+  white-space:nowrap;
+  flex:0 0 auto;
+  padding:6px 8px;
+  font-size:12px;
+  line-height:1;
+}
+
+.cal-modal .h-actions .icon-btn{
+  flex:0 0 auto;
+}
+
           .cal-modal .h{ padding:10px 12px; }
           .cal-modal .client-chip{ max-width:100%; padding:6px 9px; font-size:13px; }
           .cal-modal .icon-btn{ display:inline-flex; }
@@ -530,19 +554,41 @@ export default function CalendarEventModal({
             )}
           </div>
 
-          <div style={{display:"flex", gap:8, flexWrap:"wrap", alignItems:"center"}}>
-            {(!isBlock && (form.isOnline || form.bookedVia === "public_app")) && (
-              <span className="pill" title="Online rezervacija">🌐 Online</span>
-            )}
-            {form.id && !isBlock && (
-              <button className="pill" onClick={markNoShow} title="Označi kao no-show">No-show ⚠️</button>
-            )}
-            {form.id && (
-              <button className="pill danger" onClick={()=>onDelete?.(form.id)} title="Obriši">Obriši</button>
-            )}
-            <button className="icon-btn" onClick={onClose} title="Zatvori">✕</button>
-            <button className="btn hide-mobile btn-ghost" onClick={onClose}>Zatvori</button>
-          </div>
+    {/* STARI */}
+{/* <div style={{display:"flex", gap:8, flexWrap:"wrap", alignItems:"center"}}> */}
+
+{/* NOVI */}
+<div className="h-actions">
+  {(!isBlock && (form.isOnline || form.bookedVia === "public_app")) && (
+    <span className="pill" title="Online rezervacija">🌐 Online</span>
+  )}
+  {form.id && !isBlock && (
+    <button className="pill" onClick={markNoShow} title="Označi kao no-show">No-show ⚠️</button>
+  )}
+  {form.id && (
+    <button className="pill danger" onClick={()=>onDelete?.(form.id)} title="Obriši">Obriši</button>
+  )}
+  <button className="icon-btn" onClick={onClose} title="Zatvori">✕</button>
+{/* STARI */}
+{/* <div style={{display:"flex", gap:8, flexWrap:"wrap", alignItems:"center"}}> */}
+
+{/* NOVI */}
+<div className="h-actions">
+  {(!isBlock && (form.isOnline || form.bookedVia === "public_app")) && (
+    <span className="pill" title="Online rezervacija">🌐 Online</span>
+  )}
+  {form.id && !isBlock && (
+    <button className="pill" onClick={markNoShow} title="Označi kao no-show">No-show ⚠️</button>
+  )}
+  {form.id && (
+    <button className="pill danger" onClick={()=>onDelete?.(form.id)} title="Obriši">Obriši</button>
+  )}
+  <button className="icon-btn" onClick={onClose} title="Zatvori">✕</button>
+  <button className="btn hide-mobile btn-ghost" onClick={onClose}>Zatvori</button>
+</div>
+
+</div>
+
         </div>
 
         {/* ===== SCROLLABLE CONTENT ===== */}

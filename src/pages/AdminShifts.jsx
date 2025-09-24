@@ -24,7 +24,7 @@ function DayRow({ value, onChange, label }) {
     <div className="day-row">
       <div className="day-label">{label}</div>
 
-      {/* POČETAK – KRAJ (odvojene kolone) */}
+      {/* POČETAK – KRAJ */}
       <div className="time-grid">
         <input
           className="time time--from"
@@ -45,7 +45,7 @@ function DayRow({ value, onChange, label }) {
         />
       </div>
 
-      {/* ZATVORENO (posebna kolona / red) */}
+      {/* ZATVORENO */}
       <label className="day-closed">
         <input
           type="checkbox"
@@ -244,9 +244,8 @@ export default function AdminShifts() {
     <div className="shifts-page">
       <style>{`
         *,*::before,*::after{ box-sizing:border-box; }
-        /* >>> ključno: dozvoli da se stranica širi vertikalno */
         html,body,#root{ min-height:100%; height:auto; }
-        html,body{ overflow-x:hidden; } /* samo X zatvoren */
+        html,body{ overflow-x:hidden; }
 
         .shifts-page{
           padding:12px 8px;
@@ -254,7 +253,7 @@ export default function AdminShifts() {
           min-height:100vh;
           padding-bottom:80px;
           overflow-x:hidden;
-          overflow-y:auto; /* Changed from visible for better mobile scrolling */
+          overflow-y:auto;
         }
         h1{
           font-family:"Playfair Display",serif;
@@ -269,15 +268,12 @@ export default function AdminShifts() {
 
         .card{
           background:rgba(255,255,255,0.95);
-          backdrop-filter:saturate(120%) blur(6px);
           border-radius:20px;
           box-shadow:0 8px 24px rgba(0,0,0,.06);
           padding:16px;
           border:1px solid #efe9df;
-          max-width:100%;
           width:100%;
-          overflow:visible; /* >>> nikad ne seci sadržaj */
-          box-sizing:border-box; /* Reinforce box-sizing */
+          overflow:visible;
         }
         .card h3{
           margin:0 0 16px;
@@ -288,9 +284,9 @@ export default function AdminShifts() {
           border-bottom:1px solid #f0ebe4;
         }
 
-        .config-card{ position:static; max-height:none; overflow:visible; }
+        .config-card{ position:static; overflow:visible; }
 
-        .field{ margin-bottom:20px; }
+        .field{ margin-bottom:16px; min-width:0; }
         .label{ display:block; font-size:13px; color:#5a544b; margin-bottom:8px; font-weight:600; }
         .input,.select{
           width:100%; padding:12px 14px; border-radius:14px; border:1px solid #e6e0d7; background:#fff; font-size:15px;
@@ -302,7 +298,7 @@ export default function AdminShifts() {
         .seg.small .seg-btn{ padding:8px 10px; font-size:12px; }
         .seg-btn{
           padding:10px 12px; border-radius:12px; border:1px solid #ddd6cc; background:#fff; cursor:pointer;
-          font-weight:600; font-size:13px; transition:all .2s; flex:1; min-width:80px; text-align:center;
+          font-weight:600; font-size:13px; transition:all .2s; min-width:92px; text-align:center;
         }
         .seg-btn.is-active{ background:#1f1f1f; color:#fff; border-color:#1f1f1f; box-shadow:0 4px 14px rgba(31,31,31,.18); }
 
@@ -310,7 +306,7 @@ export default function AdminShifts() {
           margin:12px 0; font-size:11px; color:#8a8378; line-height:1.4; padding:10px;
           background:#f8f6f2; border-radius:10px; border-left:3px solid #e6e0d7;
         }
-        .actions{ display:flex; gap:10px; flex-direction:column; margin-top:20px; }
+        .actions{ display:flex; gap:10px; flex-direction:column; margin-top:16px; }
         .btn{ border:0; background:#1f1f1f; color:#fff; padding:14px 16px; border-radius:12px; cursor:pointer; font-weight:700; font-size:15px; width:100%; }
         .btn:hover:not(:disabled){ background:#333; }
         .btn:disabled{ opacity:.6; cursor:not-allowed; }
@@ -323,12 +319,12 @@ export default function AdminShifts() {
         .weeks{
           display:flex; flex-direction:column; gap:16px;
           max-width:100%;
-          overflow:visible; /* >>> važno */
+          overflow:visible;
           margin-bottom:8px;
         }
         .week-card{
           background:#fff; border:1px solid #eee; border-radius:16px;
-          overflow:visible; /* >>> važno */
+          overflow:visible;
           box-shadow:0 2px 8px rgba(0,0,0,.04);
           max-width:100%;
         }
@@ -341,8 +337,8 @@ export default function AdminShifts() {
 
         /* === DayRow default (MOBILE-First) === */
         .day-row{
-          display:flex; flex-direction:column; gap:6px; /* Reduced from 8px */
-          padding:8px 0; /* Reduced from 12px */
+          display:flex; flex-direction:column; gap:6px;
+          padding:8px 0;
           border-bottom:1px solid #f5f3ef;
         }
         .day-row:last-child{ border-bottom:none; }
@@ -351,7 +347,7 @@ export default function AdminShifts() {
         .time-grid{
           display:grid;
           grid-template-columns: 1fr 18px 1fr; /* from | – | to */
-          gap:6px; /* Match day-row gap */
+          gap:6px;
           align-items:center;
         }
         .time{
@@ -370,39 +366,45 @@ export default function AdminShifts() {
 
         /* ====== MOBILNI (≤768px) ====== */
         @media(max-width:768px){
-          .shifts-page{ padding:4px 0 84px; } /* Reduced top padding */
-          .card{ padding:12px; border-radius:16px; }
-          .card--bleed{
-            border-left:0; border-right:0; border-radius:0;
-            margin-left:calc(-8px - env(safe-area-inset-left)); /* Adjusted */
-            margin-right:calc(-8px - env(safe-area-inset-right));
-            width:100vw; max-width:100vw;
-            padding:8px; /* Reduced from 12px */
-          }
-          /* da "Početak / Kraj" ne sabija polja u jedan red */
-          .field.two{ flex-direction:column; gap:10px !important; }
-          h1{ font-size:18px; margin:4px 0 8px; } /* Reduced margins */
-          .card h3{ font-size:13px; margin-bottom:8px; padding-bottom:6px; }
-          .day-label{ font-size:13px; }
-          .time{ height:38px; font-size:13px; }
-          .day-closed{ font-size:11.5px; } /* Adjusted */
-          .seg-btn{ padding:8px 10px; font-size:12px; }
+          .shifts-page{ padding:8px 10px 84px; }
+          .grid{ display:flex; flex-direction:column; gap:14px; }
 
-          /* >>> override default plave boje na telefonu */
+          /* >>> KLJUČNO: konfiguraciona kartica bez bleed-a da ništa ne seče */
+          .config-card{
+            border-radius:16px;
+            padding:12px;
+            margin:0;
+            width:100%;
+            overflow:visible;
+          }
+
+          h1{ font-size:18px; margin:6px 0 10px; }
+
+          .card h3{ font-size:13px; margin-bottom:10px; padding-bottom:6px; }
+          .field{ margin-bottom:12px; }
+          .label{ font-size:12.5px; margin-bottom:6px; }
+
+          /* sve u stub, bez presecanja */
+          .field.two{ display:flex !important; flex-direction:column !important; gap:10px !important; }
+          .end-date-container{ display:block; min-width:0; }
+
+          .input,.select{ height:40px; font-size:13px; padding:8px 10px; }
+          .seg{ gap:6px; }
+          .seg-btn{ padding:8px 10px; font-size:12.5px; min-width:96px; }
+          .btn{ padding:12px 14px; font-size:14px; }
+
+          /* ukloni plave naglaske na iOS/Android */
           input, select, button {
             color:#1f1f1f !important;
-            -webkit-text-fill-color:#1f1f1f !important; /* iOS fix */
+            -webkit-text-fill-color:#1f1f1f !important;
             accent-color:#1f1f1f !important;
           }
-          .btn{ background:#1f1f1f !important; }
-          .btn-ghost{ color:#1f1f1f !important; }
         }
 
         /* VEOMA USKI (≤380px) */
         @media(max-width:380px){
-          .time{ height:38px; font-size:13px; padding:8px; } /* Improved touch target */
-          .dash{ font-size:13px; } /* Adjusted */
-          .seg-btn{ padding:8px 10px; font-size:12.5px; } /* Improved touch target */
+          .input,.select{ height:38px; font-size:12.5px; padding:7px 9px; }
+          .seg-btn{ padding:7px 9px; font-size:12px; min-width:90px; }
         }
 
         /* ====== DESKTOP ====== */
@@ -422,7 +424,7 @@ export default function AdminShifts() {
             padding:10px 0;
           }
           .day-label{ grid-column:1; margin:0; }
-          .time-grid{ display:contents; } /* ubaci decu direktno u grid kolone */
+          .time-grid{ display:contents; }
           .time--from{ grid-column:2; height:40px; }
           .dash{ grid-column:3; text-align:center; }
           .time--to{ grid-column:4; height:40px; }
@@ -443,7 +445,7 @@ export default function AdminShifts() {
 
       <div className="grid">
         {/* LEVO – konfiguracija */}
-        <div className="card config-card card--bleed">
+        <div className="card config-card">
           <h3>Nova / postojeća smena</h3>
 
           <div className="field">
@@ -478,8 +480,8 @@ export default function AdminShifts() {
             </div>
           </div>
 
-          <div className="field two" style={{display:"flex", gap:12}}>
-            <div style={{flex:1}}>
+          <div className="field two">
+            <div style={{flex:1, minWidth:0}}>
               <label className="label">Početak</label>
               <input
                 className="input tall"
@@ -489,7 +491,7 @@ export default function AdminShifts() {
               />
             </div>
 
-            <div style={{flex:1}}>
+            <div style={{flex:1, minWidth:0}}>
               <label className="label">Kraj</label>
               <div className="end-date-container">
                 <div className="seg small" style={{marginBottom:8}}>
@@ -535,8 +537,8 @@ export default function AdminShifts() {
           </div>
         </div>
 
-        {/* DESNO – nedelje i dani */}
-        <div className="card card--bleed">
+        {/* DESNO – nedelje i dani (NIŠTA NISAM MENJAO) */}
+        <div className="card">
           <h3>Radno vreme po nedeljama</h3>
           <div className="weeks">
             {weeks.map((w, i) => (
