@@ -1,3 +1,4 @@
+// src/pages/AdminEmployees.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -136,13 +137,20 @@ function ServicePickerDrawer({ open, onClose, categories, servicesByCat, value, 
         .cat__count{font-size:12px;color:#6f6b63;background:#f1eee8;border-radius:999px;padding:2px 8px}
         .cat__actions{display:flex;gap:8px}
         .chips{display:flex;gap:8px;flex-wrap:wrap;padding:10px}
-        .pill{padding:8px 12px;border-radius:999px;border:1px solid #ddd6cc;background:#fff;cursor:pointer;font-size:13px}
-        .pill--active{background:#1f1f1f;color:#fff;border-color:#1f1f1f}
+
+        /* Pills (svetlo sivo, ujednačeno) */
+        .pill{padding:8px 12px;border-radius:999px;border:1px solid #ddd6cc;background:#fff;cursor:pointer;font-size:13px;font-weight:600;color:#1f1f1f;}
+        .pill--active{background:#f2f2f2;color:#1f1f1f;border-color:#ccc;box-shadow: inset 0 0 0 2px rgba(0,0,0,.03);}
+        .pill:active{background:#f5f5f5}
+
         .empty{opacity:.65;font-size:13px;padding:8px}
         .drawer__footer{display:flex;gap:10px;align-items:center;padding:10px 12px;border-top:1px solid #f1eee8;background:#faf8f5}
         .spacer{flex:1}
-        .btn{padding:10px 14px;border-radius:12px;cursor:pointer;border:1px solid transparent}
+
+        /* Buttons */
+        .btn{padding:10px 14px;border-radius:12px;cursor:pointer;border:1px solid transparent;color:#1f1f1f;-webkit-text-fill-color:#1f1f1f;}
         .btn--ghost{background:#fff;border-color:#ddd6cc}
+        .btn--ghost:active{background:#f2f2f2;border-color:#ccc;box-shadow: inset 0 0 0 2px rgba(0,0,0,.03);}
         .btn--primary{background:#1f1f1f;color:#fff}
       `}</style>
     </div>
@@ -266,7 +274,7 @@ export default function AdminEmployees() {
           background:linear-gradient(180deg,#f7f4ef 0,#f0ebe4 100%); 
           min-height:100vh; 
           overflow-x:hidden;
-          overflow-y:auto; /* Ensure smooth scrolling */
+          overflow-y:auto;
         }
         h1{ 
           font-family:"Playfair Display",serif; 
@@ -295,8 +303,11 @@ export default function AdminEmployees() {
           border:1px solid #e6e0d7; 
           background:#fff; 
           font-size:14px;
+          color:#1f1f1f; -webkit-text-fill-color:#1f1f1f;
         }
         .input:focus{ outline:none; border-color:#1f1f1f; box-shadow:0 0 0 3px rgba(31,31,31,.05); }
+
+        /* Buttons ujednačeni sa sivo stilom */
         .btn{ 
           border:0; 
           background:#1f1f1f; 
@@ -308,8 +319,10 @@ export default function AdminEmployees() {
           font-size:14px;
         }
         .btn--ghost{ background:#fff; color:#1f1f1f; border:1px solid #ddd6cc }
+        .btn--ghost:active{ background:#f2f2f2; border-color:#ccc; box-shadow: inset 0 0 0 2px rgba(0,0,0,.03); }
         .btn:hover:not(:disabled){ background:#333; }
         .btn:disabled{ opacity:.6; cursor:not-allowed; }
+
         .muted{ opacity:.7; font-size:13px; }
 
         .table{ width:100%; border-collapse: collapse; }
@@ -317,6 +330,7 @@ export default function AdminEmployees() {
         .table th{ font-weight:700; color:#36322b; background:#faf8f5 }
         .table__actions{ display:flex; gap:8px; flex-wrap:wrap }
 
+        /* Pills (svetlo sivo, kao i u Drawer-u) */
         .pill{ 
           padding:8px 12px;
           border-radius:999px;
@@ -325,8 +339,11 @@ export default function AdminEmployees() {
           cursor:pointer;
           font-size:13px;
           font-weight:600;
+          color:#1f1f1f;
         }
-        .pill--active{ background:#1f1f1f;color:#fff;border-color:#1f1f1f }
+        .pill--active{ background:#f2f2f2; color:#1f1f1f; border-color:#ccc; box-shadow: inset 0 0 0 2px rgba(0,0,0,.03); }
+        .pill:active{ background:#f5f5f5; }
+
         .badge{ 
           background:#f1eee8; 
           border:1px solid #e7dfd4; 
@@ -343,6 +360,18 @@ export default function AdminEmployees() {
           .row{ gap:8px; grid-template-columns: 1fr; } /* Stack inputs */
           .table th,.table td{ padding:8px 10px; font-size:13px; }
           .table__actions{ gap:6px; }
+
+          /* Ukloni plave naglaske i autofill */
+          input, select, button {
+            color:#1f1f1f !important;
+            -webkit-text-fill-color:#1f1f1f !important;
+            accent-color:#1f1f1f !important;
+            -webkit-tap-highlight-color: transparent;
+          }
+          input:-webkit-autofill {
+            -webkit-box-shadow: 0 0 0px 1000px #fff inset !important;
+            -webkit-text-fill-color:#1f1f1f !important;
+          }
         }
 
         @media(max-width:380px){
@@ -447,7 +476,7 @@ export default function AdminEmployees() {
         onSave={(arr)=>{ setServiceIds(arr); setPickerOpen(false); }}
       />
 
-      {/* Izmena zaposlenog: zaglavlje + status/ime/prezime + drawer za usluge */}
+      {/* Izmena zaposlenog */}
       {editing && (
         <>
           <div className="drawer-veil" onClick={()=>setEditing(null)} style={{background:"transparent", pointerEvents:"none"}}>

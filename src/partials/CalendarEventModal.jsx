@@ -523,73 +523,58 @@ export default function CalendarEventModal({
 
       <div className="modal cal-modal" onMouseDown={(e)=>e.stopPropagation()}>
 
-        {/* ===== HEADER ===== */}
+          {/* ===== HEADER ===== */}
         <div className="h">
           <div className="title-left">
             <div style={{fontWeight:700, fontSize:16}}>
               {isBlock ? (form.id ? "Blokada" : "Nova blokada") : (form.id ? "Termin" : "Novi termin")}
             </div>
 
-            {!isBlock && form.clientId && (
+            {/* === MOBILNI: client chip ispod akcija === */}
+            {isMobile ? (
               <>
-                <div className="client-info-row">
-                  {(role==="admin" || role==="salon") ? (
-                    <button className="client-chip" onClick={openClientProfile} title="Otvori profil klijenta">
-                      👤 {formatClient(clientForUI || {}, role)}
-                    </button>
-                  ) : (
-                    <span className="client-chip" title="Klijent">👤 {formatClient(clientForUI || {}, role)}</span>
+                <div className="h-actions">
+                  {(!isBlock && (form.isOnline || form.bookedVia === "public_app")) && (
+                    <span className="pill" title="Online rezervacija">🌐 Online</span>
                   )}
-                  {(clientForUI?.noShowCount || 0) > 0 && (
-                    <span style={{ background:"#fee2e2", color:"#b91c1c", fontWeight:700, fontSize:12, padding:"4px 8px", borderRadius:"6px" }}
-                          title={`Klijent nije došao ${clientForUI.noShowCount} puta`}>
-                      No-show {clientForUI.noShowCount}
-                    </span>
+                  {form.id && !isBlock && (
+                    <button className="pill" onClick={markNoShow} title="Označi kao no-show">No-show ⚠️</button>
+                  )}
+                  {form.id && (
+                    <button className="pill danger" onClick={()=>onDelete?.(form.id)} title="Obriši">Obriši</button>
                   )}
                 </div>
-                {clientForUI?.note && (
-                  <div className="note-inline" title="Beleška sa profila klijenta">📝 {clientForUI.note}</div>
+
+                {!isBlock && form.clientId && (
+                  <div className="client-info-row" style={{marginTop:6}}>
+                    {(role==="admin" || role==="salon") ? (
+                      <button className="client-chip" onClick={openClientProfile} title="Otvori profil klijenta">
+                        👤 {formatClient(clientForUI || {}, role)}
+                      </button>
+                    ) : (
+                      <span className="client-chip" title="Klijent">👤 {formatClient(clientForUI || {}, role)}</span>
+                    )}
+                  </div>
                 )}
               </>
+            ) : (
+              /* === DESKTOP: akcije desno === */
+              <div className="h-actions">
+                {(!isBlock && (form.isOnline || form.bookedVia === "public_app")) && (
+                  <span className="pill" title="Online rezervacija">🌐 Online</span>
+                )}
+                {form.id && !isBlock && (
+                  <button className="pill" onClick={markNoShow} title="Označi kao no-show">No-show ⚠️</button>
+                )}
+                {form.id && (
+                  <button className="pill danger" onClick={()=>onDelete?.(form.id)} title="Obriši">Obriši</button>
+                )}
+                <button className="icon-btn" onClick={onClose} title="Zatvori">✕</button>
+                <button className="btn hide-mobile btn-ghost" onClick={onClose}>Zatvori</button>
+              </div>
             )}
           </div>
-
-    {/* STARI */}
-{/* <div style={{display:"flex", gap:8, flexWrap:"wrap", alignItems:"center"}}> */}
-
-{/* NOVI */}
-<div className="h-actions">
-  {(!isBlock && (form.isOnline || form.bookedVia === "public_app")) && (
-    <span className="pill" title="Online rezervacija">🌐 Online</span>
-  )}
-  {form.id && !isBlock && (
-    <button className="pill" onClick={markNoShow} title="Označi kao no-show">No-show ⚠️</button>
-  )}
-  {form.id && (
-    <button className="pill danger" onClick={()=>onDelete?.(form.id)} title="Obriši">Obriši</button>
-  )}
-  <button className="icon-btn" onClick={onClose} title="Zatvori">✕</button>
-{/* STARI */}
-{/* <div style={{display:"flex", gap:8, flexWrap:"wrap", alignItems:"center"}}> */}
-
-{/* NOVI */}
-<div className="h-actions">
-  {(!isBlock && (form.isOnline || form.bookedVia === "public_app")) && (
-    <span className="pill" title="Online rezervacija">🌐 Online</span>
-  )}
-  {form.id && !isBlock && (
-    <button className="pill" onClick={markNoShow} title="Označi kao no-show">No-show ⚠️</button>
-  )}
-  {form.id && (
-    <button className="pill danger" onClick={()=>onDelete?.(form.id)} title="Obriši">Obriši</button>
-  )}
-  <button className="icon-btn" onClick={onClose} title="Zatvori">✕</button>
-  <button className="btn hide-mobile btn-ghost" onClick={onClose}>Zatvori</button>
-</div>
-
-</div>
-
-        </div>
+         </div>
 
         {/* ===== SCROLLABLE CONTENT ===== */}
         <div className="content">

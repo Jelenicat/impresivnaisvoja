@@ -298,9 +298,17 @@ export default function AdminShifts() {
         .seg.small .seg-btn{ padding:8px 10px; font-size:12px; }
         .seg-btn{
           padding:10px 12px; border-radius:12px; border:1px solid #ddd6cc; background:#fff; cursor:pointer;
-          font-weight:600; font-size:13px; transition:all .2s; min-width:92px; text-align:center;
+          font-weight:600; font-size:13px; transition:all .2s; min-width:92px; text-align:center; color:#1f1f1f;
         }
-        .seg-btn.is-active{ background:#1f1f1f; color:#fff; border-color:#1f1f1f; box-shadow:0 4px 14px rgba(31,31,31,.18); }
+        /* >>> IZMENJENO: aktivni dugmići više nisu crni */
+       .seg-btn.is-active {
+  background: #f2f2f2;        /* svetlo svetlo siva pozadina */
+  color: #1f1f1f;             /* crn tekst */
+  border-color: #ccc;         /* siva ivica */
+  box-shadow: 0 0 0 2px rgba(0,0,0,.05) inset, 0 4px 12px rgba(0,0,0,.05);
+}
+
+        .seg-btn:hover{ background:#faf8f5; }
 
         .hint{
           margin:12px 0; font-size:11px; color:#8a8378; line-height:1.4; padding:10px;
@@ -537,7 +545,7 @@ export default function AdminShifts() {
           </div>
         </div>
 
-        {/* DESNO – nedelje i dani (NIŠTA NISAM MENJAO) */}
+        {/* DESNO – nedelje i dani */}
         <div className="card">
           <h3>Radno vreme po nedeljama</h3>
           <div className="weeks">
