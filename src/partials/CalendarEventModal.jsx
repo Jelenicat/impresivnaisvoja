@@ -129,6 +129,8 @@ export default function CalendarEventModal({
   const [clientQuery, setClientQuery] = useState("");
   const [clientListOpen, setClientListOpen] = useState(false);
 
+  const isMobile = typeof window !== "undefined" ? window.innerWidth <= 480 : false;
+
   const normalized = (s="") => s.toString().toLowerCase().trim();
   const filteredClients = useMemo(() => {
     const q = normalized(clientQuery);
@@ -397,6 +399,102 @@ export default function CalendarEventModal({
     }
   }
 
+  /* ===== PROMPT režim za mobilni ===== */
+  function promptEmployee(){
+    const list = (employees||[]).map((e,i)=>`${i+1}) ${e.firstName} ${e.lastName}`).join("\n");
+    const ans = window.prompt(`Izaberi radnicu (unesi broj):\n${list}`, "");
+    if(!ans) return;
+    const idx = Number(ans)-1;
+    const emp = employees[idx];
+    if(emp) setForm(f=>({...f, employeeUsername: emp.username}));
+  }
+
+  function promptClient(){
+    const q = window.prompt("Upiši deo imena/prezimena ili telefon:", "");
+    if(!q) return;
+    const n = normalized(q);
+    const matches = (clients||[]).filter(c=>{
+      const name = `${c.firstName||""} ${c.lastName||""}`.toLowerCase();
+      const phone = (c.phone||c.phoneNumber||c.mobile||"").toString();
+      return name.includes(n) || phone.includes(n);
+    }).slice(0,10);
+    if(matches.length===0){ alert("Nema rezultata."); return; }
+    const list = matches.map((c,i)=>`${i+1}) ${formatClient(c, role)}`).join("\n");
+    const pick = window.prompt(`Pronađeno:\n${list}\n\nUnesi broj željenog klijenta.`, "1");
+    if(!pick) return;
+    const idx = Number(pick)-1;
+    const c = matches[idx];
+    if(c) { setForm(f=>({ ...f, clientId:c.id })); setNewClientOpen(false); }
+  }
+
+  function promptStart(){
+    const cur = toLocalInput(form.start).replace("T"," ");
+    const ans = window.prompt("Početak (YYYY-MM-DD HH:MM):", cur);
+    if(!ans) return;
+    const s = ans.replace(" ","T");
+    const d = new Date(s);
+    if(!isNaN(d)) setForm(f=>({...f, start:d}));
+  }
+
+  function promptEnd(){
+    const cur = toLocalInput(form.end).replace("T"," ");
+    const ans = window.prompt("Kraj (YYYY-MM-DD HH:MM):", cur);
+    if(!ans) return;
+    const s = ans.replace(" ","T");
+    const d = new Date(s);
+    if(!isNaN(d)) { setForm(f=>({...f, end:d})); setManualEnd(true); }
+  }
+
+  function promptServices(){
+    const all = (services||[]).filter(s=>allowedServiceIds.includes(s.id));
+    if(all.length===0){ alert("Nema definisanih usluga za ovu radnicu."); return; }
+    const idxList = all.map((s,i)=>{
+      const checked = (form.services||[]).includes(s.id) ? "✓ " : "  ";
+      const cat = categoriesMap?.get?.(s.categoryId)?.name || "";
+      return `${checked}${i+1}) ${s.name} ${cat?`(${cat})`:''} · ${s.durationMin}min · ${s.priceRsd} RSD`;
+    }).join("\n");
+    const ans = window.prompt(
+      `Usluge (unesi brojeve, zarezom; npr 1,3,5)\n${idxList}`,
+      ""
+    );
+    if(!ans && ans!=="") return;
+    const picks = String(ans).split(",").map(s=>Number(s.trim())-1).filter(n=>!isNaN(n) && n>=0 && n<all.length);
+    const ids = Array.from(new Set(picks.map(i=>all[i].id)));
+    setForm(f=>({ ...f, services: ids }));
+  }
+
+  function promptPrice(){
+    const cur = String(form.priceRsd ?? 0);
+    const ans = window.prompt("Cena (RSD):", cur);
+    if(!ans) return;
+    const n = Number(ans);
+    if(!isNaN(n)) { setForm(f=>({ ...f, priceRsd:n })); setCustomPrice(true); }
+  }
+
+  function promptPayment(){
+    const map = [
+      {k:null,  label:"0) nije naplaćeno"},
+      {k:"cash",label:"1) keš"},
+      {k:"card",label:"2) kartica"},
+      {k:"bank",label:"3) uplata na račun"},
+    ];
+    const ans = window.prompt(
+      `Način plaćanja (unesi broj):\n${map.map(m=>m.label).join("\n")}`,
+      form.paid==="cash"? "1" : form.paid==="card"? "2" : form.paid==="bank"? "3" : "0"
+    );
+    if(ans==null) return;
+    const n = Number(ans);
+    const picked = n===1?"cash" : n===2?"card" : n===3?"bank" : null;
+    setForm(f=>({...f, paid:picked}));
+  }
+
+  function promptNote(){
+    const cur = String(form.note ?? "");
+    const ans = window.prompt("Beleška:", cur);
+    if(ans==null) return;
+    setForm(f=>({...f, note: ans}));
+  }
+
   /* ---------- UI ---------- */
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
@@ -489,7 +587,7 @@ export default function CalendarEventModal({
         .cal-modal .pill{ display:inline-flex; align-items:center; gap:6px; background:var(--soft); border:1px solid var(--border); padding:6px 10px; border-radius:999px; font-size:13px; cursor:pointer; }
         .cal-modal .danger{ border-color:#ef4444; color:#ef4444; background:#fff; }
         .cal-modal .btn{ padding:10px 12px; border-radius:12px; border:1px solid var(--border); background:#fff; cursor:pointer; min-width:110px; font-weight:700; flex:0 0 auto; }
-        .cal-modal .btn-primary{  color:#fff; border-color:#1f1f1f; } /* BEL TEKST */
+        .cal-modal .btn-primary{  color:#fff; border-color:#1f1f1f; }
         .cal-modal .btn-ghost{ background:#fff; color:#1f1f1f; }
 
         /* Services */
@@ -497,7 +595,6 @@ export default function CalendarEventModal({
         .cal-modal .svc-search .icon{ position:absolute; left:12px; pointer-events:none; }
         .cal-modal .svc-search .input-plain{ padding-left:34px; }
 
-        /* sticky totals traka za usluge */
         .cal-modal .svc-totals{
           position:sticky; top:0; z-index:2;
           background:linear-gradient(#fff,#fff); border:1px solid var(--border); border-radius:10px;
@@ -505,7 +602,7 @@ export default function CalendarEventModal({
         }
 
         .cal-modal .services{
-          display:grid; grid-template-columns:1fr; gap:8px; /* na tel jedna kolona, preglednije */
+          display:grid; grid-template-columns:1fr; gap:8px;
         }
         .cal-modal .svc{
           display:flex; align-items:center; justify-content:space-between; gap:10px;
@@ -516,10 +613,8 @@ export default function CalendarEventModal({
         .cal-modal .svc-name{ font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
         .cal-modal .svc-meta{ color:#6b7280; font-size:12px; white-space:nowrap; }
 
-        /* Ghost note */
         .cal-modal .note-inline{ margin-top:4px; font-size:12px; color:#4b5563; background:#fffbea; border:1px solid #fde68a; padding:6px 8px; border-radius:8px; }
 
-        /* Client dropdown */
         .cal-modal .client-search-wrap{ position:relative; }
         .cal-modal .dropdown{
           position:absolute; top:100%; left:0; right:0; z-index:20;
@@ -530,7 +625,6 @@ export default function CalendarEventModal({
         .cal-modal .drop-item:first-child{ font-weight:700; border-bottom:1px solid #f1ebe4; background:#faf6f0; }
         .cal-modal .drop-item:hover{ background:#faf6f0; }
 
-        /* Footer */
         .cal-modal .footer{
           position:sticky; bottom:0; z-index:5;
           background:linear-gradient(0deg,#fff 80%, #ffffffcc 100%);
@@ -538,7 +632,7 @@ export default function CalendarEventModal({
           display:flex; gap:10px; justify-content:space-between; align-items:center; flex-wrap:wrap;
         }
         .cal-modal .footer-left{
-          display:flex; gap:8px; flex-wrap:wrap; /* umesto horizontalnog skrola */
+          display:flex; gap:8px; flex-wrap:wrap;
         }
         .cal-modal .footer-right{ display:flex; gap:8px; min-width:200px; }
 
@@ -549,18 +643,23 @@ export default function CalendarEventModal({
         @media(max-width:480px){
           .cal-modal .h{ padding:10px 12px; }
           .cal-modal .client-chip{ max-width:100%; padding:6px 9px; font-size:13px; }
-          .cal-modal .icon-btn{ display:inline-flex; }      /* pokaži ✕ */
-          .cal-modal .btn.hide-mobile{ display:none; }      /* sakrij veliko Zatvori */
+          .cal-modal .icon-btn{ display:inline-flex; }
           .cal-modal .pill{ padding:5px 8px; font-size:12px; }
           .cal-modal .content{ padding:10px 12px; }
           .cal-modal .input, .cal-modal .select{ padding:12px; font-size:15px; min-height:40px; }
           .cal-modal .textarea{ padding:12px; font-size:15px; }
           .cal-modal .footer{ padding:12px; }
-          /* sakrij Otkaži (✕ postoji gore) */
           .cal-modal .footer-right .btn-ghost{ display:none; }
+          /* sakrij quick-pay dugmad zauvek na mob—izbacili smo ih */
+          .cal-modal .footer-left{ display:none; }
+          /* “prompt” dugmad izgled */
+          .cal-modal .prompt-btn{
+            width:100%; text-align:left; padding:12px; border:1px solid var(--border);
+            background:#fff; border-radius:12px; font-weight:600;
+          }
+          .cal-modal .prompt-sub{ display:block; font-size:12px; color:#6b7280; margin-top:4px; font-weight:500; }
         }
         @media(min-width:821px){
-          /* na desktopu usluge mogu u dve kolone da budu preglednije */
           .cal-modal .services{ grid-template-columns:1fr 1fr; }
         }
       `}</style>
@@ -623,196 +722,72 @@ export default function CalendarEventModal({
               <button className="pill danger" onClick={()=>onDelete?.(form.id)} title="Obriši">Obriši</button>
             )}
 
-            {/* ✕ za mobilni */}
             <button className="icon-btn" onClick={onClose} title="Zatvori">✕</button>
-            {/* veliko dugme (desktop) */}
             <button className="btn hide-mobile btn-ghost" onClick={onClose}>Zatvori</button>
           </div>
         </div>
 
         {/* ===== SCROLLABLE CONTENT ===== */}
         <div className="content">
-          <div className="grid">
-            {/* Radnica */}
-            <div className="row">
-              <div className="label">Radnica</div>
-              <select
-                className="select"
-                disabled={!canChangeEmp}
-                value={form.employeeUsername || (employees[0]?.username || "")}
-                onChange={(e)=>setForm(f=>({...f, employeeUsername:e.target.value}))}
-              >
-                {(employees||[]).map(e=><option key={e.username} value={e.username}>{e.firstName} {e.lastName}</option>)}
-              </select>
-            </div>
+          {/* === MOBILNI PROMPT REŽIM === */}
+          {isMobile ? (
+            <div className="grid">
+              {/* Radnica */}
+              <div className="row">
+                <div className="label">Radnica</div>
+                <button className="prompt-btn" onClick={promptEmployee}>
+                  {selectedEmployee ? `${selectedEmployee.firstName} ${selectedEmployee.lastName}` : "Izaberi radnicu"}
+                </button>
+              </div>
 
-            {/* Klijent */}
-            {!isBlock && (
-              <div className="row" style={{ position:"relative" }}>
-                <div className="label">Klijent</div>
-
-                <div className="client-search-wrap">
-                  <input
-                    className="input"
-                    placeholder="Pretraži klijente (ime, prezime ili telefon)…"
-                    value={clientQuery}
-                    onChange={e => {
-                      setClientQuery(e.target.value);
-                      setClientListOpen(true);
-                    }}
-                    onFocus={() => setClientListOpen(true)}
-                    onBlur={() => setTimeout(()=>setClientListOpen(false), 120)}
-                  />
-
-                  {clientListOpen && (
-                    <div className="dropdown">
-                      <div
-                        className="drop-item"
-                        onMouseDown={(e)=>e.preventDefault()}
-                        onClick={()=>{
-                          setForm(f => ({ ...f, clientId:null }));
-                          setNewClientOpen(true);
-                          setClientListOpen(false);
-                        }}
-                      >
-                        ➕ Dodaj novog klijenta
-                      </div>
-
-                      {filteredClients.map(c => (
-                        <div
-                          key={c.id}
-                          className="drop-item"
-                          title={c.blocked ? "Klijent je blokiran" : ""}
-                          onMouseDown={(e)=>e.preventDefault()}
-                          onClick={()=>{
-                            setForm(f => ({ ...f, clientId: c.id }));
-                            setNewClientOpen(false);
-                            setClientListOpen(false);
-                            setClientQuery(`${c.firstName||""} ${c.lastName||""}`.trim());
-                          }}
-                        >
-                          <div style={{ display:"flex", alignItems:"center", gap:8, justifyContent:"space-between", width:"100%" }}>
-                            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                              <span style={{ width:8, height:8, borderRadius:999, background: c.blocked ? "#ef4444" : "#a7f3d0" }} />
-                              <div style={{ fontWeight:600 }}>
-                                {formatClient(c, role)}
-                              </div>
-                            </div>
-                            <div className="muted">
-                              {(c.servicesDoneCount ?? 0) > 0 ? `#${c.servicesDoneCount}` : ""}
-                            </div>
-                          </div>
-                          {(c.note || c.noShowCount>0) && (
-                            <div className="muted" style={{ marginTop:3 }}>
-                              {c.note ? `📝 ${c.note}` : ""}{c.note && c.noShowCount>0 ? " · " : ""}
-                              {c.noShowCount>0 ? `no-show: ${c.noShowCount}` : ""}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-
-                      {filteredClients.length === 0 && (
-                        <div className="muted" style={{ padding:"16px" }}>
-                          Nema rezultata. Izaberi "Dodaj novog klijenta" iznad.
-                        </div>
-                      )}
-                    </div>
-                  )}
+              {/* Klijent */}
+              {!isBlock && (
+                <div className="row">
+                  <div className="label">Klijent</div>
+                  <button className="prompt-btn" onClick={promptClient}>
+                    {form.clientId ? formatClient(clientForUI || {}, role) : "Pronađi/izaberi klijenta"}
+                  </button>
                 </div>
+              )}
 
-                {!newClientOpen && form.clientId && (clients.find(c=>c.id===form.clientId)?.blocked) && (
-                  <div className="muted" style={{ color:"#ef4444", fontSize:"13px", padding:"8px", background:"#fef2f2", borderRadius:"6px" }}>
-                    ⚠️ Klijent je blokiran — ne može da zakaže termin.
-                  </div>
-                )}
-
-                {newClientOpen && !form.clientId && (
-                  <div className="new-client-grid" style={{display:"grid", gap:10}}>
-                    <input className="input" placeholder="Ime *" value={newClient.firstName} onChange={e=>setNewClient(v=>({...v, firstName:e.target.value}))}/>
-                    <input className="input" placeholder="Prezime" value={newClient.lastName} onChange={e=>setNewClient(v=>({...v, lastName:e.target.value}))}/>
-                    <input className="input" placeholder="Telefon *" inputMode="tel" value={newClient.phone} onChange={e=>setNewClient(v=>({...v, phone:e.target.value}))}/>
-                    <input className="input" placeholder="Email (opciono)" inputMode="email" value={newClient.email} onChange={e=>setNewClient(v=>({...v, email:e.target.value}))}/>
-                  </div>
+              {/* Početak / Kraj */}
+              <div className="row">
+                <div className="label">Početak</div>
+                <button className="prompt-btn" onClick={promptStart}>
+                  {toLocalInput(form.start).replace("T"," ")}
+                </button>
+              </div>
+              <div className="row">
+                <div className="label">Kraj</div>
+                <button className="prompt-btn" onClick={promptEnd}>
+                  {toLocalInput(form.end).replace("T"," ")}
+                </button>
+                {manualEnd && (
+                  <button className="pill" type="button" onClick={()=>setManualEnd(false)}>
+                    ↻ Auto trajanje
+                  </button>
                 )}
               </div>
-            )}
 
-            {/* Vreme */}
-            <div className="row">
-              <div className="label">Početak</div>
-              <input
-                className="input" type="datetime-local"
-                value={toLocalInput(form.start)}
-                onChange={(e)=>setForm(f=>({...f, start:new Date(e.target.value)}))}
-              />
-            </div>
+              {/* Usluge (prompt) */}
+              {!isBlock && (
+                <div className="row" style={{gridColumn:"1 / -1"}}>
+                  <div className="label">Usluge</div>
 
-            <div className="row">
-              <div className="label">Kraj</div>
-              <input
-                className="input" type="datetime-local"
-                value={toLocalInput(form.end)}
-                onChange={(e)=>{ setForm(f=>({...f, end:new Date(e.target.value)})); setManualEnd(true); }}
-              />
-              {manualEnd && (
-                <button className="pill" type="button" onClick={()=>setManualEnd(false)}>
-                  ↻ Auto trajanje
-                </button>
-              )}
-            </div>
+                  {/* sticky totals */}
+                  <div className="svc-totals">
+                    <span>💰 Ukupno (auto): <b>{autoTotal} RSD</b></span>
+                    <span>⏱️ Trajanje (auto): <b>{autoDurationMin} min</b></span>
+                  </div>
 
-            {/* Usluge */}
-            {!isBlock && (
-              <div className="row" style={{gridColumn:"1 / -1"}}>
-                <div className="label">Usluge</div>
+                  <button className="prompt-btn" onClick={promptServices}>
+                    Uredi usluge
+                    <span className="prompt-sub">
+                      {makeServicesLabel(services, form.services) || "Nije izabrano"}
+                    </span>
+                  </button>
 
-                {/* sticky totals */}
-                <div className="svc-totals">
-                  <span>💰 Ukupno (auto): <b>{autoTotal} RSD</b></span>
-                  <span>⏱️ Trajanje (auto): <b>{autoDurationMin} min</b></span>
-                </div>
-
-                <div className="svc-search">
-                  <span className="icon">🔍</span>
-                  <input
-                    className="input input-plain"
-                    placeholder="Pretraži usluge… (naziv ili kategorija)"
-                    value={svcQuery}
-                    onChange={(e)=>setSvcQuery(e.target.value)}
-                  />
-                  {svcQuery && (
-                    <button className="pill" onClick={()=>setSvcQuery("")} title="Obriši pretragu" style={{position:"absolute", right:8}}>
-                      ✕
-                    </button>
-                  )}
-                </div>
-
-                <div className="services">
-                  {filteredServices.map(s=>{
-                    const color = (categoriesMap?.get?.(s.categoryId)?.color) || "#ddd";
-                    const checked = (form.services||[]).includes(s.id);
-                    return (
-                      <label key={s.id} className="svc">
-                        <span className="svc-title">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={(e)=>onServiceToggle(s.id, e.target.checked)}
-                            style={{ width:18, height:18, marginRight:6 }}
-                          />
-                          <span className="color-dot" style={{background:color}}/>
-                          <span className="svc-name">{s.name}</span>
-                        </span>
-                        <span className="svc-meta">{s.durationMin}min · {s.priceRsd} RSD</span>
-                      </label>
-                    );
-                  })}
-                  {filteredServices.length===0 && (
-                    <div className="muted" style={{padding:"16px", textAlign:"center"}}>
-                      Nema definisanih usluga za ovu radnicu.
-                    </div>
-                  )}
-
+                  {/* (na mob ne renderujemo dužu listu, sve ide kroz prompt) */}
                   {ghostServices.length>0 && (
                     <div className="note-inline" style={{ marginTop:8 }}>
                       Ovaj termin sadrži usluge koje nisu u trenutnom katalogu:{" "}
@@ -820,66 +795,283 @@ export default function CalendarEventModal({
                     </div>
                   )}
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Cena / plaćanje */}
-            {!isBlock && (
-              <>
+              {/* Cena */}
+              {!isBlock && (
                 <div className="row">
                   <div className="label">Cena (RSD)</div>
-                  <input
-                    className="input" type="number" value={form.priceRsd}
-                    onChange={(e)=>{ setForm(f=>({...f, priceRsd:e.target.value})); setCustomPrice(true); }}
-                    disabled={!canEditPrice}
-                  />
+                  <button className="prompt-btn" onClick={promptPrice}>
+                    {Number(form.priceRsd||0)} RSD
+                  </button>
                 </div>
+              )}
 
-                {showPayment && (
-                  <div className="row" style={{gridColumn:"1 / -1"}}>
-                    <div className="label">Plaćanje</div>
-                    <div className="payment-options" style={{display:"grid", gap:10}}>
-                      <label className="svc" style={{alignItems:"center"}}>
-                        <input type="radio" name="paid" checked={form.paid===null}  onChange={()=>setForm(f=>({...f,paid:null}))}/>
-                        <span style={{marginLeft:10}}>nije naplaćeno</span>
-                      </label>
-                      <label className="svc" style={{alignItems:"center"}}>
-                        <input type="radio" name="paid" checked={form.paid==="cash"} onChange={()=>setForm(f=>({...f,paid:"cash"}))}/>
-                        <span style={{marginLeft:10}}>keš 💵</span>
-                      </label>
-                      <label className="svc" style={{alignItems:"center"}}>
-                        <input type="radio" name="paid" checked={form.paid==="card"} onChange={()=>setForm(f=>({...f,paid:"card"}))}/>
-                        <span style={{marginLeft:10}}>kartica 💳</span>
-                      </label>
-                      <label className="svc" style={{alignItems:"center"}}>
-                        <input type="radio" name="paid" checked={form.paid==="bank"} onChange={()=>setForm(f=>({...f,paid:"bank"}))}/>
-                        <span style={{marginLeft:10}}>uplata na račun 🏦</span>
-                      </label>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
+              {/* Plaćanje — samo jedno mesto (prompt) */}
+              {!isBlock && showPayment && (
+                <div className="row" style={{gridColumn:"1 / -1"}}>
+                  <div className="label">Plaćanje</div>
+                  <button className="prompt-btn" onClick={promptPayment}>
+                    {form.paid==="cash" ? "Keš 💵" :
+                     form.paid==="card" ? "Kartica 💳" :
+                     form.paid==="bank" ? "Uplata na račun 🏦" :
+                     "Nije naplaćeno"}
+                  </button>
+                </div>
+              )}
 
-            {/* Beleška */}
-            <div className="row" style={{gridColumn:"1 / -1"}}>
-              <div className="label">Beleška (vidi ko ima pristup)</div>
-              <textarea className="textarea" value={form.note||""} onChange={(e)=>setForm(f=>({...f, note:e.target.value}))}/>
+              {/* Beleška (prompt) */}
+              <div className="row" style={{gridColumn:"1 / -1"}}>
+                <div className="label">Beleška</div>
+                <button className="prompt-btn" onClick={promptNote}>
+                  {form.note?.trim() ? "Izmeni belešku" : "Dodaj belešku"}
+                  {form.note?.trim() && <span className="prompt-sub">{form.note}</span>}
+                </button>
+              </div>
             </div>
-          </div>
+          ) : (
+          /* === DESKTOP — postojeći detaljni UI === */
+            <div className="grid">
+              {/* Radnica */}
+              <div className="row">
+                <div className="label">Radnica</div>
+                <select
+                  className="select"
+                  disabled={!canChangeEmp}
+                  value={form.employeeUsername || (employees[0]?.username || "")}
+                  onChange={(e)=>setForm(f=>({...f, employeeUsername:e.target.value}))}
+                >
+                  {(employees||[]).map(e=><option key={e.username} value={e.username}>{e.firstName} {e.lastName}</option>)}
+                </select>
+              </div>
+
+              {/* Klijent */}
+              {!isBlock && (
+                <div className="row" style={{ position:"relative" }}>
+                  <div className="label">Klijent</div>
+
+                  <div className="client-search-wrap">
+                    <input
+                      className="input"
+                      placeholder="Pretraži klijente (ime, prezime ili telefon)…"
+                      value={clientQuery}
+                      onChange={e => {
+                        setClientQuery(e.target.value);
+                        setClientListOpen(true);
+                      }}
+                      onFocus={() => setClientListOpen(true)}
+                      onBlur={() => setTimeout(()=>setClientListOpen(false), 120)}
+                    />
+
+                    {clientListOpen && (
+                      <div className="dropdown">
+                        <div
+                          className="drop-item"
+                          onMouseDown={(e)=>e.preventDefault()}
+                          onClick={()=>{
+                            setForm(f => ({ ...f, clientId:null }));
+                            setNewClientOpen(true);
+                            setClientListOpen(false);
+                          }}
+                        >
+                          ➕ Dodaj novog klijenta
+                        </div>
+
+                        {filteredClients.map(c => (
+                          <div
+                            key={c.id}
+                            className="drop-item"
+                            title={c.blocked ? "Klijent je blokiran" : ""}
+                            onMouseDown={(e)=>e.preventDefault()}
+                            onClick={()=>{
+                              setForm(f => ({ ...f, clientId: c.id }));
+                              setNewClientOpen(false);
+                              setClientListOpen(false);
+                              setClientQuery(`${c.firstName||""} ${c.lastName||""}`.trim());
+                            }}
+                          >
+                            <div style={{ display:"flex", alignItems:"center", gap:8, justifyContent:"space-between", width:"100%" }}>
+                              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                                <span style={{ width:8, height:8, borderRadius:999, background: c.blocked ? "#ef4444" : "#a7f3d0" }} />
+                                <div style={{ fontWeight:600 }}>
+                                  {formatClient(c, role)}
+                                </div>
+                              </div>
+                              <div className="muted">
+                                {(c.servicesDoneCount ?? 0) > 0 ? `#${c.servicesDoneCount}` : ""}
+                              </div>
+                            </div>
+                            {(c.note || c.noShowCount>0) && (
+                              <div className="muted" style={{ marginTop:3 }}>
+                                {c.note ? `📝 ${c.note}` : ""}{c.note && c.noShowCount>0 ? " · " : ""}
+                                {c.noShowCount>0 ? `no-show: ${c.noShowCount}` : ""}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+
+                        {filteredClients.length === 0 && (
+                          <div className="muted" style={{ padding:"16px" }}>
+                            Nema rezultata. Izaberi "Dodaj novog klijenta" iznad.
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {!newClientOpen && form.clientId && (clients.find(c=>c.id===form.clientId)?.blocked) && (
+                    <div className="muted" style={{ color:"#ef4444", fontSize:"13px", padding:"8px", background:"#fef2f2", borderRadius:"6px" }}>
+                      ⚠️ Klijent je blokiran — ne može da zakaže termin.
+                    </div>
+                  )}
+
+                  {newClientOpen && !form.clientId && (
+                    <div className="new-client-grid" style={{display:"grid", gap:10}}>
+                      <input className="input" placeholder="Ime *" value={newClient.firstName} onChange={e=>setNewClient(v=>({...v, firstName:e.target.value}))}/>
+                      <input className="input" placeholder="Prezime" value={newClient.lastName} onChange={e=>setNewClient(v=>({...v, lastName:e.target.value}))}/>
+                      <input className="input" placeholder="Telefon *" inputMode="tel" value={newClient.phone} onChange={e=>setNewClient(v=>({...v, phone:e.target.value}))}/>
+                      <input className="input" placeholder="Email (opciono)" inputMode="email" value={newClient.email} onChange={e=>setNewClient(v=>({...v, email:e.target.value}))}/>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Vreme */}
+              <div className="row">
+                <div className="label">Početak</div>
+                <input
+                  className="input" type="datetime-local"
+                  value={toLocalInput(form.start)}
+                  onChange={(e)=>setForm(f=>({...f, start:new Date(e.target.value)}))}
+                />
+              </div>
+
+              <div className="row">
+                <div className="label">Kraj</div>
+                <input
+                  className="input" type="datetime-local"
+                  value={toLocalInput(form.end)}
+                  onChange={(e)=>{ setForm(f=>({...f, end:new Date(e.target.value)})); setManualEnd(true); }}
+                />
+                {manualEnd && (
+                  <button className="pill" type="button" onClick={()=>setManualEnd(false)}>
+                    ↻ Auto trajanje
+                  </button>
+                )}
+              </div>
+
+              {/* Usluge */}
+              {!isBlock && (
+                <div className="row" style={{gridColumn:"1 / -1"}}>
+                  <div className="label">Usluge</div>
+
+                  {/* sticky totals */}
+                  <div className="svc-totals">
+                    <span>💰 Ukupno (auto): <b>{autoTotal} RSD</b></span>
+                    <span>⏱️ Trajanje (auto): <b>{autoDurationMin} min</b></span>
+                  </div>
+
+                  <div className="svc-search">
+                    <span className="icon">🔍</span>
+                    <input
+                      className="input input-plain"
+                      placeholder="Pretraži usluge… (naziv ili kategorija)"
+                      value={svcQuery}
+                      onChange={(e)=>setSvcQuery(e.target.value)}
+                    />
+                    {svcQuery && (
+                      <button className="pill" onClick={()=>setSvcQuery("")} title="Obriši pretragu" style={{position:"absolute", right:8}}>
+                        ✕
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="services">
+                    {filteredServices.map(s=>{
+                      const color = (categoriesMap?.get?.(s.categoryId)?.color) || "#ddd";
+                      const checked = (form.services||[]).includes(s.id);
+                      return (
+                        <label key={s.id} className="svc">
+                          <span className="svc-title">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e)=>onServiceToggle(s.id, e.target.checked)}
+                              style={{ width:18, height:18, marginRight:6 }}
+                            />
+                            <span className="color-dot" style={{background:color}}/>
+                            <span className="svc-name">{s.name}</span>
+                          </span>
+                          <span className="svc-meta">{s.durationMin}min · {s.priceRsd} RSD</span>
+                        </label>
+                      );
+                    })}
+                    {filteredServices.length===0 && (
+                      <div className="muted" style={{padding:"16px", textAlign:"center"}}>
+                        Nema definisanih usluga za ovu radnicu.
+                      </div>
+                    )}
+
+                    {ghostServices.length>0 && (
+                      <div className="note-inline" style={{ marginTop:8 }}>
+                        Ovaj termin sadrži usluge koje nisu u trenutnom katalogu:{" "}
+                        {ghostServices.map(g => g?.name || sid(g)).filter(Boolean).join(", ")}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Cena / plaćanje */}
+              {!isBlock && (
+                <>
+                  <div className="row">
+                    <div className="label">Cena (RSD)</div>
+                    <input
+                      className="input" type="number" value={form.priceRsd}
+                      onChange={(e)=>{ setForm(f=>({...f, priceRsd:e.target.value})); setCustomPrice(true); }}
+                      disabled={!canEditPrice}
+                    />
+                  </div>
+
+                  {showPayment && (
+                    <div className="row" style={{gridColumn:"1 / -1"}}>
+                      <div className="label">Plaćanje</div>
+                      <div className="payment-options" style={{display:"grid", gap:10}}>
+                        <label className="svc" style={{alignItems:"center"}}>
+                          <input type="radio" name="paid" checked={form.paid===null}  onChange={()=>setForm(f=>({...f,paid:null}))}/>
+                          <span style={{marginLeft:10}}>nije naplaćeno</span>
+                        </label>
+                        <label className="svc" style={{alignItems:"center"}}>
+                          <input type="radio" name="paid" checked={form.paid==="cash"} onChange={()=>setForm(f=>({...f,paid:"cash"}))}/>
+                          <span style={{marginLeft:10}}>keš 💵</span>
+                        </label>
+                        <label className="svc" style={{alignItems:"center"}}>
+                          <input type="radio" name="paid" checked={form.paid==="card"} onChange={()=>setForm(f=>({...f,paid:"card"}))}/>
+                          <span style={{marginLeft:10}}>kartica 💳</span>
+                        </label>
+                        <label className="svc" style={{alignItems:"center"}}>
+                          <input type="radio" name="paid" checked={form.paid==="bank"} onChange={()=>setForm(f=>({...f,paid:"bank"}))}/>
+                          <span style={{marginLeft:10}}>uplata na račun 🏦</span>
+                        </label>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Beleška */}
+              <div className="row" style={{gridColumn:"1 / -1"}}>
+                <div className="label">Beleška (vidi ko ima pristup)</div>
+                <textarea className="textarea" value={form.note||""} onChange={(e)=>setForm(f=>({...f, note:e.target.value}))}/>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ===== FOOTER ===== */}
         <div className="footer">
-          <div className="footer-left">
-            {(!isBlock && form.id && form.paid===null && (role==="admin" || role==="salon")) && (
-              <>
-                <button className="btn btn-ghost" onClick={()=>setForm(f=>({...f, paid:"cash"}))}>💵 Keš</button>
-                <button className="btn btn-ghost" onClick={()=>setForm(f=>({...f, paid:"card"}))}>💳 Kartica</button>
-                <button className="btn btn-ghost" onClick={()=>setForm(f=>({...f, paid:"bank"}))}>🏦 Račun</button>
-              </>
-            )}
-          </div>
+          {/* uklonjeno: quick-pay dugmad na dnu */}
           <div className="footer-right">
             <button className="btn btn-ghost" onClick={onClose}>Otkaži</button>
             <button className="btn btn-primary" disabled={saving} onClick={save}>
