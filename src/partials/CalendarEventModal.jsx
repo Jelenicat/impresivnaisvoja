@@ -399,247 +399,84 @@ export default function CalendarEventModal({
     }
   }
 
-  /* ===== PROMPT režim za mobilni ===== */
-  function promptEmployee(){
-    const list = (employees||[]).map((e,i)=>`${i+1}) ${e.firstName} ${e.lastName}`).join("\n");
-    const ans = window.prompt(`Izaberi radnicu (unesi broj):\n${list}`, "");
-    if(!ans) return;
-    const idx = Number(ans)-1;
-    const emp = employees[idx];
-    if(emp) setForm(f=>({...f, employeeUsername: emp.username}));
-  }
-
-  function promptClient(){
-    const q = window.prompt("Upiši deo imena/prezimena ili telefon:", "");
-    if(!q) return;
-    const n = normalized(q);
-    const matches = (clients||[]).filter(c=>{
-      const name = `${c.firstName||""} ${c.lastName||""}`.toLowerCase();
-      const phone = (c.phone||c.phoneNumber||c.mobile||"").toString();
-      return name.includes(n) || phone.includes(n);
-    }).slice(0,10);
-    if(matches.length===0){ alert("Nema rezultata."); return; }
-    const list = matches.map((c,i)=>`${i+1}) ${formatClient(c, role)}`).join("\n");
-    const pick = window.prompt(`Pronađeno:\n${list}\n\nUnesi broj željenog klijenta.`, "1");
-    if(!pick) return;
-    const idx = Number(pick)-1;
-    const c = matches[idx];
-    if(c) { setForm(f=>({ ...f, clientId:c.id })); setNewClientOpen(false); }
-  }
-
-  function promptStart(){
-    const cur = toLocalInput(form.start).replace("T"," ");
-    const ans = window.prompt("Početak (YYYY-MM-DD HH:MM):", cur);
-    if(!ans) return;
-    const s = ans.replace(" ","T");
-    const d = new Date(s);
-    if(!isNaN(d)) setForm(f=>({...f, start:d}));
-  }
-
-  function promptEnd(){
-    const cur = toLocalInput(form.end).replace("T"," ");
-    const ans = window.prompt("Kraj (YYYY-MM-DD HH:MM):", cur);
-    if(!ans) return;
-    const s = ans.replace(" ","T");
-    const d = new Date(s);
-    if(!isNaN(d)) { setForm(f=>({...f, end:d})); setManualEnd(true); }
-  }
-
-  function promptServices(){
-    const all = (services||[]).filter(s=>allowedServiceIds.includes(s.id));
-    if(all.length===0){ alert("Nema definisanih usluga za ovu radnicu."); return; }
-    const idxList = all.map((s,i)=>{
-      const checked = (form.services||[]).includes(s.id) ? "✓ " : "  ";
-      const cat = categoriesMap?.get?.(s.categoryId)?.name || "";
-      return `${checked}${i+1}) ${s.name} ${cat?`(${cat})`:''} · ${s.durationMin}min · ${s.priceRsd} RSD`;
-    }).join("\n");
-    const ans = window.prompt(
-      `Usluge (unesi brojeve, zarezom; npr 1,3,5)\n${idxList}`,
-      ""
-    );
-    if(!ans && ans!=="") return;
-    const picks = String(ans).split(",").map(s=>Number(s.trim())-1).filter(n=>!isNaN(n) && n>=0 && n<all.length);
-    const ids = Array.from(new Set(picks.map(i=>all[i].id)));
-    setForm(f=>({ ...f, services: ids }));
-  }
-
-  function promptPrice(){
-    const cur = String(form.priceRsd ?? 0);
-    const ans = window.prompt("Cena (RSD):", cur);
-    if(!ans) return;
-    const n = Number(ans);
-    if(!isNaN(n)) { setForm(f=>({ ...f, priceRsd:n })); setCustomPrice(true); }
-  }
-
-  function promptPayment(){
-    const map = [
-      {k:null,  label:"0) nije naplaćeno"},
-      {k:"cash",label:"1) keš"},
-      {k:"card",label:"2) kartica"},
-      {k:"bank",label:"3) uplata na račun"},
-    ];
-    const ans = window.prompt(
-      `Način plaćanja (unesi broj):\n${map.map(m=>m.label).join("\n")}`,
-      form.paid==="cash"? "1" : form.paid==="card"? "2" : form.paid==="bank"? "3" : "0"
-    );
-    if(ans==null) return;
-    const n = Number(ans);
-    const picked = n===1?"cash" : n===2?"card" : n===3?"bank" : null;
-    setForm(f=>({...f, paid:picked}));
-  }
-
-  function promptNote(){
-    const cur = String(form.note ?? "");
-    const ans = window.prompt("Beleška:", cur);
-    if(ans==null) return;
-    setForm(f=>({...f, note: ans}));
-  }
+  /* ===== MOBILNI: expandable sekcije (sve “kao pre”, ali otvara se na klik) ===== */
+  const [openEmp, setOpenEmp] = useState(false);
+  const [openClient, setOpenClient] = useState(false);
+  const [openTime, setOpenTime] = useState(false);
+  const [openSvcs, setOpenSvcs] = useState(false);
+  const [openPrice, setOpenPrice] = useState(false);
+  const [openPay, setOpenPay] = useState(false);
+  const [openNote, setOpenNote] = useState(false);
 
   /* ---------- UI ---------- */
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
       <style>{`
-        /* ===== THEME RESET & TWEAKS ===== */
         :root{
-          --ink:#1f1f1f;
-          --muted:#6b6b6b;
-          --bg:#fff;
-          --border:#e6e0d7;
-          --soft:#faf6f0;
-          --focus: rgba(199,178,153,.35);
-          --chip:#f5f7ff; --chip-border:#dbe3ff; /* više sivo nego plavo */
+          --ink:#1f1f1f; --muted:#6b6b6b; --bg:#fff; --border:#e6e0d7; --soft:#faf6f0; --focus: rgba(199,178,153,.35);
+          --chip:#f5f7ff; --chip-border:#dbe3ff;
         }
         * { -webkit-tap-highlight-color: transparent; }
-        /* neutralizuj iOS plavo; ali ne diramo radio/checkbox */
         .cal-modal input:not([type="radio"]):not([type="checkbox"]),
-        .cal-modal select,
-        .cal-modal textarea,
-        .cal-modal button{
-          color:var(--ink)!important;
-          -webkit-text-fill-color:var(--ink)!important;
-          appearance:none;
-          -webkit-appearance:none;
-          outline:none;
+        .cal-modal select, .cal-modal textarea, .cal-modal button{
+          color:var(--ink)!important; -webkit-text-fill-color:var(--ink)!important; appearance:none; -webkit-appearance:none; outline:none;
         }
-        /* vidljiv, neutralan radio/checkbox */
-        .cal-modal input[type="checkbox"],
-        .cal-modal input[type="radio"]{
-          appearance:auto;
-          -webkit-appearance:auto;
-          accent-color:#1f1f1f;
-          width:18px; height:18px;
-          outline:none;
+        .cal-modal input[type="checkbox"], .cal-modal input[type="radio"]{
+          appearance:auto; -webkit-appearance:auto; accent-color:#1f1f1f; width:18px; height:18px; outline:none;
         }
-
-        .cal-modal :is(input,select,textarea):focus{
-          box-shadow:0 0 0 3px var(--focus); border-color:#c7b299;
-        }
+        .cal-modal :is(input,select,textarea):focus{ box-shadow:0 0 0 3px var(--focus); border-color:#c7b299; }
         ::selection{ background:#f3e8d7; color:#000; }
 
-        /* ===== Backdrop & Shell ===== */
-        .modal-backdrop{
-          position:fixed; inset:0; background:#0007;
-          display:flex; align-items:stretch; justify-content:flex-end;
-          padding:0; z-index:1000;
-        }
-        .cal-modal.modal{
-          background:var(--bg); width:100%; max-width:900px; height:100%;
-          border-left:1px solid var(--border); box-shadow:-14px 0 40px rgba(0,0,0,.18);
-          display:flex; flex-direction:column;
-        }
+        .modal-backdrop{ position:fixed; inset:0; background:#0007; display:flex; align-items:stretch; justify-content:flex-end; padding:0; z-index:1000; }
+        .cal-modal.modal{ background:var(--bg); width:100%; max-width:900px; height:100%; border-left:1px solid var(--border); box-shadow:-14px 0 40px rgba(0,0,0,.18); display:flex; flex-direction:column; }
 
-        /* ===== Header ===== */
-        .cal-modal .h{
-          position:sticky; top:0; z-index:5;
-          display:flex; gap:10px; justify-content:space-between; align-items:center;
-          padding:12px 14px; background:var(--bg); border-bottom:1px solid #efeae3;
-        }
+        .cal-modal .h{ position:sticky; top:0; z-index:5; display:flex; gap:10px; justify-content:space-between; align-items:center; padding:12px 14px; background:var(--bg); border-bottom:1px solid #efeae3; }
         .cal-modal .title-left{ display:flex; flex-direction:column; gap:6px; flex:1; }
-        .cal-modal .client-chip{
-          display:inline-flex; align-items:center; gap:8px;
-          padding:7px 10px; background:var(--chip); border:1px solid var(--chip-border);
-          border-radius:999px; font-size:14px; max-width:220px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-        }
+        .cal-modal .client-chip{ display:inline-flex; align-items:center; gap:8px; padding:7px 10px; background:var(--chip); border:1px solid var(--chip-border); border-radius:999px; font-size:14px; max-width:220px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .cal-modal .client-info-row{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-        .cal-modal .icon-btn{
-          display:none; align-items:center; justify-content:center;
-          width:36px; height:36px; border:1px solid var(--border);
-          border-radius:10px; background:#fff; font-size:18px; line-height:1;
-        }
+        .cal-modal .icon-btn{ display:none; align-items:center; justify-content:center; width:36px; height:36px; border:1px solid var(--border); border-radius:10px; background:#fff; font-size:18px; }
 
-        /* ===== Content ===== */
-        .cal-modal .content{
-          flex:1 1 auto; overflow-y:auto; overflow-x:hidden; padding:14px;
-        }
+        .cal-modal .content{ flex:1 1 auto; overflow-y:auto; overflow-x:hidden; padding:14px; }
         .cal-modal .grid{ display:grid; gap:10px; grid-template-columns:1fr 1fr; }
         .cal-modal .label{ font-size:12px; color:#706a61; margin-bottom:4px; font-weight:600; }
         .cal-modal .row{ display:grid; gap:6px; }
         .muted{ color:#6b7280; font-size:12px; }
 
-        /* Inputs */
         .cal-modal .input, .cal-modal .select, .cal-modal .textarea{
-          width:100%; padding:10px 12px; border-radius:12px;
-          border:1px solid var(--border); background:#fff; font-size:14px; min-height:40px; box-sizing:border-box;
+          width:100%; padding:10px 12px; border-radius:12px; border:1px solid var(--border); background:#fff; font-size:14px; min-height:40px; box-sizing:border-box;
         }
         .cal-modal .textarea{ min-height:84px; resize:vertical; }
 
-        /* Buttons */
         .cal-modal .pill{ display:inline-flex; align-items:center; gap:6px; background:var(--soft); border:1px solid var(--border); padding:6px 10px; border-radius:999px; font-size:13px; cursor:pointer; }
         .cal-modal .danger{ border-color:#ef4444; color:#ef4444; background:#fff; }
-        .cal-modal .btn{ padding:10px 12px; border-radius:12px; border:1px solid var(--border); background:#fff; cursor:pointer; min-width:110px; font-weight:700; flex:0 0 auto; }
-        .cal-modal .btn-primary{  color:#fff; border-color:#1f1f1f; }
+        .cal-modal .btn{ padding:10px 12px; border-radius:12px; border:1px solid var(--border); background:#fff; cursor:pointer; min-width:110px; font-weight:700; }
+        .cal-modal .btn-primary{ color:#fff; border-color:#1f1f1f; }
         .cal-modal .btn-ghost{ background:#fff; color:#1f1f1f; }
 
-        /* Services */
         .cal-modal .svc-search{ position:relative; display:flex; align-items:center; gap:8px; margin-bottom:8px; }
         .cal-modal .svc-search .icon{ position:absolute; left:12px; pointer-events:none; }
         .cal-modal .svc-search .input-plain{ padding-left:34px; }
+        .cal-modal .svc-totals{ position:sticky; top:0; z-index:2; background:#fff; border:1px solid var(--border); border-radius:10px; padding:8px 10px; display:flex; align-items:center; justify-content:space-between; font-size:13px; margin-bottom:8px; }
 
-        .cal-modal .svc-totals{
-          position:sticky; top:0; z-index:2;
-          background:linear-gradient(#fff,#fff); border:1px solid var(--border); border-radius:10px;
-          padding:8px 10px; display:flex; align-items:center; justify-content:space-between; font-size:13px; margin-bottom:8px;
-        }
-
-        .cal-modal .services{
-          display:grid; grid-template-columns:1fr; gap:8px;
-        }
-        .cal-modal .svc{
-          display:flex; align-items:center; justify-content:space-between; gap:10px;
-          padding:10px; border:1px solid #eee; border-radius:12px; background:#fff;
-        }
+        .cal-modal .services{ display:grid; grid-template-columns:1fr; gap:8px; }
+        .cal-modal .svc{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px; border:1px solid #eee; border-radius:12px; background:#fff; }
         .cal-modal .svc-title{ display:flex; align-items:center; gap:10px; flex:1; min-width:0; }
         .cal-modal .color-dot{ width:10px; height:10px; border-radius:50%; flex:0 0 auto; }
         .cal-modal .svc-name{ font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
         .cal-modal .svc-meta{ color:#6b7280; font-size:12px; white-space:nowrap; }
 
-        .cal-modal .note-inline{ margin-top:4px; font-size:12px; color:#4b5563; background:#fffbea; border:1px solid #fde68a; padding:6px 8px; border-radius:8px; }
-
         .cal-modal .client-search-wrap{ position:relative; }
         .cal-modal .dropdown{
-          position:absolute; top:100%; left:0; right:0; z-index:20;
-          background:#fff; border:1px solid var(--border); border-radius:12px; box-shadow:0 12px 30px rgba(0,0,0,.12); margin-top:6px;
-          max-height:45vh; overflow:auto;
+          position:absolute; top:100%; left:0; right:0; z-index:20; background:#fff; border:1px solid var(--border); border-radius:12px; box-shadow:0 12px 30px rgba(0,0,0,.12); margin-top:6px; max-height:45vh; overflow:auto;
         }
         .cal-modal .drop-item{ padding:12px 14px; cursor:pointer; border-bottom:1px solid #f7f3ed; display:flex; flex-direction:column; gap:4px; }
         .cal-modal .drop-item:first-child{ font-weight:700; border-bottom:1px solid #f1ebe4; background:#faf6f0; }
         .cal-modal .drop-item:hover{ background:#faf6f0; }
 
-        .cal-modal .footer{
-          position:sticky; bottom:0; z-index:5;
-          background:linear-gradient(0deg,#fff 80%, #ffffffcc 100%);
-          border-top:1px solid #efeae3; padding:10px 14px;
-          display:flex; gap:10px; justify-content:space-between; align-items:center; flex-wrap:wrap;
-        }
-        .cal-modal .footer-left{
-          display:flex; gap:8px; flex-wrap:wrap;
-        }
+        .cal-modal .footer{ position:sticky; bottom:0; z-index:5; background:linear-gradient(0deg,#fff 80%, #ffffffcc 100%); border-top:1px solid #efeae3; padding:10px 14px; display:flex; gap:10px; justify-content:space-between; align-items:center; flex-wrap:wrap; }
         .cal-modal .footer-right{ display:flex; gap:8px; min-width:200px; }
 
-        /* --- Responsive --- */
-        @media(max-width:820px){
-          .cal-modal .grid{ grid-template-columns:1fr; gap:12px; }
-        }
+        @media(max-width:820px){ .cal-modal .grid{ grid-template-columns:1fr; gap:12px; } }
         @media(max-width:480px){
           .cal-modal .h{ padding:10px 12px; }
           .cal-modal .client-chip{ max-width:100%; padding:6px 9px; font-size:13px; }
@@ -648,20 +485,16 @@ export default function CalendarEventModal({
           .cal-modal .content{ padding:10px 12px; }
           .cal-modal .input, .cal-modal .select{ padding:12px; font-size:15px; min-height:40px; }
           .cal-modal .textarea{ padding:12px; font-size:15px; }
-          .cal-modal .footer{ padding:12px; }
-          .cal-modal .footer-right .btn-ghost{ display:none; }
-          /* sakrij quick-pay dugmad zauvek na mob—izbacili smo ih */
-          .cal-modal .footer-left{ display:none; }
-          /* “prompt” dugmad izgled */
-          .cal-modal .prompt-btn{
+
+          /* expandable header dugme */
+          .cal-modal .expander{
             width:100%; text-align:left; padding:12px; border:1px solid var(--border);
-            background:#fff; border-radius:12px; font-weight:600;
+            background:#fff; border-radius:12px; font-weight:700; display:flex; justify-content:space-between; align-items:center;
           }
-          .cal-modal .prompt-sub{ display:block; font-size:12px; color:#6b7280; margin-top:4px; font-weight:500; }
+          .cal-modal .expander-sub{ display:block; font-size:12px; color:#6b7280; margin-top:4px; font-weight:500; }
+          .cal-modal .section{ border:1px solid var(--border); border-radius:12px; padding:10px; background:#fff; }
         }
-        @media(min-width:821px){
-          .cal-modal .services{ grid-template-columns:1fr 1fr; }
-        }
+        @media(min-width:821px){ .cal-modal .services{ grid-template-columns:1fr 1fr; } }
       `}</style>
 
       <div className="modal cal-modal" onMouseDown={(e)=>e.stopPropagation()}>
@@ -677,34 +510,21 @@ export default function CalendarEventModal({
               <>
                 <div className="client-info-row">
                   {(role==="admin" || role==="salon") ? (
-                    <button
-                      className="client-chip"
-                      onClick={openClientProfile}
-                      title="Otvori profil klijenta"
-                    >
+                    <button className="client-chip" onClick={openClientProfile} title="Otvori profil klijenta">
                       👤 {formatClient(clientForUI || {}, role)}
                     </button>
                   ) : (
-                    <span className="client-chip" title="Klijent">
-                      👤 {formatClient(clientForUI || {}, role)}
-                    </span>
+                    <span className="client-chip" title="Klijent">👤 {formatClient(clientForUI || {}, role)}</span>
                   )}
-
                   {(clientForUI?.noShowCount || 0) > 0 && (
-                    <span
-                      className="no-show-badge"
-                      style={{ background:"#fee2e2", color:"#b91c1c", fontWeight:700, fontSize:12, padding:"4px 8px", borderRadius:"6px" }}
-                      title={`Klijent nije došao ${clientForUI.noShowCount} puta`}
-                    >
+                    <span style={{ background:"#fee2e2", color:"#b91c1c", fontWeight:700, fontSize:12, padding:"4px 8px", borderRadius:"6px" }}
+                          title={`Klijent nije došao ${clientForUI.noShowCount} puta`}>
                       No-show {clientForUI.noShowCount}
                     </span>
                   )}
                 </div>
-
                 {clientForUI?.note && (
-                  <div className="note-inline" title="Beleška sa profila klijenta">
-                    📝 {clientForUI.note}
-                  </div>
+                  <div className="note-inline" title="Beleška sa profila klijenta">📝 {clientForUI.note}</div>
                 )}
               </>
             )}
@@ -714,14 +534,12 @@ export default function CalendarEventModal({
             {(!isBlock && (form.isOnline || form.bookedVia === "public_app")) && (
               <span className="pill" title="Online rezervacija">🌐 Online</span>
             )}
-
             {form.id && !isBlock && (
               <button className="pill" onClick={markNoShow} title="Označi kao no-show">No-show ⚠️</button>
             )}
             {form.id && (
               <button className="pill danger" onClick={()=>onDelete?.(form.id)} title="Obriši">Obriši</button>
             )}
-
             <button className="icon-btn" onClick={onClose} title="Zatvori">✕</button>
             <button className="btn hide-mobile btn-ghost" onClick={onClose}>Zatvori</button>
           </div>
@@ -729,69 +547,244 @@ export default function CalendarEventModal({
 
         {/* ===== SCROLLABLE CONTENT ===== */}
         <div className="content">
-          {/* === MOBILNI PROMPT REŽIM === */}
+          {/* === MOBILNI: sekcije otvaranjem na klik === */}
           {isMobile ? (
             <div className="grid">
               {/* Radnica */}
               <div className="row">
-                <div className="label">Radnica</div>
-                <button className="prompt-btn" onClick={promptEmployee}>
-                  {selectedEmployee ? `${selectedEmployee.firstName} ${selectedEmployee.lastName}` : "Izaberi radnicu"}
+                <button className="expander" onClick={()=>setOpenEmp(v=>!v)}>
+                  <span>
+                    Radnica
+                    <span className="expander-sub">
+                      {selectedEmployee ? `${selectedEmployee.firstName} ${selectedEmployee.lastName}` : "Izaberi radnicu"}
+                    </span>
+                  </span>
+                  <span>{openEmp ? "▴" : "▾"}</span>
                 </button>
+                {openEmp && (
+                  <div className="section">
+                    <div className="label">Radnica</div>
+                    <select
+                      className="select"
+                      disabled={!canChangeEmp}
+                      value={form.employeeUsername || (employees[0]?.username || "")}
+                      onChange={(e)=>setForm(f=>({...f, employeeUsername:e.target.value}))}
+                    >
+                      {(employees||[]).map(e=><option key={e.username} value={e.username}>{e.firstName} {e.lastName}</option>)}
+                    </select>
+                  </div>
+                )}
               </div>
 
               {/* Klijent */}
               {!isBlock && (
                 <div className="row">
-                  <div className="label">Klijent</div>
-                  <button className="prompt-btn" onClick={promptClient}>
-                    {form.clientId ? formatClient(clientForUI || {}, role) : "Pronađi/izaberi klijenta"}
+                  <button className="expander" onClick={()=>setOpenClient(v=>!v)}>
+                    <span>
+                      Klijent
+                      <span className="expander-sub">
+                        {form.clientId ? formatClient(clientForUI || {}, role) : "Pronađi/izaberi klijenta"}
+                      </span>
+                    </span>
+                    <span>{openClient ? "▴" : "▾"}</span>
                   </button>
+
+                  {openClient && (
+                    <div className="section" style={{ position:"relative" }}>
+                      <div className="label">Klijent</div>
+
+                      <div className="client-search-wrap">
+                        <input
+                          className="input"
+                          placeholder="Pretraži klijente (ime, prezime ili telefon)…"
+                          value={clientQuery}
+                          onChange={e => {
+                            setClientQuery(e.target.value);
+                            setClientListOpen(true);
+                          }}
+                          onFocus={() => setClientListOpen(true)}
+                          onBlur={() => setTimeout(()=>setClientListOpen(false), 120)}
+                        />
+
+                        {clientListOpen && (
+                          <div className="dropdown">
+                            <div
+                              className="drop-item"
+                              onMouseDown={(e)=>e.preventDefault()}
+                              onClick={()=>{
+                                setForm(f => ({ ...f, clientId:null }));
+                                setNewClientOpen(true);
+                                setClientListOpen(false);
+                              }}
+                            >
+                              ➕ Dodaj novog klijenta
+                            </div>
+
+                            {filteredClients.map(c => (
+                              <div
+                                key={c.id}
+                                className="drop-item"
+                                title={c.blocked ? "Klijent je blokiran" : ""}
+                                onMouseDown={(e)=>e.preventDefault()}
+                                onClick={()=>{
+                                  setForm(f => ({ ...f, clientId: c.id }));
+                                  setNewClientOpen(false);
+                                  setClientListOpen(false);
+                                  setClientQuery(`${c.firstName||""} ${c.lastName||""}`.trim());
+                                }}
+                              >
+                                <div style={{ display:"flex", alignItems:"center", gap:8, justifyContent:"space-between", width:"100%" }}>
+                                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                                    <span style={{ width:8, height:8, borderRadius:999, background: c.blocked ? "#ef4444" : "#a7f3d0" }} />
+                                    <div style={{ fontWeight:600 }}>{formatClient(c, role)}</div>
+                                  </div>
+                                  <div className="muted">{(c.servicesDoneCount ?? 0) > 0 ? `#${c.servicesDoneCount}` : ""}</div>
+                                </div>
+                                {(c.note || c.noShowCount>0) && (
+                                  <div className="muted" style={{ marginTop:3 }}>
+                                    {c.note ? `📝 ${c.note}` : ""}{c.note && c.noShowCount>0 ? " · " : ""}
+                                    {c.noShowCount>0 ? `no-show: ${c.noShowCount}` : ""}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+
+                            {filteredClients.length === 0 && (
+                              <div className="muted" style={{ padding:"16px" }}>
+                                Nema rezultata. Izaberi "Dodaj novog klijenta" iznad.
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {!newClientOpen && form.clientId && (clients.find(c=>c.id===form.clientId)?.blocked) && (
+                        <div className="muted" style={{ color:"#ef4444", fontSize:"13px", padding:"8px", background:"#fef2f2", borderRadius:"6px", marginTop:8 }}>
+                          ⚠️ Klijent je blokiran — ne može da zakaže termin.
+                        </div>
+                      )}
+
+                      {newClientOpen && !form.clientId && (
+                        <div className="new-client-grid" style={{display:"grid", gap:10, marginTop:8}}>
+                          <input className="input" placeholder="Ime *" value={newClient.firstName} onChange={e=>setNewClient(v=>({...v, firstName:e.target.value}))}/>
+                          <input className="input" placeholder="Prezime" value={newClient.lastName} onChange={e=>setNewClient(v=>({...v, lastName:e.target.value}))}/>
+                          <input className="input" placeholder="Telefon *" inputMode="tel" value={newClient.phone} onChange={e=>setNewClient(v=>({...v, phone:e.target.value}))}/>
+                          <input className="input" placeholder="Email (opciono)" inputMode="email" value={newClient.email} onChange={e=>setNewClient(v=>({...v, email:e.target.value}))}/>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
               {/* Početak / Kraj */}
               <div className="row">
-                <div className="label">Početak</div>
-                <button className="prompt-btn" onClick={promptStart}>
-                  {toLocalInput(form.start).replace("T"," ")}
+                <button className="expander" onClick={()=>setOpenTime(v=>!v)}>
+                  <span>
+                    Datum i vreme
+                    <span className="expander-sub">
+                      {toLocalInput(form.start).replace("T"," ")} → {toLocalInput(form.end).replace("T"," ")}
+                    </span>
+                  </span>
+                  <span>{openTime ? "▴" : "▾"}</span>
                 </button>
-              </div>
-              <div className="row">
-                <div className="label">Kraj</div>
-                <button className="prompt-btn" onClick={promptEnd}>
-                  {toLocalInput(form.end).replace("T"," ")}
-                </button>
-                {manualEnd && (
-                  <button className="pill" type="button" onClick={()=>setManualEnd(false)}>
-                    ↻ Auto trajanje
-                  </button>
+
+                {openTime && (
+                  <div className="section">
+                    <div className="row">
+                      <div className="label">Početak</div>
+                      <input
+                        className="input" type="datetime-local"
+                        value={toLocalInput(form.start)}
+                        onChange={(e)=>setForm(f=>({...f, start:new Date(e.target.value)}))}
+                      />
+                    </div>
+
+                    <div className="row" style={{marginTop:8}}>
+                      <div className="label">Kraj</div>
+                      <input
+                        className="input" type="datetime-local"
+                        value={toLocalInput(form.end)}
+                        onChange={(e)=>{ setForm(f=>({...f, end:new Date(e.target.value)})); setManualEnd(true); }}
+                      />
+                      {manualEnd && (
+                        <button className="pill" type="button" onClick={()=>setManualEnd(false)} style={{marginTop:8}}>
+                          ↻ Auto trajanje
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 )}
               </div>
 
-              {/* Usluge (prompt) */}
+              {/* Usluge (checkbox lista kao na desktopu) */}
               {!isBlock && (
-                <div className="row" style={{gridColumn:"1 / -1"}}>
-                  <div className="label">Usluge</div>
-
-                  {/* sticky totals */}
-                  <div className="svc-totals">
-                    <span>💰 Ukupno (auto): <b>{autoTotal} RSD</b></span>
-                    <span>⏱️ Trajanje (auto): <b>{autoDurationMin} min</b></span>
-                  </div>
-
-                  <button className="prompt-btn" onClick={promptServices}>
-                    Uredi usluge
-                    <span className="prompt-sub">
-                      {makeServicesLabel(services, form.services) || "Nije izabrano"}
+                <div className="row">
+                  <button className="expander" onClick={()=>setOpenSvcs(v=>!v)}>
+                    <span>
+                      Usluge
+                      <span className="expander-sub">
+                        {(makeServicesLabel(services, form.services) || "Nije izabrano")} · {autoDurationMin}min · {autoTotal} RSD
+                      </span>
                     </span>
+                    <span>{openSvcs ? "▴" : "▾"}</span>
                   </button>
 
-                  {/* (na mob ne renderujemo dužu listu, sve ide kroz prompt) */}
-                  {ghostServices.length>0 && (
-                    <div className="note-inline" style={{ marginTop:8 }}>
-                      Ovaj termin sadrži usluge koje nisu u trenutnom katalogu:{" "}
-                      {ghostServices.map(g => g?.name || sid(g)).filter(Boolean).join(", ")}
+                  {openSvcs && (
+                    <div className="section">
+                      <div className="svc-totals">
+                        <span>💰 Ukupno (auto): <b>{autoTotal} RSD</b></span>
+                        <span>⏱️ Trajanje (auto): <b>{autoDurationMin} min</b></span>
+                      </div>
+
+                      <div className="svc-search">
+                        <span className="icon">🔍</span>
+                        <input
+                          className="input input-plain"
+                          placeholder="Pretraži usluge… (naziv ili kategorija)"
+                          value={svcQuery}
+                          onChange={(e)=>setSvcQuery(e.target.value)}
+                        />
+                        {svcQuery && (
+                          <button className="pill" onClick={()=>setSvcQuery("")} title="Obriši pretragu" style={{position:"absolute", right:8}}>
+                            ✕
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="services">
+                        {filteredServices.map(s=>{
+                          const color = (categoriesMap?.get?.(s.categoryId)?.color) || "#ddd";
+                          const checked = (form.services||[]).includes(s.id);
+                          return (
+                            <label key={s.id} className="svc">
+                              <span className="svc-title">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={(e)=>onServiceToggle(s.id, e.target.checked)}
+                                  style={{ width:18, height:18, marginRight:6 }}
+                                />
+                                <span className="color-dot" style={{background:color}}/>
+                                <span className="svc-name">{s.name}</span>
+                              </span>
+                              <span className="svc-meta">{s.durationMin}min · {s.priceRsd} RSD</span>
+                            </label>
+                          );
+                        })}
+                        {filteredServices.length===0 && (
+                          <div className="muted" style={{padding:"16px", textAlign:"center"}}>
+                            Nema definisanih usluga za ovu radnicu.
+                          </div>
+                        )}
+
+                        {ghostServices.length>0 && (
+                          <div className="note-inline" style={{ marginTop:8 }}>
+                            Ovaj termin sadrži usluge koje nisu u trenutnom katalogu:{" "}
+                            {ghostServices.map(g => g?.name || sid(g)).filter(Boolean).join(", ")}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -800,33 +793,82 @@ export default function CalendarEventModal({
               {/* Cena */}
               {!isBlock && (
                 <div className="row">
-                  <div className="label">Cena (RSD)</div>
-                  <button className="prompt-btn" onClick={promptPrice}>
-                    {Number(form.priceRsd||0)} RSD
+                  <button className="expander" onClick={()=>setOpenPrice(v=>!v)}>
+                    <span>
+                      Cena
+                      <span className="expander-sub">{Number(form.priceRsd||0)} RSD</span>
+                    </span>
+                    <span>{openPrice ? "▴" : "▾"}</span>
                   </button>
+                  {openPrice && (
+                    <div className="section">
+                      <div className="label">Cena (RSD)</div>
+                      <input
+                        className="input" type="number" value={form.priceRsd}
+                        onChange={(e)=>{ setForm(f=>({...f, priceRsd:e.target.value})); setCustomPrice(true); }}
+                        disabled={!canEditPrice}
+                      />
+                      <div className="muted" style={{marginTop:6}}>
+                        Ručno menjana cena ostaje (ne prepisujemo auto-ukupnom).
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
-              {/* Plaćanje — samo jedno mesto (prompt) */}
+              {/* Plaćanje — jedino mesto */}
               {!isBlock && showPayment && (
-                <div className="row" style={{gridColumn:"1 / -1"}}>
-                  <div className="label">Plaćanje</div>
-                  <button className="prompt-btn" onClick={promptPayment}>
-                    {form.paid==="cash" ? "Keš 💵" :
-                     form.paid==="card" ? "Kartica 💳" :
-                     form.paid==="bank" ? "Uplata na račun 🏦" :
-                     "Nije naplaćeno"}
+                <div className="row">
+                  <button className="expander" onClick={()=>setOpenPay(v=>!v)}>
+                    <span>
+                      Plaćanje
+                      <span className="expander-sub">
+                        {form.paid==="cash" ? "Keš" : form.paid==="card" ? "Kartica" : form.paid==="bank" ? "Uplata na račun" : "Nije naplaćeno"}
+                      </span>
+                    </span>
+                    <span>{openPay ? "▴" : "▾"}</span>
                   </button>
+                  {openPay && (
+                    <div className="section">
+                      <div className="label">Način plaćanja</div>
+                      <div style={{display:"grid", gap:10}}>
+                        <label className="svc" style={{alignItems:"center"}}>
+                          <input type="radio" name="paid_m" checked={form.paid===null}  onChange={()=>setForm(f=>({...f,paid:null}))}/>
+                          <span style={{marginLeft:10}}>nije naplaćeno</span>
+                        </label>
+                        <label className="svc" style={{alignItems:"center"}}>
+                          <input type="radio" name="paid_m" checked={form.paid==="cash"} onChange={()=>setForm(f=>({...f,paid:"cash"}))}/>
+                          <span style={{marginLeft:10}}>keš 💵</span>
+                        </label>
+                        <label className="svc" style={{alignItems:"center"}}>
+                          <input type="radio" name="paid_m" checked={form.paid==="card"} onChange={()=>setForm(f=>({...f,paid:"card"}))}/>
+                          <span style={{marginLeft:10}}>kartica 💳</span>
+                        </label>
+                        <label className="svc" style={{alignItems:"center"}}>
+                          <input type="radio" name="paid_m" checked={form.paid==="bank"} onChange={()=>setForm(f=>({...f,paid:"bank"}))}/>
+                          <span style={{marginLeft:10}}>uplata na račun 🏦</span>
+                        </label>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
-              {/* Beleška (prompt) */}
-              <div className="row" style={{gridColumn:"1 / -1"}}>
-                <div className="label">Beleška</div>
-                <button className="prompt-btn" onClick={promptNote}>
-                  {form.note?.trim() ? "Izmeni belešku" : "Dodaj belešku"}
-                  {form.note?.trim() && <span className="prompt-sub">{form.note}</span>}
+              {/* Beleška */}
+              <div className="row">
+                <button className="expander" onClick={()=>setOpenNote(v=>!v)}>
+                  <span>
+                    Beleška
+                    <span className="expander-sub">{form.note?.trim() ? form.note : "Dodaj belešku"}</span>
+                  </span>
+                  <span>{openNote ? "▴" : "▾"}</span>
                 </button>
+                {openNote && (
+                  <div className="section">
+                    <div className="label">Beleška</div>
+                    <textarea className="textarea" value={form.note||""} onChange={(e)=>setForm(f=>({...f, note:e.target.value}))}/>
+                  </div>
+                )}
               </div>
             </div>
           ) : (
@@ -965,7 +1007,6 @@ export default function CalendarEventModal({
                 <div className="row" style={{gridColumn:"1 / -1"}}>
                   <div className="label">Usluge</div>
 
-                  {/* sticky totals */}
                   <div className="svc-totals">
                     <span>💰 Ukupno (auto): <b>{autoTotal} RSD</b></span>
                     <span>⏱️ Trajanje (auto): <b>{autoDurationMin} min</b></span>
@@ -1071,7 +1112,6 @@ export default function CalendarEventModal({
 
         {/* ===== FOOTER ===== */}
         <div className="footer">
-          {/* uklonjeno: quick-pay dugmad na dnu */}
           <div className="footer-right">
             <button className="btn btn-ghost" onClick={onClose}>Otkaži</button>
             <button className="btn btn-primary" disabled={saving} onClick={save}>

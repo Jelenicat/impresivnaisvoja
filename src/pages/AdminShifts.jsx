@@ -386,6 +386,16 @@ export default function AdminShifts() {
           .day-label{ font-size:13px; }
           .time{ height:38px; font-size:13px; }
           .day-closed{ font-size:11.5px; } /* Adjusted */
+          .seg-btn{ padding:8px 10px; font-size:12px; }
+
+          /* >>> override default plave boje na telefonu */
+          input, select, button {
+            color:#1f1f1f !important;
+            -webkit-text-fill-color:#1f1f1f !important; /* iOS fix */
+            accent-color:#1f1f1f !important;
+          }
+          .btn{ background:#1f1f1f !important; }
+          .btn-ghost{ color:#1f1f1f !important; }
         }
 
         /* VEOMA USKI (≤380px) */
