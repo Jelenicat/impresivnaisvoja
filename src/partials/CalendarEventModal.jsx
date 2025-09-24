@@ -44,9 +44,7 @@ function formatClient(c, role="admin"){
 const sid = (s) => String(s?.serviceId ?? s?.id ?? s ?? "");
 function extractServiceIds(valueServices){
   if (!Array.isArray(valueServices) || valueServices.length===0) return [];
-  // ako su objekti (public booking format) -> izvuci serviceId/id
   if (typeof valueServices[0] === "object") return valueServices.map(s => sid(s)).filter(Boolean);
-  // ako su već id-jevi
   return valueServices.map(x => String(x));
 }
 
@@ -69,7 +67,6 @@ export default function CalendarEventModal({
   onSaved,
   onDelete
 }){
-  // >>> NORMALIZUJ već na startu (da bi checkboxovi bili čekirani)
   const initialServiceIds = useMemo(() => extractServiceIds(value?.services), [value?.services]);
 
   /* ---------- form state ---------- */
@@ -97,21 +94,16 @@ export default function CalendarEventModal({
           : null),
   });
 
-  // Ako dobiješ novi "value" (drugi termin), ponovo normalizuj usluge
   useEffect(() => {
     setForm(f => ({ ...f, services: initialServiceIds }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value?.id]); // menja se pri otvaranju drugog termina
+  }, [value?.id]);
 
-  // "novi klijent" forma otvara se kad se izabere "Dodaj novog klijenta"
   const [newClientOpen, setNewClientOpen] = useState(!value?.clientId);
   const [newClient, setNewClient] = useState({ firstName:"", lastName:"", phone:"", email:"" });
   const [saving, setSaving] = useState(false);
-
-  // Drawer za profil klijenta
   const [clientDrawerOpen, setClientDrawerOpen] = useState(false);
 
-  // LIVE klijent
   const [clientLive, setClientLive] = useState(null);
   useEffect(()=>{
     if(!form.clientId){ setClientLive(null); return; }
@@ -126,22 +118,14 @@ export default function CalendarEventModal({
     return ()=>unsub && unsub();
   }, [form.clientId]);
 
-  // dozvole po ulozi
   const canEditPrice = role === "admin";
   const canChangeEmp = role !== "worker";
   const isBlock = form.type === "block";
   const showPayment = role === "admin" || role === "salon";
 
-  /* cena – auto vs custom */
   const [customPrice, setCustomPrice] = useState(false);
-
-  /* kraj – auto vs ručno */
   const [manualEnd, setManualEnd] = useState(!!value?.manualEnd);
-
-  /* usluge – pretraga */
   const [svcQuery, setSvcQuery] = useState("");
-
-  /* klijenti – pretraga + dropdown */
   const [clientQuery, setClientQuery] = useState("");
   const [clientListOpen, setClientListOpen] = useState(false);
 
@@ -166,6 +150,7 @@ export default function CalendarEventModal({
     ()=> getServiceIdsForEmployee(selectedEmployee, services || []),
     [selectedEmployee, services]
   );
+
   const filteredServices = useMemo(()=>{
     const base = (services || []).filter(s => allowedServiceIds.includes(s.id));
     const q = (svcQuery || "").trim().toLowerCase();
@@ -177,7 +162,6 @@ export default function CalendarEventModal({
     });
   }, [services, allowedServiceIds, svcQuery, categoriesMap]);
 
-  // usluge koje ova radnica ne radi -> ukloni iz selekcije
   useEffect(()=>{
     if(isBlock) return;
     setForm(f=>{
@@ -186,7 +170,6 @@ export default function CalendarEventModal({
     });
   }, [form.employeeUsername, isBlock, allowedServiceIds]);
 
-  // auto ukupna cena
   const autoTotal = useMemo(()=>{
     if(isBlock) return 0;
     const map = new Map((services || []).map(s=>[s.id, s]));
@@ -198,7 +181,6 @@ export default function CalendarEventModal({
     if (!customPrice) setForm(f=>({ ...f, priceRsd: autoTotal }));
   }, [autoTotal, customPrice, isBlock]);
 
-  // auto trajanje = zbir durationMin
   const autoDurationMin = useMemo(()=>{
     if(isBlock) return 60;
     const map = new Map((services || []).map(s=>[s.id, s]));
@@ -213,7 +195,6 @@ export default function CalendarEventModal({
     setForm(f=>({ ...f, end: nextEnd }));
   }, [autoDurationMin, form.start, isBlock, manualEnd]);
 
-  // “Ghost” usluge – postoje u terminu, nema ih više u katalogu
   const ghostServices = useMemo(() => {
     const catIds = new Set((services||[]).map(s=>s.id));
     const fromValue = Array.isArray(value?.services) ? value.services : [];
@@ -280,7 +261,6 @@ export default function CalendarEventModal({
         return;
       }
 
-      // stop ako je klijent blokiran
       const pickedClient = (clients || []).find(c => c.id === form.clientId);
       if (pickedClient?.blocked) {
         alert("Ovaj klijent je blokiran i ne može da zakaže termin.");
@@ -317,7 +297,6 @@ export default function CalendarEventModal({
         type: "appointment",
         employeeUsername: form.employeeUsername || (employees[0]?.username || ""),
         clientId: clientId || null,
-        // ADMIN modal i dalje čuva kao niz ID-jeva (tvoj postojeći model)
         services: Array.isArray(form.services) ? form.services : [],
         start: form.start,
         end: form.end,
@@ -422,208 +401,172 @@ export default function CalendarEventModal({
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
       <style>{`
+        /* ===== THEME RESET & TWEAKS ===== */
+        :root{
+          --ink:#1f1f1f;
+          --muted:#6b6b6b;
+          --bg:#fff;
+          --border:#e6e0d7;
+          --soft:#faf6f0;
+          --focus: rgba(199,178,153,.35);
+          --chip:#f5f7ff; --chip-border:#dbe3ff; /* više sivo nego plavo */
+        }
+        * { -webkit-tap-highlight-color: transparent; }
+        /* neutralizuj iOS plavo; ali ne diramo radio/checkbox */
+        .cal-modal input:not([type="radio"]):not([type="checkbox"]),
+        .cal-modal select,
+        .cal-modal textarea,
+        .cal-modal button{
+          color:var(--ink)!important;
+          -webkit-text-fill-color:var(--ink)!important;
+          appearance:none;
+          -webkit-appearance:none;
+          outline:none;
+        }
+        /* vidljiv, neutralan radio/checkbox */
+        .cal-modal input[type="checkbox"],
+        .cal-modal input[type="radio"]{
+          appearance:auto;
+          -webkit-appearance:auto;
+          accent-color:#1f1f1f;
+          width:18px; height:18px;
+          outline:none;
+        }
+
+        .cal-modal :is(input,select,textarea):focus{
+          box-shadow:0 0 0 3px var(--focus); border-color:#c7b299;
+        }
+        ::selection{ background:#f3e8d7; color:#000; }
+
         /* ===== Backdrop & Shell ===== */
         .modal-backdrop{
           position:fixed; inset:0; background:#0007;
           display:flex; align-items:stretch; justify-content:flex-end;
           padding:0; z-index:1000;
         }
-        .modal{
-          background:#fff; width:100%; max-width:900px; height:100%;
-          border-left:1px solid #e6e0d7; box-shadow:-14px 0 40px rgba(0,0,0,.18);
+        .cal-modal.modal{
+          background:var(--bg); width:100%; max-width:900px; height:100%;
+          border-left:1px solid var(--border); box-shadow:-14px 0 40px rgba(0,0,0,.18);
           display:flex; flex-direction:column;
         }
 
-        /* ===== Sticky Header ===== */
-        .h{
+        /* ===== Header ===== */
+        .cal-modal .h{
           position:sticky; top:0; z-index:5;
           display:flex; gap:10px; justify-content:space-between; align-items:center;
-          padding:14px 16px; background:#fff; border-bottom:1px solid #efeae3;
+          padding:12px 14px; background:var(--bg); border-bottom:1px solid #efeae3;
         }
-        .title-left{ 
-          display:flex; flex-direction:column; align-items:flex-start; gap:8px; 
-          flex:1;
+        .cal-modal .title-left{ display:flex; flex-direction:column; gap:6px; flex:1; }
+        .cal-modal .client-chip{
+          display:inline-flex; align-items:center; gap:8px;
+          padding:7px 10px; background:var(--chip); border:1px solid var(--chip-border);
+          border-radius:999px; font-size:14px; max-width:220px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
         }
-        .client-chip{ 
-          display:inline-flex; align-items:center; gap:8px; 
-          padding:8px 12px; background:#f5f7ff; border:1px solid #dbe3ff; 
-          border-radius:999px; cursor:pointer; font-size:14px; 
-          white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-          max-width:200px;
-        }
-        .client-chip:hover{ background:#eef2ff; }
-        .client-info-row{
-          display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+        .cal-modal .client-info-row{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+        .cal-modal .icon-btn{
+          display:none; align-items:center; justify-content:center;
+          width:36px; height:36px; border:1px solid var(--border);
+          border-radius:10px; background:#fff; font-size:18px; line-height:1;
         }
 
-        /* ===== Scrollable Content ===== */
-        .content{
-          flex:1 1 auto; overflow:auto; padding:16px;
+        /* ===== Content ===== */
+        .cal-modal .content{
+          flex:1 1 auto; overflow-y:auto; overflow-x:hidden; padding:14px;
         }
-        .grid{ 
-          display:grid; gap:12px; grid-template-columns:1fr 1fr; 
-        }
-        @media(max-width:820px){ 
-          .grid{ grid-template-columns:1fr; gap:14px; } 
-        }
-
-        .label{ 
-          font-size:12px; color:#706a61; margin-bottom:4px; 
-          font-weight:600;
-        }
-        .row{ 
-          display:grid; gap:8px; 
-        }
-
-        .input, .select, .textarea{
-          width:100%; padding:12px 14px; border-radius:12px; 
-          border:1px solid #e6e0d7; background:#fff; font-size:14px; 
-          min-height:44px; box-sizing:border-box;
-        }
-        .textarea{ min-height:90px; }
-
-        .pill { 
-          display:inline-flex; align-items:center; gap:6px; 
-          background:#faf6f0; border:1px solid #e6e0d7; 
-          padding:8px 12px; border-radius:999px; font-size:13px; 
-          cursor:pointer; white-space:nowrap;
-        }
-        .danger { 
-          border-color:#ef4444; color:#ef4444; background:#fff; 
-        }
-
-        /* ===== Services ===== */
-        .svc-search{ 
-          position:relative; display:flex; align-items:center; gap:8px; 
-          margin-bottom:8px; 
-        }
-        .svc-search .icon{ 
-          position:absolute; left:12px; pointer-events:none; 
-        }
-        .svc-search .input-plain{ padding-left:34px; }
-
-        .services{
-          display:grid; grid-template-columns:1fr; gap:8px;
-          max-height:260px; overflow:auto; padding:8px;
-          border:1px solid #e6e0d7; border-radius:12px; background:#fff;
-        }
-        @media(max-width:820px){
-          .services{ 
-            max-height:40vh; 
-            padding:12px;
-          } 
-        }
-        .svc{
-          display:flex; align-items:center; justify-content:space-between; gap:8px;
-          padding:10px; border:1px solid #eee; border-radius:12px;
-        }
-        .svc-title{ 
-          display:flex; align-items:center; gap:10px; 
-          flex:1; 
-        }
-        .color-dot{ width:10px; height:10px; border-radius:50%; }
+        .cal-modal .grid{ display:grid; gap:10px; grid-template-columns:1fr 1fr; }
+        .cal-modal .label{ font-size:12px; color:#706a61; margin-bottom:4px; font-weight:600; }
+        .cal-modal .row{ display:grid; gap:6px; }
         .muted{ color:#6b7280; font-size:12px; }
 
-        .note-inline{
-          margin-top: 4px;
-          font-size: 12px;
-          color: #4b5563;
-          background: #fffbea;
-          border: 1px solid #fde68a;
-          padding: 6px 8px;
-          border-radius: 8px;
-          max-width: 100%;
-          word-break: break-word;
+        /* Inputs */
+        .cal-modal .input, .cal-modal .select, .cal-modal .textarea{
+          width:100%; padding:10px 12px; border-radius:12px;
+          border:1px solid var(--border); background:#fff; font-size:14px; min-height:40px; box-sizing:border-box;
+        }
+        .cal-modal .textarea{ min-height:84px; resize:vertical; }
+
+        /* Buttons */
+        .cal-modal .pill{ display:inline-flex; align-items:center; gap:6px; background:var(--soft); border:1px solid var(--border); padding:6px 10px; border-radius:999px; font-size:13px; cursor:pointer; }
+        .cal-modal .danger{ border-color:#ef4444; color:#ef4444; background:#fff; }
+        .cal-modal .btn{ padding:10px 12px; border-radius:12px; border:1px solid var(--border); background:#fff; cursor:pointer; min-width:110px; font-weight:700; flex:0 0 auto; }
+        .cal-modal .btn-primary{  color:#fff; border-color:#1f1f1f; } /* BEL TEKST */
+        .cal-modal .btn-ghost{ background:#fff; color:#1f1f1f; }
+
+        /* Services */
+        .cal-modal .svc-search{ position:relative; display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+        .cal-modal .svc-search .icon{ position:absolute; left:12px; pointer-events:none; }
+        .cal-modal .svc-search .input-plain{ padding-left:34px; }
+
+        /* sticky totals traka za usluge */
+        .cal-modal .svc-totals{
+          position:sticky; top:0; z-index:2;
+          background:linear-gradient(#fff,#fff); border:1px solid var(--border); border-radius:10px;
+          padding:8px 10px; display:flex; align-items:center; justify-content:space-between; font-size:13px; margin-bottom:8px;
         }
 
-        /* ===== Client dropdown ===== */
-        .client-search-wrap{ position:relative; }
-        .dropdown{
+        .cal-modal .services{
+          display:grid; grid-template-columns:1fr; gap:8px; /* na tel jedna kolona, preglednije */
+        }
+        .cal-modal .svc{
+          display:flex; align-items:center; justify-content:space-between; gap:10px;
+          padding:10px; border:1px solid #eee; border-radius:12px; background:#fff;
+        }
+        .cal-modal .svc-title{ display:flex; align-items:center; gap:10px; flex:1; min-width:0; }
+        .cal-modal .color-dot{ width:10px; height:10px; border-radius:50%; flex:0 0 auto; }
+        .cal-modal .svc-name{ font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .cal-modal .svc-meta{ color:#6b7280; font-size:12px; white-space:nowrap; }
+
+        /* Ghost note */
+        .cal-modal .note-inline{ margin-top:4px; font-size:12px; color:#4b5563; background:#fffbea; border:1px solid #fde68a; padding:6px 8px; border-radius:8px; }
+
+        /* Client dropdown */
+        .cal-modal .client-search-wrap{ position:relative; }
+        .cal-modal .dropdown{
           position:absolute; top:100%; left:0; right:0; z-index:20;
-          background:#fff; border:1px solid #e6e0d7; border-radius:12px;
-          box-shadow:0 12px 30px rgba(0,0,0,.12); margin-top:6px;
-          max-height:300px; overflow:auto;
+          background:#fff; border:1px solid var(--border); border-radius:12px; box-shadow:0 12px 30px rgba(0,0,0,.12); margin-top:6px;
+          max-height:45vh; overflow:auto;
         }
-        .drop-item{ 
-          padding:12px 14px; cursor:pointer; border-bottom:1px solid #f7f3ed; 
-          display:flex; flex-direction:column; gap:4px;
-        }
-        .drop-item:first-child{ 
-          font-weight:700; border-bottom:1px solid #f1ebe4; 
-          background:#faf6f0;
-        }
-        .drop-item:hover{ background:#faf6f0; }
+        .cal-modal .drop-item{ padding:12px 14px; cursor:pointer; border-bottom:1px solid #f7f3ed; display:flex; flex-direction:column; gap:4px; }
+        .cal-modal .drop-item:first-child{ font-weight:700; border-bottom:1px solid #f1ebe4; background:#faf6f0; }
+        .cal-modal .drop-item:hover{ background:#faf6f0; }
 
-        /* ===== Sticky Footer (mobile-first) ===== */
-        .footer{
+        /* Footer */
+        .cal-modal .footer{
           position:sticky; bottom:0; z-index:5;
           background:linear-gradient(0deg,#fff 80%, #ffffffcc 100%);
-          border-top:1px solid #efeae3; padding:12px 16px;
+          border-top:1px solid #efeae3; padding:10px 14px;
           display:flex; gap:10px; justify-content:space-between; align-items:center; flex-wrap:wrap;
         }
-        .btn{ 
-          padding:12px 16px; border-radius:12px; border:1px solid #ddd6cc; 
-          background:#fff; cursor:pointer; min-width:120px; font-weight:600; 
-          flex:1; max-width:200px;
+        .cal-modal .footer-left{
+          display:flex; gap:8px; flex-wrap:wrap; /* umesto horizontalnog skrola */
         }
-        .btn-dark{ 
-          background:#1f1f1f; color:#fff; border-color:#1f1f1f; 
-        }
-        .footer-left{ 
-          display:flex; gap:8px; flex-wrap:wrap; 
-          flex:1;
-        }
-        .footer-right{ 
-          display:flex; gap:10px; 
-          min-width:200px;
-        }
+        .cal-modal .footer-right{ display:flex; gap:8px; min-width:200px; }
 
+        /* --- Responsive --- */
         @media(max-width:820px){
-          .h{ padding:12px 16px; flex-direction:column; align-items:stretch; gap:12px; }
-          .title-left{ gap:6px; order:2; }
-          .h > div:last-child{ order:1; display:flex; gap:8px; flex-wrap:wrap; justify-content:center; }
-          .pill{ padding:6px 10px; font-size:12px; flex:0 0 auto; }
-          .content{ padding:12px 16px; }
-          .grid{ gap:16px; }
-          .input, .select{ padding:14px 16px; font-size:16px; }
-          .svc{ flex-direction:column; align-items:flex-start; gap:8px; padding:12px; }
-          .svc-title{ width:100%; justify-content:space-between; }
-          .services{ max-height:35vh; }
-          .dropdown{ max-height:40vh; border-radius:0; margin-top:4px; }
-          .drop-item{ padding:16px; flex-direction:row; }
-          .drop-item .muted{ font-size:11px; }
-          .footer{ padding:16px; gap:12px; }
-          .btn{ padding:14px 16px; font-size:16px; min-height:48px; }
-          .footer-left{ order:2; width:100%; justify-content:center; gap:8px; }
-          .footer-right{ order:1; width:100%; justify-content:center; gap:12px; min-width:auto; }
-          .client-chip{ max-width:none; flex:1; justify-content:center; padding:10px 14px; }
-          .client-info-row{ width:100%; justify-content:center; gap:6px; }
-          .no-show-badge{ padding:4px 8px; font-size:11px; border-radius:6px; white-space:nowrap; }
-          .new-client-grid{ display:grid; gap:12px; grid-template-columns:1fr; }
-          .new-client-grid input{ padding:14px 16px; font-size:16px; }
-          .payment-options{ display:grid; gap:12px; }
-          .payment-options label{ display:flex; align-items:center; gap:8px; padding:8px; border:1px solid #e6e0d7; border-radius:8px; cursor:pointer; font-size:14px; }
-          .payment-options input[type="radio"]{ width:18px; height:18px; }
-          .textarea{ padding:14px 16px; font-size:16px; line-height:1.4; resize:vertical; }
-          .manual-end-btn{ padding:6px 12px; font-size:12px; width:auto; align-self:flex-start; }
+          .cal-modal .grid{ grid-template-columns:1fr; gap:12px; }
         }
         @media(max-width:480px){
-          .h{ padding:10px 12px; }
-          .content{ padding:10px 12px; }
-          .footer{ padding:12px 12px; }
-          .services{ max-height:30vh; }
-          .dropdown{ max-height:35vh; }
-          .pill{ padding:5px 8px; font-size:11px; }
-          .client-chip{ padding:8px 10px; font-size:13px; }
+          .cal-modal .h{ padding:10px 12px; }
+          .cal-modal .client-chip{ max-width:100%; padding:6px 9px; font-size:13px; }
+          .cal-modal .icon-btn{ display:inline-flex; }      /* pokaži ✕ */
+          .cal-modal .btn.hide-mobile{ display:none; }      /* sakrij veliko Zatvori */
+          .cal-modal .pill{ padding:5px 8px; font-size:12px; }
+          .cal-modal .content{ padding:10px 12px; }
+          .cal-modal .input, .cal-modal .select{ padding:12px; font-size:15px; min-height:40px; }
+          .cal-modal .textarea{ padding:12px; font-size:15px; }
+          .cal-modal .footer{ padding:12px; }
+          /* sakrij Otkaži (✕ postoji gore) */
+          .cal-modal .footer-right .btn-ghost{ display:none; }
         }
-        @media(max-width:820px) and (hover: none) and (pointer: coarse){
-          .svc{ padding:16px; }
-          .drop-item{ padding:18px 16px; }
-          .btn{ min-height:52px; }
+        @media(min-width:821px){
+          /* na desktopu usluge mogu u dve kolone da budu preglednije */
+          .cal-modal .services{ grid-template-columns:1fr 1fr; }
         }
       `}</style>
 
-      <div className="modal" onMouseDown={(e)=>e.stopPropagation()}>
+      <div className="modal cal-modal" onMouseDown={(e)=>e.stopPropagation()}>
+
         {/* ===== HEADER ===== */}
         <div className="h">
           <div className="title-left">
@@ -668,7 +611,7 @@ export default function CalendarEventModal({
             )}
           </div>
 
-          <div style={{display:"flex", gap:8, flexWrap:"wrap"}}>
+          <div style={{display:"flex", gap:8, flexWrap:"wrap", alignItems:"center"}}>
             {(!isBlock && (form.isOnline || form.bookedVia === "public_app")) && (
               <span className="pill" title="Online rezervacija">🌐 Online</span>
             )}
@@ -679,7 +622,11 @@ export default function CalendarEventModal({
             {form.id && (
               <button className="pill danger" onClick={()=>onDelete?.(form.id)} title="Obriši">Obriši</button>
             )}
-            <button className="btn" onClick={onClose}>Zatvori</button>
+
+            {/* ✕ za mobilni */}
+            <button className="icon-btn" onClick={onClose} title="Zatvori">✕</button>
+            {/* veliko dugme (desktop) */}
+            <button className="btn hide-mobile btn-ghost" onClick={onClose}>Zatvori</button>
           </div>
         </div>
 
@@ -756,7 +703,7 @@ export default function CalendarEventModal({
                             </div>
                           </div>
                           {(c.note || c.noShowCount>0) && (
-                            <div className="muted" style={{ marginTop:3, fontSize:"12px" }}>
+                            <div className="muted" style={{ marginTop:3 }}>
                               {c.note ? `📝 ${c.note}` : ""}{c.note && c.noShowCount>0 ? " · " : ""}
                               {c.noShowCount>0 ? `no-show: ${c.noShowCount}` : ""}
                             </div>
@@ -780,7 +727,7 @@ export default function CalendarEventModal({
                 )}
 
                 {newClientOpen && !form.clientId && (
-                  <div className="new-client-grid">
+                  <div className="new-client-grid" style={{display:"grid", gap:10}}>
                     <input className="input" placeholder="Ime *" value={newClient.firstName} onChange={e=>setNewClient(v=>({...v, firstName:e.target.value}))}/>
                     <input className="input" placeholder="Prezime" value={newClient.lastName} onChange={e=>setNewClient(v=>({...v, lastName:e.target.value}))}/>
                     <input className="input" placeholder="Telefon *" inputMode="tel" value={newClient.phone} onChange={e=>setNewClient(v=>({...v, phone:e.target.value}))}/>
@@ -808,7 +755,7 @@ export default function CalendarEventModal({
                 onChange={(e)=>{ setForm(f=>({...f, end:new Date(e.target.value)})); setManualEnd(true); }}
               />
               {manualEnd && (
-                <button className="pill manual-end-btn" type="button" onClick={()=>setManualEnd(false)}>
+                <button className="pill" type="button" onClick={()=>setManualEnd(false)}>
                   ↻ Auto trajanje
                 </button>
               )}
@@ -816,60 +763,69 @@ export default function CalendarEventModal({
 
             {/* Usluge */}
             {!isBlock && (
-              <>
-                <div className="row" style={{gridColumn:"1 / -1"}}>
-                  <div className="label">Usluge</div>
-                  <div className="svc-search">
-                    <span className="icon">🔍</span>
-                    <input
-                      className="input input-plain"
-                      placeholder="Pretraži usluge… (naziv ili kategorija)"
-                      value={svcQuery}
-                      onChange={(e)=>setSvcQuery(e.target.value)}
-                    />
-                    {svcQuery && (
-                      <button className="pill" onClick={()=>setSvcQuery("")} title="Obriši pretragu" style={{position:"absolute", right:8}}>
-                        ✕
-                      </button>
-                    )}
-                  </div>
-                  <div className="services">
-                    {filteredServices.map(s=>{
-                      const color = (categoriesMap?.get?.(s.categoryId)?.color) || "#ddd";
-                      const checked = (form.services||[]).includes(s.id);
-                      return (
-                        <label key={s.id} className="svc">
-                          <span className="svc-title">
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={(e)=>onServiceToggle(s.id, e.target.checked)}
-                              style={{ width:18, height:18, marginRight:"auto" }}
-                            />
-                            <span className="color-dot" style={{background:color}}/>
-                            <span style={{fontWeight:600}}>{s.name}</span>
-                          </span>
-                          <span className="muted">{s.durationMin}min · {s.priceRsd} RSD</span>
-                        </label>
-                      );
-                    })}
-                    {filteredServices.length===0 && <div className="muted" style={{padding:"16px", textAlign:"center"}}>Nema definisanih usluga za ovu radnicu.</div>}
+              <div className="row" style={{gridColumn:"1 / -1"}}>
+                <div className="label">Usluge</div>
 
-                    {/* Ghost info – usluge iz termina koje nisu u katalogu */}
-                    {ghostServices.length>0 && (
-                      <div className="note-inline" style={{ marginTop:8 }}>
-                        Ovaj termin sadrži usluge koje nisu u trenutnom katalogu:
-                        {" "}
-                        {ghostServices.map(g => g?.name || sid(g)).filter(Boolean).join(", ")}
-                      </div>
-                    )}
-                  </div>
-                  <div className="muted" style={{fontSize:"13px", padding:"8px 4px", background:"#f9fafb", borderRadius:"6px"}}>
-                    💰 Ukupno (auto): {autoTotal} RSD • ⏱️ Trajanje (auto): {autoDurationMin} min
-                  </div>
+                {/* sticky totals */}
+                <div className="svc-totals">
+                  <span>💰 Ukupno (auto): <b>{autoTotal} RSD</b></span>
+                  <span>⏱️ Trajanje (auto): <b>{autoDurationMin} min</b></span>
                 </div>
 
-                {/* Cena / plaćanje */}
+                <div className="svc-search">
+                  <span className="icon">🔍</span>
+                  <input
+                    className="input input-plain"
+                    placeholder="Pretraži usluge… (naziv ili kategorija)"
+                    value={svcQuery}
+                    onChange={(e)=>setSvcQuery(e.target.value)}
+                  />
+                  {svcQuery && (
+                    <button className="pill" onClick={()=>setSvcQuery("")} title="Obriši pretragu" style={{position:"absolute", right:8}}>
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                <div className="services">
+                  {filteredServices.map(s=>{
+                    const color = (categoriesMap?.get?.(s.categoryId)?.color) || "#ddd";
+                    const checked = (form.services||[]).includes(s.id);
+                    return (
+                      <label key={s.id} className="svc">
+                        <span className="svc-title">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e)=>onServiceToggle(s.id, e.target.checked)}
+                            style={{ width:18, height:18, marginRight:6 }}
+                          />
+                          <span className="color-dot" style={{background:color}}/>
+                          <span className="svc-name">{s.name}</span>
+                        </span>
+                        <span className="svc-meta">{s.durationMin}min · {s.priceRsd} RSD</span>
+                      </label>
+                    );
+                  })}
+                  {filteredServices.length===0 && (
+                    <div className="muted" style={{padding:"16px", textAlign:"center"}}>
+                      Nema definisanih usluga za ovu radnicu.
+                    </div>
+                  )}
+
+                  {ghostServices.length>0 && (
+                    <div className="note-inline" style={{ marginTop:8 }}>
+                      Ovaj termin sadrži usluge koje nisu u trenutnom katalogu:{" "}
+                      {ghostServices.map(g => g?.name || sid(g)).filter(Boolean).join(", ")}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Cena / plaćanje */}
+            {!isBlock && (
+              <>
                 <div className="row">
                   <div className="label">Cena (RSD)</div>
                   <input
@@ -882,11 +838,23 @@ export default function CalendarEventModal({
                 {showPayment && (
                   <div className="row" style={{gridColumn:"1 / -1"}}>
                     <div className="label">Plaćanje</div>
-                    <div className="payment-options">
-                      <label><input type="radio" name="paid" checked={form.paid===null}  onChange={()=>setForm(f=>({...f,paid:null}))}/> nije naplaćeno</label>
-                      <label><input type="radio" name="paid" checked={form.paid==="cash"} onChange={()=>setForm(f=>({...f,paid:"cash"}))}/> keš 💵</label>
-                      <label><input type="radio" name="paid" checked={form.paid==="card"} onChange={()=>setForm(f=>({...f,paid:"card"}))}/> kartica 💳</label>
-                      <label><input type="radio" name="paid" checked={form.paid==="bank"} onChange={()=>setForm(f=>({...f,paid:"bank"}))}/> uplata na račun 🏦</label>
+                    <div className="payment-options" style={{display:"grid", gap:10}}>
+                      <label className="svc" style={{alignItems:"center"}}>
+                        <input type="radio" name="paid" checked={form.paid===null}  onChange={()=>setForm(f=>({...f,paid:null}))}/>
+                        <span style={{marginLeft:10}}>nije naplaćeno</span>
+                      </label>
+                      <label className="svc" style={{alignItems:"center"}}>
+                        <input type="radio" name="paid" checked={form.paid==="cash"} onChange={()=>setForm(f=>({...f,paid:"cash"}))}/>
+                        <span style={{marginLeft:10}}>keš 💵</span>
+                      </label>
+                      <label className="svc" style={{alignItems:"center"}}>
+                        <input type="radio" name="paid" checked={form.paid==="card"} onChange={()=>setForm(f=>({...f,paid:"card"}))}/>
+                        <span style={{marginLeft:10}}>kartica 💳</span>
+                      </label>
+                      <label className="svc" style={{alignItems:"center"}}>
+                        <input type="radio" name="paid" checked={form.paid==="bank"} onChange={()=>setForm(f=>({...f,paid:"bank"}))}/>
+                        <span style={{marginLeft:10}}>uplata na račun 🏦</span>
+                      </label>
                     </div>
                   </div>
                 )}
@@ -901,20 +869,20 @@ export default function CalendarEventModal({
           </div>
         </div>
 
-        {/* ===== STICKY FOOTER BUTTONS ===== */}
+        {/* ===== FOOTER ===== */}
         <div className="footer">
           <div className="footer-left">
             {(!isBlock && form.id && form.paid===null && (role==="admin" || role==="salon")) && (
               <>
-                <button className="btn" onClick={()=>setForm(f=>({...f, paid:"cash"}))}>💵 Keš</button>
-                <button className="btn" onClick={()=>setForm(f=>({...f, paid:"card"}))}>💳 Kartica</button>
-                <button className="btn" onClick={()=>setForm(f=>({...f, paid:"bank"}))}>🏦 Račun</button>
+                <button className="btn btn-ghost" onClick={()=>setForm(f=>({...f, paid:"cash"}))}>💵 Keš</button>
+                <button className="btn btn-ghost" onClick={()=>setForm(f=>({...f, paid:"card"}))}>💳 Kartica</button>
+                <button className="btn btn-ghost" onClick={()=>setForm(f=>({...f, paid:"bank"}))}>🏦 Račun</button>
               </>
             )}
           </div>
           <div className="footer-right">
-            <button className="btn" onClick={onClose}>Otkaži</button>
-            <button className="btn-dark" disabled={saving} onClick={save}>
+            <button className="btn btn-ghost" onClick={onClose}>Otkaži</button>
+            <button className="btn btn-primary" disabled={saving} onClick={save}>
               {saving ? "Čuvam..." : (value?.create ? "Sačuvaj novi" : "Sačuvaj")}
             </button>
           </div>

@@ -33,6 +33,10 @@ export default function ClientProfileDrawer({
   const [servicesMap,setServicesMap]=useState(new Map());
   const [categoriesMap,setCategoriesMap]=useState(new Map());
 
+  // collapsible state (oba zatvorena na početku)
+  const [openPast, setOpenPast] = useState(false);
+  const [openFuture, setOpenFuture] = useState(false);
+
   function maskedName(c){ const f=c?.firstName||""; const l=c?.lastName||""; return role==="admin"?`${f} ${l}`.trim():`${f} ${l?(l[0].toUpperCase()+"."):""}`.trim(); }
   function maskedPhone(p){ const raw=(p||"").toString().replace(/\D/g,""); if(role==="admin") return p||"—"; if(!raw) return "—"; return `***${raw.slice(-3)}`; }
   const canSeePaymentBadge = role!=="worker";
@@ -89,7 +93,18 @@ export default function ClientProfileDrawer({
   const now=new Date();
   const future=useMemo(()=>appts.filter(a=>toJsDate(a.start)>now).sort((a,b)=>toJsDate(a.start)-toJsDate(b.start)),[appts]);
   const past=useMemo(()=>appts.filter(a=>toJsDate(a.start)<=now).sort((a,b)=>toJsDate(b.start)-toJsDate(a.start)),[appts]);
-  const totalEarned=useMemo(()=>appts.reduce((s,a)=>{const n=Number(a.priceRsd??a.totalAmountRsd??0); return s+(isFinite(n)?n:0);},0),[appts]);
+
+  // MAX 5 za prikaz u prošlim
+  const pastLimited = useMemo(()=> past.slice(0, 5), [past]);
+
+  // Ukupno zarađeno samo za plaćene termine
+  const paidAppts = useMemo(()=>appts.filter(a => Boolean(a.paid)), [appts]);
+  const totalEarnedPaid = useMemo(()=>paidAppts.reduce((s,a)=>{
+    const n=Number(a.priceRsd ?? a.totalAmountRsd ?? 0);
+    return s + (isFinite(n) ? n : 0);
+  },0), [paidAppts]);
+  const hasPaid = paidAppts.length > 0;
+
   const nextAppt=future[0]||null;
   const noShowCount=useMemo(()=>appts.filter(a=>a.noShow).length,[appts]);
 
@@ -152,11 +167,30 @@ export default function ClientProfileDrawer({
     );
   }
 
+  // Collapsible kartica
+  function Collapsible({title, count, open, onToggle, children}) {
+    return (
+      <div className="collapsible">
+        <button
+          className="collapsible-head"
+          onClick={onToggle}
+          aria-expanded={open}
+        >
+          <span className="chev" aria-hidden="true" />
+          <span className="coll-title">{title}</span>
+          <span className="coll-count">({count})</span>
+        </button>
+        <div className={`coll-body ${open ? "open" : ""}`}>
+          {open ? <div className="coll-inner">{children}</div> : null}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="backdrop" onClick={onClose}>
       <div className="drawer" role="dialog" aria-modal="true" onClick={(e)=>e.stopPropagation()}>
         <style>{`
-          /* ---- Global spacing variables (gutter + safe area) ---- */
           .drawer{ --gutter: clamp(16px, 5vw, 24px); }
 
           .backdrop{ position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; }
@@ -171,7 +205,6 @@ export default function ClientProfileDrawer({
           input:focus, textarea:focus{ border-color:#c7b299; outline:none; box-shadow:0 0 0 3px rgba(199,178,153,.2); }
           a, a:visited{ color:#1f1f1f; text-decoration:none; } a:hover{ color:#000; }
 
-          /* ---- Header (sa leve/desne margine) ---- */
           .head{
             padding-top: calc(max(12px, env(safe-area-inset-top)));
             padding-bottom: 12px;
@@ -187,7 +220,6 @@ export default function ClientProfileDrawer({
           .btn{ padding:8px 12px; border-radius:10px; border:1px solid #ddd6cc; background:#fff; font-weight:700; font-size:14px; min-height:36px; }
           .btn:hover{ background:#f5f0e8; } .btn.danger{ color:#dc2626; border-color:#dc2626; }
 
-          /* ---- Body sa velikim unutrašnjim odmakom + container ---- */
           .body{
             flex:1; overflow-y:auto; background:#f7f2eb;
             padding-left: calc(var(--gutter) + env(safe-area-inset-left));
@@ -196,22 +228,14 @@ export default function ClientProfileDrawer({
             padding-bottom: calc(18px + env(safe-area-inset-bottom));
           }
           .container{
-            max-width: 720px;   /* štiti od širenja i na tabletima / većim telefonima */
-            margin: 0 auto;     /* centrirano unutar body-ja */
+            max-width: 720px;
+            margin: 0 auto;
             display: grid; gap: 20px;
           }
 
-          /* ---- Sekcije ---- */
-          .section{ display:grid; gap:12px; }
-          .section-head{
-            display:flex; align-items:baseline; gap:8px;
-            position:sticky; top:0; padding:6px 0; background:linear-gradient(#f7f2eb, #f7f2eb);
-            z-index:5; border-bottom:1px solid #eadfce;
-          }
           .section-title{ font-weight:900; font-size:16px; color:#1f1f1f; letter-spacing:.2px; }
           .section-count{ font-weight:700; font-size:13px; color:#6b6b6b; }
 
-          /* ---- Kartice ---- */
           .cards{ display:grid; gap:12px; }
           .card{
             display:grid; grid-template-columns:8px 1fr; border:1px solid #eee3d7; border-radius:16px; overflow:hidden; background:#fff;
@@ -233,7 +257,6 @@ export default function ClientProfileDrawer({
           .badge.danger{ color:#dc2626; border-color:#dc2626; }
           .note{ background:#fafafa; border:1px solid #e5e7eb; padding:8px; border-radius:10px; font-size:12px; color:#1f1f1f; }
 
-          /* ---- Info panel ---- */
           .panel{ background:#fff; border:1px solid #e6e0d7; border-radius:16px; padding:12px; display:grid; gap:8px; box-shadow:0 1px 0 rgba(0,0,0,.02); }
           .grid{ display:grid; grid-template-columns:1fr; gap:12px; }
           .line b{ color:#1f1f1f; }
@@ -241,7 +264,47 @@ export default function ClientProfileDrawer({
           .input,.textarea{ width:100%; padding:10px; border-radius:12px; border:1px solid #ddd6cc; background:#fff; font-size:14px; }
           .textarea{ min-height:80px; resize:vertical; }
 
-          /* ---- Responsive ---- */
+          /* Collapsible kartice */
+          .collapsible{
+            background:#fff;
+            border:1px solid #e6e0d7;
+            border-radius:16px;
+            box-shadow:0 1px 0 rgba(0,0,0,.02);
+            overflow:hidden;
+          }
+          .collapsible-head{
+            width:100%;
+            display:flex; align-items:center; gap:10px;
+            padding:12px 14px;
+            background:#fff;
+            border:none;
+            border-bottom:1px solid #eee3d7;
+            text-align:left;
+            cursor:pointer;
+            font-weight:900;
+            color:#1f1f1f;
+          }
+          .coll-title{ font-size:16px; }
+          .coll-count{ font-size:13px; color:#6b6b6b; margin-left:6px; }
+          .chev{
+            width:10px; height:10px; border-right:2px solid #1f1f1f; border-bottom:2px solid #1f1f1f;
+            transform:rotate(-45deg);
+            transition:transform .2s ease;
+            margin-right:4px;
+          }
+          .collapsible-head[aria-expanded="true"] .chev{
+            transform:rotate(45deg);
+          }
+          .coll-body{
+            max-height:0;
+            transition:max-height .25s ease;
+            background:#fff;
+          }
+          .coll-body.open{ max-height:60vh; }
+          .coll-inner{
+            padding:12px;
+          }
+
           @media (min-width:720px){
             .drawer{ width:min(760px, 80vw); }
             .cards{ grid-template-columns:repeat(2,1fr); }
@@ -258,6 +321,13 @@ export default function ClientProfileDrawer({
             .meta{ font-size:10px; gap:4px; }
             .badge{ padding:2px 6px; }
             .note{ font-size:11px; padding:6px; }
+          }
+
+          .drawer :is(.muted){ color:#6b6b6b !important; }
+          .drawer :is(.btn){
+            border:1px solid #ddd6cc !important;
+            background:#fff !important;
+            color:#1f1f1f !important;
           }
 
           .clamp-3{ display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
@@ -289,35 +359,15 @@ export default function ClientProfileDrawer({
 
         <div className="body">
           <div className="container">
-            {/* Naredni termini */}
-            <div className="section">
-              <div className="section-head">
-                <div className="section-title">Naredni termini</div>
-                <div className="section-count">({future.length})</div>
-              </div>
-              <div className="cards">
-                {future.length ? future.map(a => <AppointmentCard key={a.id} a={a} />) : <div className="muted">Nema budućih termina.</div>}
-              </div>
-            </div>
-
-            {/* Prošli termini */}
-            <div className="section">
-              <div className="section-head">
-                <div className="section-title">Prošli termini</div>
-                <div className="section-count">({past.length})</div>
-              </div>
-              <div className="cards">
-                {past.length ? past.map(a => <AppointmentCard key={a.id} a={a} />) : <div className="muted">Nema prošlih termina.</div>}
-              </div>
-            </div>
-
-            {/* Info o klijentu */}
+            {/* INFO O KLIJENTU — PRVO */}
             {!edit ? (
               <div className="panel">
                 <div className="line"><b>Telefon:</b> {maskedPhone(clientLive.phone)}</div>
+                {role==="admin" && hasPaid && (
+                  <div className="line"><b>Ukupno zarađeno:</b> {fmtMoney(totalEarnedPaid)} RSD</div>
+                )}
                 <div className="line"><b>E-mail:</b> {role==="admin" ? (clientLive.email || "—") : "—"}</div>
                 <div className="line"><b>Beleška:</b> {clientLive.note || "—"}</div>
-                {role==="admin" && <div className="line"><b>Ukupno zarađeno:</b> {fmtMoney(totalEarned)} RSD</div>}
                 {nextAppt && (
                   <div className="line"><b>Naredni termin:</b> {fmtDateTime(nextAppt.start)} · {nextAppt.employeeName || nextAppt.employeeUsername || ""}</div>
                 )}
@@ -333,6 +383,31 @@ export default function ClientProfileDrawer({
                 </div>
               </div>
             )}
+
+            {/* PROŠLI TERMINI — KARTICA (zatvorena na početku) */}
+            <Collapsible
+              title="Prošli termini"
+              count={past.length}
+              open={openPast}
+              onToggle={()=>setOpenPast(v=>!v)}
+            >
+              <div className="cards">
+                {pastLimited.length ? pastLimited.map(a => <AppointmentCard key={a.id} a={a} />) : <div className="muted">Nema prošlih termina.</div>}
+              </div>
+            </Collapsible>
+
+            {/* NAREDNI TERMINI — KARTICA (zatvorena na početku) */}
+            <Collapsible
+              title="Naredni termini"
+              count={future.length}
+              open={openFuture}
+              onToggle={()=>setOpenFuture(v=>!v)}
+            >
+              <div className="cards">
+                {future.length ? future.map(a => <AppointmentCard key={a.id} a={a} />) : <div className="muted">Nema budućih termina.</div>}
+              </div>
+            </Collapsible>
+
           </div>
         </div>
       </div>

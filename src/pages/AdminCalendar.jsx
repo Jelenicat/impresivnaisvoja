@@ -644,85 +644,88 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
     onDragEnd();
   }
 
-  function startDrag(ev, appt, top) {
-    if ((ev.target)?.classList?.contains("resize-handle")) return; // ako hvatište, onda resize
-    if (role === "worker" && appt.employeeUsername !== currentUsername) return;
+function startDrag(ev, appt, top) {
+  if ((ev.target)?.classList?.contains("resize-handle")) return;
+  if (role === "worker" && appt.employeeUsername !== currentUsername) return;
 
-    const body = colBodyRefs.current.get(appt.employeeUsername);
-    if (!body) return;
+  const body = colBodyRefs.current.get(appt.employeeUsername);
+  if (!body) return;
 
-    ev.stopPropagation();
+  ev.stopPropagation();
 
-    const startMin = Math.max(DAY_START_MIN, minsInDay(appt.start, dayStart));
-    const endMin = Math.min(DAY_END_MIN, minsInDay(appt.end, dayStart));
-    const durationMin = Math.max(15, endMin - startMin);
+  const startMin = Math.max(DAY_START_MIN, minsInDay(appt.start, dayStart));
+  const endMin = Math.min(DAY_END_MIN, minsInDay(appt.end, dayStart));
+  const durationMin = Math.max(15, endMin - startMin);
 
-    const rect = body.getBoundingClientRect();
-    const coords = getClientCoords(ev);
-    const offsetY = coords.clientY - rect.top + (body.scrollTop || 0) - (top ?? 0);
+  const rect = body.getBoundingClientRect();
+  const coords = getClientCoords(ev);
+  const offsetY = coords.clientY - rect.top + (body.scrollTop || 0) - (top ?? 0);
 
-    // Detekcija tap vs drag
-    let isDragging = false;
-    let startX = coords.clientX;
-    let startY = coords.clientY;
-    const touchStartTime = Date.now();
+  // Detekcija tap vs drag
+  let isDragging = false;
+  let startX = coords.clientX;
+  let startY = coords.clientY;
+  const touchStartTime = Date.now();
 
-    draggingRef.current = {
-      id: appt.id,
-      durationMin,
-      offsetY: Math.max(0, offsetY),
-      empFrom: appt.employeeUsername,
-      startMinInit: startMin,
-    };
+  draggingRef.current = {
+    id: appt.id,
+    durationMin,
+    offsetY: Math.max(0, offsetY),
+    empFrom: appt.employeeUsername,
+    startMinInit: startMin,
+  };
 
-    const g = { id: appt.id, emp: appt.employeeUsername, topMin: startMin };
-    setDragGhost(g);
-    dragGhostRef.current = g;
+  const g = { id: appt.id, emp: appt.employeeUsername, topMin: startMin };
+  setDragGhost(g);
+  dragGhostRef.current = g;
 
-    const onTouchMoveHandler = (ev) => {
-      const coords = getClientCoords(ev);
-      const dx = Math.abs(coords.clientX - startX);
-      const dy = Math.abs(coords.clientY - startY);
-      const distance = Math.sqrt(dx * dx + dy * dy);
+const onTouchMoveHandler = (ev) => {
+  const coords = getClientCoords(ev);
+  const dx = Math.abs(coords.clientX - startX);
+  const dy = Math.abs(coords.clientY - startY);
+  const distance = Math.sqrt(dx * dx + dy * dy);
 
-      if (distance > 10) { // Prag za drag
-        isDragging = true;
-        ev.preventDefault(); // Spreči skrol samo ako je drag
-        onDragTouchMove(ev);
-      }
-    };
-
-    const onTouchEndHandler = (ev) => {
-      const touchDuration = Date.now() - touchStartTime;
-      console.log("Touch ended:", { isDragging, touchDuration });
-      window.removeEventListener("mousemove", onDragMove);
-      window.removeEventListener("mouseup", onDragEnd);
-      window.removeEventListener("touchmove", onTouchMoveHandler);
-      window.removeEventListener("touchend", onTouchEndHandler);
-      window.removeEventListener("click", swallowNextClick, true);
-      document.body.style.userSelect = "";
-      document.body.style.touchAction = "";
-
-      if (isDragging) {
-        onDragEnd();
-      } else if (touchDuration < 300) { // Tap kraći od 300ms
-        setHoverAppt(null);
-        openEdit(appt);
-      }
-
-      setDragGhost(null);
-      draggingRef.current = null;
-      dragGhostRef.current = null;
-    };
-
-    window.addEventListener("mousemove", onDragMove);
-    window.addEventListener("mouseup", onDragEnd);
-    window.addEventListener("touchmove", onTouchMoveHandler, { passive: false });
-    window.addEventListener("touchend", onTouchEndHandler);
-    window.addEventListener("click", swallowNextClick, true);
-    document.body.style.userSelect = "none";
-    document.body.style.touchAction = "none";
+  // Povećan prag na 20 piksela
+  if (distance > 20) {
+    isDragging = true;
+    ev.preventDefault();
+    onDragTouchMove(ev);
   }
+};
+
+const onTouchEndHandler = (ev) => {
+  const touchDuration = Date.now() - touchStartTime;
+  console.log("Touch ended:", { isDragging, touchDuration });
+
+  window.removeEventListener("mousemove", onDragMove);
+  window.removeEventListener("mouseup", onDragEnd);
+  window.removeEventListener("touchmove", onTouchMoveHandler);
+  window.removeEventListener("touchend", onTouchEndHandler);
+  window.removeEventListener("click", swallowNextClick, true);
+  document.body.style.userSelect = "";
+  document.body.style.touchAction = "";
+
+  // Drag se aktivira samo ako je trajao barem 200ms
+  if (isDragging && touchDuration >= 200) {
+    onDragEnd();
+  } else if (touchDuration < 300) {
+    setHoverAppt(null);
+    openEdit(appt);
+  }
+
+  setDragGhost(null);
+  draggingRef.current = null;
+  dragGhostRef.current = null;
+};
+
+  window.addEventListener("mousemove", onDragMove);
+  window.addEventListener("mouseup", onDragEnd);
+  window.addEventListener("touchmove", onTouchMoveHandler, { passive: false });
+  window.addEventListener("touchend", onTouchEndHandler);
+  window.addEventListener("click", swallowNextClick, true);
+  document.body.style.userSelect = "none";
+  document.body.style.touchAction = "none";
+}
 
   function pickColumnUnderPointer(clientX, clientY){
     for (const emp of visibleEmployees){
@@ -1134,16 +1137,11 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
           .appt { -webkit-touch-callout: none; -webkit-user-select: none; }
           .col-body { -webkit-overflow-scrolling: touch; }
         }
-          .admin-cal input,
-          .admin-cal select,
-          .admin-cal button,
-          .admin-cal .hour,
-          .admin-cal .col-header,
-          .admin-cal .appt,
-          .admin-cal .muted {
-            color: #1f1f1f !important;
-            -webkit-text-fill-color: #1f1f1f !important; /* iOS fix */
-          }
+     .admin-cal .modal :is(input, select, button, .muted),
+.admin-cal .drawer :is(input, select, button, .muted) {
+  color: inherit !important;
+  -webkit-text-fill-color: inherit !important;
+}
       `}</style>
 
       <div className="admin-cal">
