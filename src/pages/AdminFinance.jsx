@@ -1,5 +1,5 @@
 // src/pages/AdminFinance.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import {
   collection, query, where, onSnapshot,
   addDoc, serverTimestamp
@@ -85,6 +85,20 @@ export default function AdminFinance({
     return () => unsub && unsub();
   }, []);
 
+  /* === ACTUELNA CENA IZ USLUGA === */
+  const apptValue = useCallback((a) => {
+    // Ako termin ima listu usluga → saberi njihove trenutne cene iz servicesMap
+    const ids = Array.isArray(a?.services) ? a.services : null;
+    if (ids && ids.length) {
+      return ids.reduce((sum, id) => {
+        const svc = servicesMap.get(id);
+        return sum + Number(svc?.priceRsd || 0);
+      }, 0);
+    }
+    // Fallback za stare termine bez services polja
+    return Number(a?.priceRsd) || 0;
+  }, [servicesMap]);
+
   /* Derived */
   const paidInRange = useMemo(() => {
     const s=from, e=to;
@@ -97,45 +111,44 @@ export default function AdminFinance({
   const splitTotals = useMemo(() => {
     let cash=0, card=0, bank=0, total=0;
     paidInRange.forEach(a=>{
-      const v = Number(a.priceRsd)||0;
+      const v = apptValue(a);
       total += v;
       if (a.paid==="cash") cash += v;
       if (a.paid==="card") card += v;
       if (a.paid==="bank") bank += v;
     });
     return { cash, card, bank, total };
-  }, [paidInRange]);
+  }, [paidInRange, apptValue]);
 
-// ✅ Usluge (broj izvršenja)
-const serviceCounter = useMemo(() => {
-  const counts = new Map();
-  for (const a of paidInRange) {
-    for (const id of (a.services ?? [])) {
-      counts.set(id, (counts.get(id) ?? 0) + 1);
+  // ✅ Usluge (broj izvršenja)
+  const serviceCounter = useMemo(() => {
+    const counts = new Map();
+    for (const a of paidInRange) {
+      for (const id of (a.services ?? [])) {
+        counts.set(id, (counts.get(id) ?? 0) + 1);
+      }
     }
-  }
-  // Array.from(map) → [ [id, cnt], ... ]
-  return Array.from(counts, ([id, cnt]) => ({
-    id,
-    cnt,
-    name: servicesMap.get(id)?.name ?? "—",
-  })).sort((a, b) => b.cnt - a.cnt);
-}, [paidInRange, servicesMap]);
+    // Array.from(map) → [ [id, cnt], ... ]
+    return Array.from(counts, ([id, cnt]) => ({
+      id,
+      cnt,
+      name: servicesMap.get(id)?.name ?? "—",
+    })).sort((a, b) => b.cnt - a.cnt);
+  }, [paidInRange, servicesMap]);
 
-// ✅ Zarada po radnici (ovo je bilo ok, samo ostavljam radi kompletnosti)
-const earningsByEmployee = useMemo(() => {
-  const m = new Map();
-  for (const a of paidInRange) {
-    const key = a.employeeUsername || a.employeeId || "—";
-    m.set(key, (m.get(key) || 0) + (Number(a.priceRsd) || 0));
-  }
-  return Array.from(m.entries()).map(([username, total]) => {
-    const emp = employees.find(e => e.username === username);
-    const name = emp ? `${emp.firstName || ""} ${emp.lastName || ""}`.trim() : username;
-    return { username, name, total };
-  }).sort((a, b) => b.total - a.total);
-}, [paidInRange, employees]);
-
+  // ✅ Zarada po radnici (sa aktuelnim cenama iz usluga)
+  const earningsByEmployee = useMemo(() => {
+    const m = new Map();
+    for (const a of paidInRange) {
+      const key = a.employeeUsername || a.employeeId || "—";
+      m.set(key, (m.get(key) || 0) + apptValue(a));
+    }
+    return Array.from(m.entries()).map(([username, total]) => {
+      const emp = employees.find(e => e.username === username);
+      const name = emp ? `${emp.firstName || ""} ${emp.lastName || ""}`.trim() : username;
+      return { username, name, total };
+    }).sort((a, b) => b.total - a.total);
+  }, [paidInRange, employees, apptValue]);
 
   const expensesTotal = useMemo(() => {
     return expenses
@@ -147,11 +160,11 @@ const earningsByEmployee = useMemo(() => {
     if (role!=="worker") return { total:0, count:0 };
     let total=0, count=0;
     paidInRange.forEach(a=>{
-      total += Number(a.priceRsd)||0;
+      total += apptValue(a);
       count += 1;
     });
     return { total, count };
-  }, [role, paidInRange]);
+  }, [role, paidInRange, apptValue]);
 
   /* Actions */
   async function addExpense(){
@@ -964,7 +977,7 @@ const earningsByEmployee = useMemo(() => {
                             <td>{a.clientName || "—"}</td>
                             <td>{formatServices(a.services)}</td>
                             <td>{formatEmpName(a.employeeUsername || a.employeeId)}</td>
-                            <td className="right">{fmtMoney(a.priceRsd)} RSD</td>
+                            <td className="right">{fmtMoney(apptValue(a))} RSD</td>
                             <td><span className="pill">{a.paid}</span></td>
                           </tr>
                         ))}
@@ -997,7 +1010,7 @@ const earningsByEmployee = useMemo(() => {
                             <td>{toJsDate(a.start).toLocaleString("sr-RS")}</td>
                             <td>{a.clientName || "—"}</td>
                             <td>{formatServices(a.services)}</td>
-                            <td className="right">{fmtMoney(a.priceRsd)} RSD</td>
+                            <td className="right">{fmtMoney(apptValue(a))} RSD</td>
                             <td><span className="pill">{a.paid}</span></td>
                           </tr>
                         ))}

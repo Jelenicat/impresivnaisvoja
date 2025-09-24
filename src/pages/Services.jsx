@@ -642,8 +642,7 @@ export default function Services() {
         }
       `}</style>
 
-      <h1 className="page-title">Usluge</h1>
-
+    
       {/* Nova kategorija */}
       <div className="new-cat">
         <input

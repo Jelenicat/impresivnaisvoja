@@ -7,7 +7,12 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase";
 
-/* ============== UI helpers ============== */
+/* ============== helpers ============== */
+const isMobile = () =>
+  (typeof window !== "undefined")
+    ? window.matchMedia("(max-width: 760px)").matches
+    : false;
+
 function cls(...x){ return x.filter(Boolean).join(" "); }
 function Pill({ active, children, onClick, title }) {
   return (
@@ -119,7 +124,7 @@ function ServicePickerDrawer({ open, onClose, categories, servicesByCat, value, 
         .drawer-veil{position:fixed;inset:0;background:rgba(0,0,0,.28);backdrop-filter:blur(2px);display:flex;justify-content:flex-end;z-index:1000;}
         .drawer{width:min(720px,96vw);height:100%;background:#fff;border-left:1px solid #eee;display:flex;flex-direction:column;animation:slideIn .2s ease;}
         @keyframes slideIn{from{transform:translateX(8px);opacity:.8}to{transform:translateX(0);opacity:1}}
-        @media (max-width:720px){ 
+        @media (max-width:760px){ 
           .drawer{width:100%;border-radius:16px 16px 0 0;align-self:flex-end;height:90vh;animation:rise .22s ease;padding-bottom:8px;}
           .drawer-veil{align-items:flex-end;}
           @keyframes rise{from{transform:translateY(8px);opacity:.9} to{transform:translateY(0);opacity:1}}
@@ -138,7 +143,6 @@ function ServicePickerDrawer({ open, onClose, categories, servicesByCat, value, 
         .cat__actions{display:flex;gap:8px}
         .chips{display:flex;gap:8px;flex-wrap:wrap;padding:10px}
 
-        /* Pills (svetlo sivo, ujednačeno) */
         .pill{padding:8px 12px;border-radius:999px;border:1px solid #ddd6cc;background:#fff;cursor:pointer;font-size:13px;font-weight:600;color:#1f1f1f;}
         .pill--active{background:#f2f2f2;color:#1f1f1f;border-color:#ccc;box-shadow: inset 0 0 0 2px rgba(0,0,0,.03);}
         .pill:active{background:#f5f5f5}
@@ -146,17 +150,134 @@ function ServicePickerDrawer({ open, onClose, categories, servicesByCat, value, 
         .empty{opacity:.65;font-size:13px;padding:8px}
         .drawer__footer{display:flex;gap:10px;align-items:center;padding:10px 12px;border-top:1px solid #f1eee8;background:#faf8f5}
         .spacer{flex:1}
+       .btn{
+  background:#fff;
+  color:#1f1f1f;
+  -webkit-text-fill-color:#1f1f1f;
+  border:1px solid #ddd6cc;
+  padding:12px 16px;
+  border-radius:14px;
+  cursor:pointer;
+  font-weight:700;
+  font-size:14px;
+}
+.btn:active{ background:#f7f7f7; }
+.btn--primary{
+  background:#fff;
+  color:#1f1f1f;
+  -webkit-text-fill-color:#1f1f1f;
+  border:1px solid #1f1f1f; /* jači okvir da izgleda “primary” */
+}
 
-        /* Buttons */
-        .btn{padding:10px 14px;border-radius:12px;cursor:pointer;border:1px solid transparent;color:#1f1f1f;-webkit-text-fill-color:#1f1f1f;}
-        .btn--ghost{background:#fff;border-color:#ddd6cc}
-        .btn--ghost:active{background:#f2f2f2;border-color:#ccc;box-shadow: inset 0 0 0 2px rgba(0,0,0,.03);}
-        .btn--primary{background:#1f1f1f;color:#fff}
+
       `}</style>
     </div>
   );
 
-  return createPortal(UI, document.body); // ⭐ portal
+  return createPortal(UI, document.body);
+}
+
+/* ============== Drawer za DODAVANJE radnika (MOBILE) ============== */
+function AddEmployeeDrawer({ open, onClose, onSubmit, initialPassword, onOpenPicker, selectedCount, loading }) {
+  const [firstName, setFirstName] = useState("");
+  const [lastName,  setLastName]  = useState("");
+  const [username,  setUsername]  = useState("");
+  const [password,  setPassword]  = useState(initialPassword || "");
+
+  useEffect(()=>{ setPassword(initialPassword || ""); }, [initialPassword, open]);
+
+  if (!open) return null;
+  return createPortal(
+    <div className="drawer-veil" onClick={onClose}>
+      <aside className="drawer" onClick={(e)=>e.stopPropagation()} role="dialog" aria-label="Dodaj radnika">
+        <header className="drawer__header">
+          <div className="drawer__title">Dodaj radnika</div>
+          <button className="icon-btn" onClick={onClose} aria-label="Zatvori">✕</button>
+        </header>
+        <div className="drawer__body" style={{display:"grid", gap:10}}>
+          <input className="input" placeholder="Ime" value={firstName} onChange={e=>setFirstName(e.target.value)} />
+          <input className="input" placeholder="Prezime" value={lastName} onChange={e=>setLastName(e.target.value)} />
+          <input className="input" placeholder="Korisničko ime (unikat)" value={username} onChange={e=>setUsername(e.target.value)} />
+          <input className="input" placeholder="Privremena lozinka" value={password} onChange={e=>setPassword(e.target.value)} />
+          <div style={{display:"flex", alignItems:"center", gap:10, flexWrap:"wrap", marginTop:4}}>
+            <button type="button" className="btn btn--ghost" onClick={onOpenPicker}>Dodaj usluge</button>
+            <span className="muted">izabrano: {selectedCount}</span>
+          </div>
+        </div>
+        <footer className="drawer__footer">
+          <button className="btn btn--ghost" onClick={onClose}>Otkaži</button>
+          <div className="spacer" />
+          <button
+            className="btn btn--primary"
+            onClick={()=>onSubmit({ firstName, lastName, username, password })}
+            disabled={loading}
+          >
+            {loading ? "Dodavanje…" : "Sačuvaj radnika"}
+          </button>
+        </footer>
+      </aside>
+    </div>,
+    document.body
+  );
+}
+
+/* ============== Drawer DETALJI radnika (MOBILE) ============== */
+function EmployeeDetailDrawer({ open, onClose, employee, onSave, onDelete, onOpenPicker }) {
+  const [local, setLocal] = useState(employee);
+
+  useEffect(()=>{ setLocal(employee); }, [employee, open]);
+
+  if (!open || !employee) return null;
+  const cnt = local?.serviceIds?.length || 0;
+
+  return createPortal(
+    <div className="drawer-veil" onClick={onClose}>
+      <aside className="drawer" onClick={(e)=>e.stopPropagation()} role="dialog" aria-label="Detalji radnika">
+        <header className="drawer__header">
+          <div className="drawer__title">
+            {local?.firstName} {local?.lastName}
+            <span className="drawer__subtitle">@{local?.username}</span>
+          </div>
+          <button className="icon-btn" onClick={onClose} aria-label="Zatvori">✕</button>
+        </header>
+
+        <div className="drawer__body" style={{display:"grid", gap:10}}>
+          <div style={{display:"grid", gap:8}}>
+            <label className="label">Ime</label>
+            <input className="input" value={local?.firstName||""} onChange={e=>setLocal(v=>({...v, firstName:e.target.value}))}/>
+          </div>
+          <div style={{display:"grid", gap:8}}>
+            <label className="label">Prezime</label>
+            <input className="input" value={local?.lastName||""} onChange={e=>setLocal(v=>({...v, lastName:e.target.value}))}/>
+          </div>
+          <div style={{display:"grid", gap:8}}>
+            <label className="label">Privremena lozinka</label>
+            <input className="input" value={local?.tempPassword||""} onChange={e=>setLocal(v=>({...v, tempPassword:e.target.value}))}/>
+          </div>
+          <div style={{display:"flex", alignItems:"center", gap:10, flexWrap:"wrap"}}>
+            <span className="label">Status:</span>
+            <Pill active={!!local?.active} onClick={()=>setLocal(v=>({...v, active: !v.active}))}>
+              {local?.active ? "Aktivan" : "Neaktivan"}
+            </Pill>
+          </div>
+          <div style={{display:"flex", alignItems:"center", gap:10, flexWrap:"wrap"}}>
+            <button className="btn btn--ghost" onClick={onOpenPicker}>Usluge</button>
+            <span className="muted">izabrano: {cnt}</span>
+          </div>
+        </div>
+
+        <footer className="drawer__footer">
+          <button className="btn btn--ghost" onClick={()=>onDelete?.(local)}>Obriši</button>
+          <div className="spacer" />
+          <button className="btn btn--primary" onClick={()=>onSave?.(local)}>Sačuvaj izmene</button>
+        </footer>
+      </aside>
+      <style>{`
+        .label{ font-size:13px; color:#6b665e; }
+      `}</style>
+    </div>,
+    document.body
+  );
 }
 
 /* ============== Glavna stranica ============== */
@@ -166,15 +287,17 @@ export default function AdminEmployees() {
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  // forma (bez bedževa – samo brojač)
-  const [firstName, setFirstName] = useState("");
-  const [lastName,  setLastName]  = useState("");
-  const [username,  setUsername]  = useState("");
-  const [password,  setPassword]  = useState(() => Math.random().toString(36).slice(2,8));
+  // globalno izabrane usluge (za add)
   const [serviceIds, setServiceIds] = useState([]);
-
   const [pickerOpen, setPickerOpen] = useState(false);
+
+  // add drawer
+  const [addOpen, setAddOpen] = useState(false);
+  const [password, setPassword] = useState(() => Math.random().toString(36).slice(2,8));
+
+  // edit drawer
   const [editing, setEditing] = useState(null); // objekat zaposlenog ili null
+  const [editPickerOpen, setEditPickerOpen] = useState(false);
 
   // kolekcije
   useEffect(() => {
@@ -200,9 +323,12 @@ export default function AdminEmployees() {
     return m;
   }, [services]);
 
-  async function addEmployee() {
-    const u = username.trim();
-    if (!u || !password.trim() || !firstName.trim() || !lastName.trim()) {
+  async function addEmployee({ firstName, lastName, username, password: pwd }) {
+    const u = String(username||"").trim();
+    const fn = String(firstName||"").trim();
+    const ln = String(lastName||"").trim();
+    const pw = String(pwd||"").trim();
+    if (!u || !pw || !fn || !ln) {
       alert("Popunite ime, prezime, korisničko ime i lozinku.");
       return;
     }
@@ -213,9 +339,9 @@ export default function AdminEmployees() {
         {
           username: u,
           role: "worker",
-          firstName: firstName.trim(),
-          lastName: lastName.trim(),
-          tempPassword: password.trim(),
+          firstName: fn,
+          lastName: ln,
+          tempPassword: pw,
           active: true,
           serviceIds,
           createdAt: serverTimestamp(),
@@ -224,9 +350,9 @@ export default function AdminEmployees() {
         { merge: false }
       );
       // reset
-      setFirstName(""); setLastName("");
-      setUsername(""); setPassword(Math.random().toString(36).slice(2,8));
       setServiceIds([]);
+      setPassword(Math.random().toString(36).slice(2,8));
+      setAddOpen(false);
     } catch (e) {
       console.error(e);
       alert("Greška pri dodavanju zaposlenog.");
@@ -240,8 +366,8 @@ export default function AdminEmployees() {
       await setDoc(
         doc(db, "employees", next.username),
         {
-          firstName: next.firstName.trim(),
-          lastName: next.lastName.trim(),
+          firstName: next.firstName?.trim() || "",
+          lastName: next.lastName?.trim() || "",
           tempPassword: next.tempPassword?.trim() || next.tempPassword,
           active: !!next.active,
           serviceIds: next.serviceIds || [],
@@ -260,7 +386,10 @@ export default function AdminEmployees() {
     if (!window.confirm(`Obrisati zaposlenog "${u.username}"?`)) return;
     try { await deleteDoc(doc(db, "employees", u.username)); }
     catch (e) { console.error(e); alert("Greška pri brisanju."); }
+    finally { setEditing(null); }
   }
+
+  const mobile = isMobile();
 
   return (
     <div className="page">
@@ -283,85 +412,54 @@ export default function AdminEmployees() {
           text-align:center;
           color:#2c261f;
         }
-        .grid{ display:grid; gap:14px; grid-template-columns: 1fr; min-width:0; }
-        @media(min-width:980px){ .grid{ grid-template-columns: 420px 1fr; align-items:start; } }
-
         .card{ 
           background:#fff; 
           border-radius:22px; 
           box-shadow:0 12px 34px rgba(0,0,0,.08); 
           padding:16px; 
           width:100%;
-          box-sizing:border-box;
         }
-        .card h3{ margin:0 0 10px; font-size:16px; font-weight:700; color:#2c261f; }
-        .row{ display:grid; gap:10px; grid-template-columns: repeat(2,minmax(0,1fr)); }
-        .input{ 
-          width:100%; 
-          padding:12px; 
-          border-radius:12px; 
-          border:1px solid #e6e0d7; 
-          background:#fff; 
-          font-size:14px;
-          color:#1f1f1f; -webkit-text-fill-color:#1f1f1f;
-        }
-        .input:focus{ outline:none; border-color:#1f1f1f; box-shadow:0 0 0 3px rgba(31,31,31,.05); }
 
-        /* Buttons ujednačeni sa sivo stilom */
+        /* Buttons / inputs */
         .btn{ 
-          border:0; 
-          background:#1f1f1f; 
-          color:#fff; 
-          padding:11px 14px; 
-          border-radius:12px; 
+           border:1px solid hsla(0, 81%, 29%, 1.00);
+          background:#fff
+          color:#000; 
+          padding:12px 16px; 
+          border-radius:14px; 
           cursor:pointer; 
-          font-weight:600;
+          font-weight:700;
           font-size:14px;
         }
+        
+        
         .btn--ghost{ background:#fff; color:#1f1f1f; border:1px solid #ddd6cc }
         .btn--ghost:active{ background:#f2f2f2; border-color:#ccc; box-shadow: inset 0 0 0 2px rgba(0,0,0,.03); }
-        .btn:hover:not(:disabled){ background:#333; }
         .btn:disabled{ opacity:.6; cursor:not-allowed; }
+        .input{ width:100%; padding:12px; border-radius:12px; border:1px solid #e6e0d7; background:#fff; font-size:14px; color:#1f1f1f; -webkit-text-fill-color:#1f1f1f; }
+        .input:focus{ outline:none; border-color:#1f1f1f; box-shadow:0 0 0 3px rgba(31,31,31,.05); }
 
         .muted{ opacity:.7; font-size:13px; }
 
-        .table{ width:100%; border-collapse: collapse; }
-        .table th,.table td{ padding:10px 12px; border-bottom:1px dashed #eee; text-align:left; font-size:14px }
-        .table th{ font-weight:700; color:#36322b; background:#faf8f5 }
-        .table__actions{ display:flex; gap:8px; flex-wrap:wrap }
-
-        /* Pills (svetlo sivo, kao i u Drawer-u) */
-        .pill{ 
-          padding:8px 12px;
-          border-radius:999px;
-          border:1px solid #ddd6cc;
+        /* Chip lista radnika */
+        .emp-list{ display:grid; gap:10px; grid-template-columns: repeat(2,minmax(0,1fr)); }
+        .emp-chip{
+          display:flex; align-items:center; gap:10px; justify-content:center;
+          padding:12px;
+          border-radius:14px;
           background:#fff;
-          cursor:pointer;
-          font-size:13px;
-          font-weight:600;
-          color:#1f1f1f;
+          border:1px solid #e6e0d7;
+          font-weight:700;
+          text-align:center;
+          min-height:52px;
         }
-        .pill--active{ background:#f2f2f2; color:#1f1f1f; border-color:#ccc; box-shadow: inset 0 0 0 2px rgba(0,0,0,.03); }
-        .pill:active{ background:#f5f5f5; }
+        .emp-chip small{ font-weight:600; opacity:.7; display:block; }
 
-        .badge{ 
-          background:#f1eee8; 
-          border:1px solid #e7dfd4; 
-          color:#5c564c; 
-          padding:4px 8px; 
-          border-radius:999px; 
-          font-size:12px 
-        }
-
-        @media(max-width:768px){
-          .page{ padding:4px clamp(8px,2vw,12px) 84px; }
-          h1{ font-size:18px; margin:4px 0 8px; }
-          .card{ padding:12px; border-radius:16px; }
-          .row{ gap:8px; grid-template-columns: 1fr; } /* Stack inputs */
-          .table th,.table td{ padding:8px 10px; font-size:13px; }
-          .table__actions{ gap:6px; }
-
-          /* Ukloni plave naglaske i autofill */
+        /* Mobilni header + spacing */
+        @media(max-width:760px){
+          .page{ padding:12px 12px 90px; }
+          h1{ font-size:20px; margin:4px 0 10px; }
+          .top-actions{ display:flex; gap:10px; margin-bottom:12px; }
           input, select, button {
             color:#1f1f1f !important;
             -webkit-text-fill-color:#1f1f1f !important;
@@ -372,155 +470,125 @@ export default function AdminEmployees() {
             -webkit-box-shadow: 0 0 0px 1000px #fff inset !important;
             -webkit-text-fill-color:#1f1f1f !important;
           }
+          .card{ padding:12px; border-radius:16px; }
         }
 
-        @media(max-width:380px){
-          .input{ height:38px; font-size:13px; padding:10px; }
-          .btn, .pill{ font-size:12.5px; padding:8px 12px; }
+        /* ----- stilovi podeljeni sa drawerima (iz ServicePicker-a) ----- */
+        .drawer-veil{position:fixed;inset:0;background:rgba(0,0,0,.28);backdrop-filter:blur(2px);display:flex;justify-content:flex-end;z-index:1000;}
+        .drawer{width:min(720px,96vw);height:100%;background:#fff;border-left:1px solid #eee;display:flex;flex-direction:column;animation:slideIn .2s ease;}
+        @keyframes slideIn{from{transform:translateX(8px);opacity:.8}to{transform:translateX(0);opacity:1}}
+        @media (max-width:760px){ 
+          .drawer{width:100%;border-radius:16px 16px 0 0;align-self:flex-end;height:90vh;animation:rise .22s ease;padding-bottom:8px;}
+          .drawer-veil{align-items:flex-end;}
+          @keyframes rise{from{transform:translateY(8px);opacity:.9} to{transform:translateY(0);opacity:1}}
         }
+        .drawer__header{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid #f1eee8;background:#faf8f5;}
+        .drawer__title{font-weight:700;font-size:16px;display:flex;gap:10px;align-items:center}
+        .drawer__subtitle{font-weight:600;color:#8a8378;font-size:12px;background:#f1eee8;padding:4px 8px;border-radius:999px}
+        .icon-btn{border:0;background:#fff;border:1px solid #ddd6cc;border-radius:10px;padding:8px 10px;cursor:pointer}
+        .drawer__body{padding:10px 12px;overflow-y:auto}
+        @media (max-width:760px){
+  .drawer__footer{
+    flex-direction: column !important;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+  }
+  .drawer__footer .btn{
+    width: 50%;
+    max-width: 260px; /* da budu lepše, ne zauzimaju celu širinu */
+    text-align: center;
+    
+    margin-left:80px;
+  }
+}
+
+        .spacer{flex:1}
+
+        .pill{ padding:8px 12px; border-radius:999px; border:1px solid #ddd6cc; background:#fff; cursor:pointer; font-size:13px; font-weight:600; color:#1f1f1f; }
+        .pill--active{ background:#f2f2f2; color:#1f1f1f; border-color:#ccc; box-shadow: inset 0 0 0 2px rgba(0,0,0,.03); }
+        .pill:active{ background:#f5f5f5; }
+        .empty{opacity:.65;font-size:13px;padding:8px}
       `}</style>
 
       <h1>Zaposleni</h1>
 
-      <div className="grid">
-        {/* Forma – Novi zaposleni */}
-        <div className="card">
-          <h3>Novi zaposleni</h3>
-          <div className="row">
-            <input className="input" placeholder="Ime" value={firstName} onChange={e=>setFirstName(e.target.value)} />
-            <input className="input" placeholder="Prezime" value={lastName} onChange={e=>setLastName(e.target.value)} />
-            <input className="input" placeholder="Korisničko ime (unikat)" value={username} onChange={e=>setUsername(e.target.value)} />
-            <input className="input" placeholder="Privremena lozinka" value={password} onChange={e=>setPassword(e.target.value)} />
-          </div>
-
-          {/* Nema bedževa ispod – samo dugme + brojač */}
-          <div style={{marginTop:12, display:"flex", alignItems:"center", gap:10, flexWrap:"wrap"}}>
-            <button type="button" className="btn btn--ghost" onClick={()=>setPickerOpen(true)}>
-              Dodaj usluge
-            </button>
-            <span className="muted">izabrano: {serviceIds.length}</span>
-          </div>
-
-          <div style={{marginTop:14, display:'flex', gap:10}}>
-            <button className="btn" disabled={loading} onClick={addEmployee}>
-              {loading ? "Dodavanje…" : "Dodaj zaposlenog"}
-            </button>
-          </div>
-        </div>
-
-        {/* Spisak */}
-        <div className="card">
-          <h3>Spisak</h3>
-          <table className="table">
-            <thead>
-              <tr>
-                <th style={{width:160}}>Korisnik</th>
-                <th>Ime i prezime</th>
-                <th style={{width:120}}>Usluge</th>
-                <th style={{width:120}}>Status</th>
-                <th style={{width:220}}>Akcije</th>
-              </tr>
-            </thead>
-            <tbody>
-              {employees.map(u => (
-                <tr key={u.username}>
-                  <td>{u.username}</td>
-                  <td>{u.firstName} {u.lastName}</td>
-                  <td>{u.serviceIds?.length || 0}</td>
-                  <td>
-                    <span
-                      className="badge"
-                      style={{
-                        background:u.active?"#e6fbef":"#fff3f3",
-                        borderColor:u.active?"#bfead2":"#f3c9c9",
-                        color:u.active?"#106a3a":"#912323"
-                      }}
-                    >
-                      {u.active ? "aktivan" : "neaktivan"}
-                    </span>
-                  </td>
-                  <td>
-                    <div className="table__actions">
-                      <button
-                        className="pill"
-                        onClick={()=>setEditing({
-                          ...u,
-                          tempPassword: u.tempPassword || "",
-                          serviceIds: u.serviceIds || [],
-                        })}
-                      >
-                        Izmeni
-                      </button>
-                      <button className="pill" onClick={()=>removeEmployee(u)} style={{borderColor:"#f2c0c0", color:"#b00020"}}>
-                        Obriši
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {employees.length === 0 && (
-                <tr><td colSpan={5}><Empty>Još nema zaposlenih.</Empty></td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Drawer – dodavanje usluga */}
-      <ServicePickerDrawer
-        open={pickerOpen}
-        onClose={()=>setPickerOpen(false)}
-        categories={categories}
-        servicesByCat={servicesByCat}
-        value={serviceIds}
-        onSave={(arr)=>{ setServiceIds(arr); setPickerOpen(false); }}
-      />
-
-      {/* Izmena zaposlenog */}
-      {editing && (
+      {mobile ? (
         <>
-          <div className="drawer-veil" onClick={()=>setEditing(null)} style={{background:"transparent", pointerEvents:"none"}}>
-            <aside className="drawer" onClick={(e)=>e.stopPropagation()} style={{pointerEvents:"none", background:"transparent", border:"none", boxShadow:"none"}}>
-              <div style={{pointerEvents:"auto", background:"#fff", borderRadius:18, margin:10, padding:14, boxShadow:"0 12px 30px rgba(0,0,0,.12)"}}>
-                <div className="drawer__header">
-                  <div className="drawer__title">
-                    Izmena zaposlenog – {editing.username}
-                    <span className="drawer__subtitle">izabrano: {editing.serviceIds?.length || 0}</span>
-                  </div>
-                  <button className="icon-btn" onClick={()=>setEditing(null)} aria-label="Zatvori">✕</button>
-                </div>
+          {/* GORE: jedno dugme Dodaj radnika */}
+          <div className="top-actions">
+            <button className="btn btn--ghost" onClick={()=>setAddOpen(true)}>Dodaj radnika</button>
 
-                <div style={{padding:"12px 14px"}}>
-                  <div className="row" style={{marginBottom:10}}>
-                    <input className="input" placeholder="Ime" value={editing.firstName} onChange={e=>setEditing(v=>({...v, firstName:e.target.value}))} />
-                    <input className="input" placeholder="Prezime" value={editing.lastName} onChange={e=>setEditing(v=>({...v, lastName:e.target.value}))} />
-                    <input className="input" placeholder="Privremena lozinka" value={editing.tempPassword || ""} onChange={e=>setEditing(v=>({...v, tempPassword:e.target.value}))} />
-                    <div style={{display:"flex", alignItems:"center", gap:8}}>
-                      <span>Status:</span>
-                      <Pill active={editing.active} onClick={()=>setEditing(v=>({...v, active: !v.active}))}>
-                        {editing.active ? "Aktivan" : "Neaktivan"}
-                      </Pill>
-                    </div>
-                  </div>
-
-                  <div style={{display:"flex", gap:10, justifyContent:"flex-end"}}>
-                    <button className="btn btn--ghost" onClick={()=>setEditing(null)}>Otkaži</button>
-                    <button className="btn" onClick={()=>saveEmployeeEdit(editing)}>Sačuvaj izmene</button>
-                  </div>
-                </div>
-              </div>
-            </aside>
           </div>
 
+          {/* DOLE: samo dugmići (chipovi) radnika */}
+          <div className="emp-list">
+            {employees.map(u => (
+              <button
+                key={u.username}
+                className="emp-chip"
+                onClick={()=>setEditing({
+                  ...u,
+                  tempPassword: u.tempPassword || "",
+                  serviceIds: u.serviceIds || [],
+                })}
+              >
+                <div style={{display:"grid", gap:2}}>
+                  <span>{u.firstName} {u.lastName}</span>
+                  <small>@{u.username}</small>
+                </div>
+              </button>
+            ))}
+            {employees.length === 0 && (
+              <div className="card" style={{gridColumn:"1/-1", textAlign:"center"}}>
+                <Empty>Još nema zaposlenih.</Empty>
+              </div>
+            )}
+          </div>
+
+          {/* ADD drawer */}
+          <AddEmployeeDrawer
+            open={addOpen}
+            onClose={()=>setAddOpen(false)}
+            onSubmit={addEmployee}
+            initialPassword={password}
+            onOpenPicker={()=>setPickerOpen(true)}
+            selectedCount={serviceIds.length}
+            loading={loading}
+          />
           <ServicePickerDrawer
-            open={!!editing}
-            onClose={()=>setEditing(null)}
+            open={pickerOpen}
+            onClose={()=>setPickerOpen(false)}
             categories={categories}
             servicesByCat={servicesByCat}
-            value={editing.serviceIds || []}
+            value={serviceIds}
+            onSave={(arr)=>{ setServiceIds(arr); setPickerOpen(false); }}
+          />
+
+          {/* EDIT drawer */}
+          <EmployeeDetailDrawer
+            open={!!editing}
+            onClose={()=>setEditing(null)}
+            employee={editing}
+            onSave={saveEmployeeEdit}
+            onDelete={removeEmployee}
+            onOpenPicker={()=>setEditPickerOpen(true)}
+          />
+          <ServicePickerDrawer
+            open={editPickerOpen}
+            onClose={()=>setEditPickerOpen(false)}
+            categories={categories}
+            servicesByCat={servicesByCat}
+            value={editing?.serviceIds || []}
             onSave={(arr)=>setEditing(v=>({...v, serviceIds: arr}))}
           />
         </>
+      ) : (
+        /* DESKTOP – ostaviš kako ti je već bilo (spisak + forma)
+           Ako želiš, možeš kasnije da vratiš stari desktop layout. */
+        <div className="card">
+          <Empty>Ovaj prikaz je pojednostavljen za telefon. Na desktopu dodaj/uredi kroz mobilni drawer ili vrati stari desktop layout.</Empty>
+        </div>
       )}
     </div>
   );

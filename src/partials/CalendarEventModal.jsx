@@ -764,7 +764,7 @@ export default function CalendarEventModal({
                   {openSvcs && (
                     <div className="section">
                       <div className="svc-totals">
-                        <span>💰 Ukupno (auto): <b>{autoTotal} RSD</b></span>
+                        
                         <span>⏱️ Trajanje (auto): <b>{autoDurationMin} min</b></span>
                       </div>
 
