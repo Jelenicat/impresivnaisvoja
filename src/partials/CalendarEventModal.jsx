@@ -197,6 +197,7 @@ export default function CalendarEventModal({
     setForm(f=>({ ...f, end: nextEnd }));
   }, [autoDurationMin, form.start, isBlock, manualEnd]);
 
+
   const ghostServices = useMemo(() => {
     const catIds = new Set((services||[]).map(s=>s.id));
     const fromValue = Array.isArray(value?.services) ? value.services : [];
@@ -360,7 +361,7 @@ export default function CalendarEventModal({
 
   function openClientProfile(){
     if(!form.clientId) return;
-    if (role === "worker") return;
+    
     setClientDrawerOpen(true);
   }
 
@@ -475,30 +476,51 @@ export default function CalendarEventModal({
 
         .cal-modal .footer{ position:sticky; bottom:0; z-index:5; background:linear-gradient(0deg,#fff 80%, #ffffffcc 100%); border-top:1px solid #efeae3; padding:10px 14px; display:flex; gap:10px; justify-content:space-between; align-items:center; flex-wrap:wrap; }
         .cal-modal .footer-right{ display:flex; gap:8px; min-width:200px; }
+.cal-modal .h-actions{
+    display:flex;
+    gap:14px;           /* veći razmak između dugmića */
+    align-items:center;
+    flex-wrap:nowrap;   /* ostaje sve u jednom redu */
+    overflow-x:visible; /* nema scrolla */
+    padding:4px 0;      /* malo “daha” gore/dole */
+  }
 
+  .cal-modal .h-actions .pill,
+  .cal-modal .h-actions .danger{
+    padding:8px 12px;   /* šire dugmence */
+    font-size:14px;
+  }
+}
         @media(max-width:820px){ .cal-modal .grid{ grid-template-columns:1fr; gap:12px; } }
         @media(max-width:480px){
         /* Header actions — u jednom redu na telefonu */
-.cal-modal .h-actions{
-  display:flex;
-  gap:6px;
-  align-items:center;
-  flex-wrap:nowrap;           /* sve u jednom redu */
-  overflow-x:auto;            /* ako ne stane, blagi horizontalni scroll samo za ovaj red */
-  -webkit-overflow-scrolling:touch;
-  padding-bottom:2px;
-}
+cal-modal .h-actions{
+    display:flex;
+    gap:12px;            /* veći međurazmak */
+    row-gap:8px;         /* ako se prelomi u dva reda, vertikalni razmak */
+    align-items:center;
+    flex-wrap:wrap;      /* dozvoli prelom umesto da gura sve u jedan red */
+    overflow-x:visible;  /* bez horizontalnog skrola */
+    padding-bottom:2px;
+    padding-top:2px;     /* ispravljeno malo 'P' */
+    justify-content:flex-start;
+  }
 
-.cal-modal .h-actions .pill,
-.cal-modal .h-actions .danger{
-  white-space:nowrap;
-  flex:0 0 auto;
-  padding:6px 8px;
-  font-size:12px;
-  line-height:1;
-}
+  /* fallback ako browser ignoriše flex gap (ređe na mobilnim, ali neka stoji) */
+  .cal-modal .h-actions > *{ margin-right: 12px; }
+  .cal-modal .h-actions > *:last-child{ margin-right: 0; }
 
-.cal-modal .h-actions .icon-btn{
+  /* malo "daha" samim pilovima/dugmićima */
+  .cal-modal .h-actions .pill,
+  .cal-modal .h-actions .danger{
+    padding:8px 10px;    /* mrvu šire */
+    font-size:13px;
+    line-height:1.1;
+  }
+
+  /* ako koristiš čip sa imenom klijenta – dodaj razmak posle njega */
+  .cal-modal .client-chip{ margin-right:8px; }
+}.cal-modal .h-actions .icon-btn{
   flex:0 0 auto;
 }
 
@@ -518,13 +540,14 @@ export default function CalendarEventModal({
           .cal-modal .expander-sub{ display:block; font-size:12px; color:#6b7280; margin-top:4px; font-weight:500; }
           .cal-modal .section{ border:1px solid var(--border); border-radius:12px; padding:10px; background:#fff; }
         }
-        @media(min-width:821px){ .cal-modal .services{ grid-template-columns:1fr 1fr; } }
+        
       `}</style>
 
       <div className="modal cal-modal" onMouseDown={(e)=>e.stopPropagation()}>
 
           {/* ===== HEADER ===== */}
         <div className="h">
+     
           <div className="title-left">
             <div style={{fontWeight:700, fontSize:16}}>
               {isBlock ? (form.id ? "Blokada" : "Nova blokada") : (form.id ? "Termin" : "Novi termin")}
@@ -556,22 +579,62 @@ export default function CalendarEventModal({
                     )}
                   </div>
                 )}
+                {form.note?.trim() && (
+  <div className="muted" style={{marginTop:4, fontSize:"13px"}}>
+    📝 {form.note}
+  </div>
+)}
+
               </>
             ) : (
               /* === DESKTOP: akcije desno === */
-              <div className="h-actions">
-                {(!isBlock && (form.isOnline || form.bookedVia === "public_app")) && (
-                  <span className="pill" title="Online rezervacija">🌐 Online</span>
-                )}
-                {form.id && !isBlock && (
-                  <button className="pill" onClick={markNoShow} title="Označi kao no-show">No-show ⚠️</button>
-                )}
-                {form.id && (
-                  <button className="pill danger" onClick={()=>onDelete?.(form.id)} title="Obriši">Obriši</button>
-                )}
-                <button className="icon-btn" onClick={onClose} title="Zatvori">✕</button>
-                <button className="btn hide-mobile btn-ghost" onClick={onClose}>Zatvori</button>
-              </div>
+              /* === DESKTOP: klijent (levo) + akcije (desno) === */
+<div className="h-actions">
+  {/* KLijent chip (ako postoji) */}
+  {!isBlock && form.clientId && (
+    (role==="admin" || role==="salon") ? (
+      <button
+        className="client-chip"
+        onClick={openClientProfile}
+        title="Otvori profil klijenta"
+        style={{ marginRight: 6 }}
+      >
+        👤 {formatClient(clientForUI || {}, role)}
+      </button>
+    ) : (
+      <span
+        className="client-chip"
+        title="Klijent"
+        style={{ marginRight: 6 }}
+      >
+        👤 {formatClient(clientForUI || {}, role)}
+      </span>
+    )
+  )}
+  
+  {form.note?.trim() && (
+  <div className="muted" style={{marginTop:4, fontSize:"13px"}}>
+    📝 {form.note}
+  </div>
+)}
+
+  
+
+
+  {/* Akcije */}
+  {(!isBlock && (form.isOnline || form.bookedVia === "public_app")) && (
+    <span className="pill" title="Online rezervacija">🌐 Online</span>
+  )}
+  {form.id && !isBlock && (
+    <button className="pill" onClick={markNoShow} title="Označi kao no-show">No-show ⚠️</button>
+  )}
+  {form.id && (
+    <button className="pill danger" onClick={()=>onDelete?.(form.id)} title="Obriši">Obriši</button>
+  )}
+  
+ 
+</div>
+
             )}
           </div>
          </div>

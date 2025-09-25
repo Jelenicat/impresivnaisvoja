@@ -302,7 +302,8 @@ export default function AdminShifts() {
         }
         /* >>> IZMENJENO: aktivni dugmići više nisu crni */
        .seg-btn.is-active {
-  background: #f2f2f2;        /* svetlo svetlo siva pozadina */
+         /* svetlo svetlo siva pozadina */
+  background: #faf8f5;        /* svetlo svetla pozadina */
   color: #1f1f1f;             /* crn tekst */
   border-color: #ccc;         /* siva ivica */
   box-shadow: 0 0 0 2px rgba(0,0,0,.05) inset, 0 4px 12px rgba(0,0,0,.05);
@@ -314,11 +315,11 @@ export default function AdminShifts() {
           margin:12px 0; font-size:11px; color:#8a8378; line-height:1.4; padding:10px;
           background:#f8f6f2; border-radius:10px; border-left:3px solid #e6e0d7;
         }
-        .actions{ display:flex; gap:10px; flex-direction:column; margin-top:16px; }
-        .btn{ border:0; background:#1f1f1f; color:#fff; padding:14px 16px; border-radius:12px; cursor:pointer; font-weight:700; font-size:15px; width:100%; }
+        .actions{ display:flex; gap:10px; flex-direction:column; margin-top:16px;COLOR: #fff}
+        .btn{  border-color:#fff;  border:1px solid #875e24ff;border:0;  color:#000; padding:14px 16px; border-radius:12px; cursor:pointer; font-weight:700; font-size:15px; width:100%; }
         .btn:hover:not(:disabled){ background:#333; }
         .btn:disabled{ opacity:.6; cursor:not-allowed; }
-        .btn-ghost{ background:#fff; color:#1f1f1f; border:1px solid #ddd6cc; width:100%; }
+        .btn-ghost{ background:#fff; color:#1f1f1f; border:1px solid #ddd6cc; width:100%; border-radius:12px; padding:14px 16px; cursor:pointer; font-weight:500; font-size:13px; }
         .btn-ghost:hover{ background:#f8f6f2; }
 
         input[type="time"]{ -webkit-appearance:none; appearance:none; min-width:0; }
@@ -399,7 +400,7 @@ export default function AdminShifts() {
           .input,.select{ height:40px; font-size:13px; padding:8px 10px; }
           .seg{ gap:6px; }
           .seg-btn{ padding:8px 10px; font-size:12.5px; min-width:96px; }
-          .btn{ padding:12px 14px; font-size:14px; }
+          .btn{ padding:12px 14px; font-size:14px; border-color:#fff;  border:1px solid #875e24ff;}
 
           /* ukloni plave naglaske na iOS/Android */
           input, select, button {
