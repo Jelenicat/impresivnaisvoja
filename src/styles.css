@@ -13,14 +13,14 @@ html, body, #root { height: 100%; }
 
 body {
   margin: 0;
-  font-family: 'Montserrat', sans-serif; /* globalni minimalistički font */
-  font-weight: 300;                       /* Light kao default */
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 300;
   color: var(--ink);
   background: var(--bg);
 }
 
-h1, h2, h3, h4, h5, h6 { font-weight: 500; }   /* naslovi Medium */
-.btn, .btn-big { font-weight: 400; }           /* dugmad Regular */
+h1, h2, h3, h4, h5, h6 { font-weight: 500; }
+.btn, .btn-big { font-weight: 400; }
 
 /* ===== App shell ===== */
 .app-shell {
@@ -29,20 +29,19 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }   /* naslovi Medium */
   flex-direction: column;
 }
 
-/* ===== Header sa logoom ===== */
+/* ===== Header ===== */
 .brand-header {
   position: sticky;
   top: 0;
   background: var(--bg);
   z-index: 5;
-  padding: 0;                 /* bez dodatnog belog prostora */
+  padding: 0;
   text-align: center;
   border-bottom: 1px solid #eee;
 }
 
-/* Fiksna visina belog prostora; višak slike se seče */
 .logo-wrap {
-  height: 80px;               /* (MOBILE default) belina oko logoa */
+  height: 80px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -50,24 +49,25 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }   /* naslovi Medium */
 }
 
 .logo-header {
-  height: 170px;              /* (MOBILE default) veća slova */
+  height: 170px;
   width: auto;
   display: block;
 }
 
 /* ===== Stranica ===== */
 .page {
-  padding: 0;                 /* full-width layout */
+  padding: 0;
   max-width: 100%;
   width: 100%;
   margin: 0;
 }
 
-/* ===== Hero (full-width bez zaobljenja) ===== */
+/* ===== Hero ===== */
 .hero {
   margin: 0;
   border-radius: 0;
   overflow: hidden;
+  position: relative;
 }
 
 .hero img {
@@ -76,8 +76,7 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }   /* naslovi Medium */
   height: auto;
 }
 
-/* ===== Sekcije (full-width, bez zaobljenja) ===== */
-/* Animacija fade-in za sekcije */
+/* ===== Sekcije ===== */
 .section {
   background: var(--card);
   padding: 22px 16px;
@@ -91,16 +90,13 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }   /* naslovi Medium */
 }
 
 @keyframes fadeInUp {
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .section h2 { text-align: center; letter-spacing: 1px; }
 .section p  { text-align: center; }
 
-/* ===== Opcione kartice ===== */
+/* ===== Kartice ===== */
 .cards-row {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
@@ -110,7 +106,7 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }   /* naslovi Medium */
 
 .card {
   background: #ddd0;
-  border-radius: 0;           /* bez zaobljenja za doslednost */
+  border-radius: 0;
   overflow: hidden;
   aspect-ratio: 1.6/1;
   background-position: center;
@@ -140,7 +136,6 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }   /* naslovi Medium */
 .btn-dark   { background: var(--dark);   color: #fff; }
 .btn-wide   { width: 100%; max-width: 320px; }
 
-/* Veliko dugme za ZAKAŽI TERMIN */
 .btn-big {
   font-size: 20px;
   padding: 18px 36px;
@@ -159,7 +154,7 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }   /* naslovi Medium */
   transform: translateY(1px) scale(0.98);
   box-shadow: 0 2px 6px rgba(0,0,0,0.2);
 }
-/* Dugmad sa obrubom (USLUGE, GALERIJA) */
+
 .btn-outline {
   background: transparent;
   color: var(--accent);
@@ -178,17 +173,18 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }   /* naslovi Medium */
   transform: translateY(1px) scale(0.98);
   box-shadow: 0 2px 6px rgba(0,0,0,0.1);
 }
-/* Manje dugme za ULOGUJ SE */
+
 .btn-small {
   padding: 10px 20px;
   font-size: 14px;
   border-radius: 20px;
-  width: auto;          /* ne razvlači se kao btn-wide */
-  min-width: 200px;     /* da ipak ima malo širine */
-  text-align: center;   /* centrira tekst */
+  width: auto;
+  min-width: 200px;
+  text-align: center;
   display: inline-block;
 }
-/* header defaultno providan */
+
+/* header providan */
 .brand-header {
   position: sticky;
   top: 0;
@@ -200,14 +196,13 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }   /* naslovi Medium */
   transition: background 0.3s ease, border-color 0.3s ease;
 }
 
-/* kad se skroluje dodajemo klasu scrolled */
 .brand-header.scrolled {
-  background: rgba(255, 255, 255, 0.5); /* blago providna bela */
+  background: rgba(255, 255, 255, 0.5);
   border-bottom: 1px solid #eee;
-  backdrop-filter: blur(6px); /* daje lep "glass" efekat */
+  backdrop-filter: blur(6px);
 }
 
-/* ===== Mapa (full-width, bez zaobljenja) ===== */
+/* ===== Mapa ===== */
 .map {
   width: 100%;
   border: 0;
@@ -215,7 +210,7 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }   /* naslovi Medium */
   border-radius: 0;
 }
 
-/* ===== Admin login dugme dole ===== */
+/* ===== Footer login ===== */
 .footer-login {
   margin: 50px auto 20px;
   display: flex;
@@ -237,7 +232,7 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }   /* naslovi Medium */
   background: #fff;
   width: 92%;
   max-width: 440px;
-  border-radius: 16px;         /* modal može ostati nežno zaobljen */
+  border-radius: 16px;
   padding: 18px;
   box-shadow: 0 10px 30px rgba(0,0,0,0.2);
 }
@@ -271,34 +266,152 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }   /* naslovi Medium */
   border-radius: 12px;
 }
 
-/* ===== Responsive ===== */
+/* ===== Animacije ===== */
+@keyframes popFade {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
 
-/* telefonski raspored */
+.cta-wrap .btn-big {
+  animation: popFade .6s ease-out both;
+  animation-delay: .05s;
+}
+.usluge-galerija .btn {
+  animation: popFade .5s ease-out both;
+}
+.usluge-galerija .btn:nth-child(1) { animation-delay: .15s; }
+.usluge-galerija .btn:nth-child(2) { animation-delay: .25s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .cta-wrap .btn-big,
+  .usluge-galerija .btn { animation: none !important; }
+}
+
+/* ===== TELEFON ===== */
 @media (max-width: 640px) {
+  .cta-wrap { display: flex; justify-content: center; }
+  .cta-wrap .btn-big {
+    font-size: 16px;
+    padding: 12px 20px;
+    border-radius: 20px;
+    font-weight: 200;
+    letter-spacing: .5px;
+    box-shadow: 0 1px 8px rgba(0,0,0,0.1);
+    width: auto;
+    min-width: 180px;
+    max-width: 220px;
+    margin: 0 auto;
+  }
+
+  .usluge-galerija {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: nowrap;
+    margin-top: 12px;
+  }
+  .usluge-galerija .btn {
+    font-size: 14px;
+    padding: 9px 18px;
+    border-radius: 24px;
+    border: 1.5px solid var(--accent);
+    background: rgba(255,255,255,0.7);
+    color: var(--accent);
+    width: auto;
+    min-width: 120px;
+    max-width: 150px;
+    transition: all 0.25s ease;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  }
+  .usluge-galerija .btn:hover {
+    background: var(--accent);
+    color: #fff;
+    transform: translateY(-1px) scale(1.02);
+    box-shadow: 0 3px 8px rgba(0,0,0,0.15);
+  }
+
   .cards-row { grid-template-columns: 1fr 1fr; }
 }
 
-/* tablet */
+/* ===== TABLET ===== */
 @media (min-width: 768px) {
   .logo-wrap  { height: 90px; }
   .logo-header{ height: 190px; }
 }
 
-/* desktop */
+/* ===== DESKTOP ===== */
 @media (min-width: 1024px) {
-  /* Tekstualne sekcije uži container radi čitljivosti */
+  .hero::after {
+    content: "";
+    position: absolute;
+    inset: auto 0 0 0;
+    height: 28%;
+    background: linear-gradient(to top, rgba(0,0,0,0.35), rgba(0,0,0,0));
+    pointer-events: none;
+  }
+
+  .hero-cta {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 8%;
+    margin: 0;
+    z-index: 2;
+  }
+
+  .hero-cta .btn-big {
+    font-size: 18px;
+    padding: 14px 28px;
+    border-radius: 26px;
+    background: rgba(172,149,116,0.92);
+    color: var(--accent-ink);
+    border: 1px solid rgba(255,255,255,0.55);
+    box-shadow:
+      0 10px 24px rgba(0,0,0,0.35),
+      0 0 0 2px rgba(255,255,255,0.25) inset;
+    backdrop-filter: saturate(120%) blur(2px);
+    -webkit-backdrop-filter: saturate(120%) blur(2px);
+    transition: transform .2s ease, box-shadow .2s ease, opacity .2s ease;
+    opacity: 0.98;
+    animation: heroGlow 2.8s ease-in-out infinite;
+  }
+  .hero-cta .btn-big:hover {
+    transform: translateY(-1px) scale(1.03);
+    box-shadow:
+      0 14px 30px rgba(0,0,0,0.42),
+      0 0 0 2px rgba(255,255,255,0.35) inset;
+    opacity: 1;
+  }
+
+  @keyframes heroGlow {
+    0%, 100% { box-shadow: 0 10px 24px rgba(0,0,0,0.35), 0 0 0 2px rgba(255,255,255,0.25) inset; }
+    50%      { box-shadow: 0 12px 28px rgba(0,0,0,0.40), 0 0 0 2px rgba(255,255,255,0.32) inset; }
+  }
+
+  .hero img {
+    max-height: 72vh;
+    object-fit: cover;
+    width: 100%;
+  }
+
   .section {
     max-width: 960px;
     margin: 32px auto;
     padding: 28px 36px;
   }
 
-  .section h2 {
-    font-size: 28px;
-    letter-spacing: .5px;
+  .section h2 { font-size: 28px; letter-spacing: .5px; }
+
+  /* CENTRIRANJE desktop dugmadi + razmak + prelamanje po potrebi */
+  .cta-wrap {
+    display: flex;
+    justify-content: center;   /* <<< centar */
+    gap: 16px;                 /* ravnomeran razmak */
+    flex-wrap: wrap;           /* ako ih je više, prelomi */
+    margin: 24px 0 40px;       /* postojeća margina + malo veća donja */
   }
 
-  .cta-wrap { margin: 24px 0 40px; }
   .btn-wide { max-width: 360px; }
 
   .usluge-galerija {
@@ -317,4 +430,31 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }   /* naslovi Medium */
 
   .logo-wrap  { height: 120px; }
   .logo-header{ height: 240px; }
+
+  /* smanjena ostala CTA dugmad (istorija, otkaži, odjavi) */
+  .cta-wrap .btn-outline.btn-big {
+    font-size: 14px;
+    padding: 10px 20px;
+    border-radius: 22px;
+    letter-spacing: .3px;
+    min-width: 140px;
+    max-width: 200px;
+    background: rgba(255,255,255,0.85);
+    border: 1px solid rgba(0,0,0,0.1);
+    color: var(--accent);
+    box-shadow: 0 3px 10px rgba(0,0,0,0.12);
+    transition: transform .2s ease, box-shadow .2s ease;
+  }
+
+  .cta-wrap .btn-outline.btn-big:hover {
+    background: var(--accent);
+    color: #fff;
+    transform: translateY(-1px) scale(1.02);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.22);
+  }
+
+  .cta-wrap .btn-outline.btn-big:active {
+    transform: translateY(1px) scale(0.97);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.18);
+  }
 }

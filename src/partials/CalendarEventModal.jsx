@@ -490,7 +490,13 @@ export default function CalendarEventModal({
     padding:8px 12px;   /* šire dugmence */
     font-size:14px;
   }
+}@media(max-width:480px){
+  .cal-modal .grid{
+    grid-template-columns:1fr !important; /* forsiraj jednu kolonu */
+    gap:14px; /* malo već razmak da ne bude zbijeno */
+  }
 }
+
         @media(max-width:820px){ .cal-modal .grid{ grid-template-columns:1fr; gap:12px; } }
         @media(max-width:480px){
         /* Header actions — u jednom redu na telefonu */

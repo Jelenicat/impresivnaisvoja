@@ -1,8 +1,8 @@
 // src/pages/AdminClients.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  collection, query, orderBy, onSnapshot, doc, deleteDoc,
-  setDoc, writeBatch
+  collection, query, orderBy, doc, deleteDoc, setDoc, writeBatch,
+  getDocs, limit, startAfter, where
 } from "firebase/firestore";
 import { db } from "../firebase";
 import ClientProfileDrawer from "../partials/ClientProfileDrawer";
@@ -66,53 +66,239 @@ function parseCsv(text) {
   });
 }
 
+// Debounce helper
+function useDebounced(value, ms = 300) {
+  const [v, setV] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setV(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return v;
+}
+
 /* ---------- component ---------- */
 export default function AdminClients() {
+  // UI state
   const [clients, setClients] = useState([]);
   const [qText, setQText] = useState("");
+  const debouncedQ = useDebounced(qText, 300);
   const [sort, setSort] = useState("name"); // "name" | "created"
   const [selClient, setSelClient] = useState(null);
 
-  useEffect(() => {
-    const qy = query(collection(db, "clients"), orderBy("firstName", "asc"));
-    const unsub = onSnapshot(qy, snap => {
-      setClients(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
-    return () => unsub && unsub();
-  }, []);
+  // Paging state (samo kada nema pretrage)
+  const PAGE_SIZE = 50;
+  const lastDocRef = useRef(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [loading, setLoading] = useState(false);
 
-  const filtered = useMemo(() => {
-    const t = qText.trim().toLowerCase();
-    let arr = !t ? clients : clients.filter(c => {
-      const name = `${c.firstName || ""} ${c.lastName || ""}`.toLowerCase();
-      const phone = String(c.phone ?? c.phoneNumber ?? "");
-      const email = (c.email || "").toLowerCase();
-      return name.includes(t) || phone.includes(t) || email.includes(t);
-    });
-
-    if (sort === "name") {
-      arr = [...arr].sort((a, b) =>
-        (`${a.firstName || ""} ${a.lastName || ""}`)
-          .localeCompare(`${b.firstName || ""} ${b.lastName || ""}`)
-      );
-    } else if (sort === "created") {
-      // noviji prvi; fallback ako nema createdAt
-      const ts = v => (v?.seconds ? v.seconds * 1000 : (v ? new Date(v).getTime() : 0));
-      arr = [...arr].sort((a,b) => (ts(b.createdAt) - ts(a.createdAt)));
+  // Helper: napravi osnovni query za listanje
+  function baseListQuery() {
+    if (sort === "created") {
+      return query(collection(db, "clients"), orderBy("createdAt", "desc"), limit(PAGE_SIZE));
     }
-    return arr;
-  }, [clients, qText, sort]);
+    // default: ime
+    return query(collection(db, "clients"), orderBy("firstName", "asc"), limit(PAGE_SIZE));
+  }
 
+  // Helper: napravi sledeću stranicu
+  function nextPageQuery() {
+    if (!lastDocRef.current) return null;
+    if (sort === "created") {
+      return query(
+        collection(db, "clients"),
+        orderBy("createdAt", "desc"),
+        startAfter(lastDocRef.current),
+        limit(PAGE_SIZE)
+      );
+    }
+    return query(
+      collection(db, "clients"),
+      orderBy("firstName", "asc"),
+      startAfter(lastDocRef.current),
+      limit(PAGE_SIZE)
+    );
+  }
+
+  // Učitavanje prve stranice ili promene sort-a / čišćenje pretrage
+  async function loadFirstPage() {
+    setLoading(true);
+    setHasMore(true);
+    lastDocRef.current = null;
+    setClients([]);
+
+    try {
+      const qy = baseListQuery();
+      const snap = await getDocs(qy);
+      const arr = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setClients(arr);
+      lastDocRef.current = snap.docs[snap.docs.length - 1] || null;
+      setHasMore(snap.docs.length === PAGE_SIZE);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Učitavanje sledeće stranice
+  async function loadMore() {
+    if (!hasMore || loading) return;
+    setLoading(true);
+    try {
+      const qy = nextPageQuery();
+      if (!qy) return;
+      const snap = await getDocs(qy);
+      const arr = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setClients(prev => [...prev, ...arr]);
+      lastDocRef.current = snap.docs[snap.docs.length - 1] || lastDocRef.current;
+      if (snap.docs.length < PAGE_SIZE) setHasMore(false);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // SERVER-SIDE pretraga (prefix) preko više polja – izvršava se kada ima teksta
+  async function runSearch(text) {
+    setLoading(true);
+    setHasMore(false); // za pretragu ne nudimo paginaciju (pojednostavljeno)
+    lastDocRef.current = null;
+
+    const t = text.trim().toLowerCase();
+    if (!t) { // ako se obriše pretraga, vrati se na listanje
+      await loadFirstPage();
+      return;
+    }
+
+    // Firestore ograničenja: prefix pretraga po jednom polju po upitu.
+    // Napravićemo više upita i objediniti rezultate (dedupe po id).
+    const results = new Map();
+
+    const tasks = [];
+
+    // Ime
+    tasks.push((async () => {
+      const q1 = query(
+        collection(db, "clients"),
+        orderBy("firstName"),
+        where("firstName", ">=", t[0].toUpperCase() + t.slice(1)),
+        where("firstName", "<=", t[0].toUpperCase() + t.slice(1) + "\uf8ff"),
+        limit(PAGE_SIZE)
+      );
+      try {
+        const s1 = await getDocs(q1);
+        s1.forEach(d => results.set(d.id, { id: d.id, ...d.data() }));
+      } catch (_) {}
+    })());
+
+    // Prezime (ako postoji u šemi)
+    tasks.push((async () => {
+      const q2 = query(
+        collection(db, "clients"),
+        orderBy("lastName"),
+        where("lastName", ">=", t[0].toUpperCase() + t.slice(1)),
+        where("lastName", "<=", t[0].toUpperCase() + t.slice(1) + "\uf8ff"),
+        limit(PAGE_SIZE)
+      );
+      try {
+        const s2 = await getDocs(q2);
+        s2.forEach(d => results.set(d.id, { id: d.id, ...d.data() }));
+      } catch (_) {}
+    })());
+
+    // Telefon – očekujemo normalizovan broj (samo cifre) u bazi
+    const tDigits = t.replace(/\D+/g, "");
+    if (tDigits.length >= 3) {
+      tasks.push((async () => {
+        const q3 = query(
+          collection(db, "clients"),
+          orderBy("phone"),
+          where("phone", ">=", tDigits),
+          where("phone", "<=", tDigits + "\uf8ff"),
+          limit(PAGE_SIZE)
+        );
+        try {
+          const s3 = await getDocs(q3);
+          s3.forEach(d => results.set(d.id, { id: d.id, ...d.data() }));
+        } catch (_) {}
+      })());
+    }
+
+    // Email
+    if (t.length >= 2) {
+      tasks.push((async () => {
+        const q4 = query(
+          collection(db, "clients"),
+          orderBy("email"),
+          where("email", ">=", t),
+          where("email", "<=", t + "\uf8ff"),
+          limit(PAGE_SIZE)
+        );
+        try {
+          const s4 = await getDocs(q4);
+          s4.forEach(d => results.set(d.id, { id: d.id, ...d.data() }));
+        } catch (_) {}
+      })());
+    }
+
+    await Promise.all(tasks);
+
+    // Ako i dalje malo rezultata, kao fallback dovuci 1 stranu pa filtriraj lokalno (robusnost)
+    if (results.size === 0) {
+      try {
+        const snap = await getDocs(baseListQuery());
+        const arr = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const filtered = arr.filter(c => {
+          const name = `${c.firstName || ""} ${c.lastName || ""}`.toLowerCase();
+          const phone = String(c.phone ?? c.phoneNumber ?? "");
+          const email = (c.email || "").toLowerCase();
+          return name.includes(t) || phone.includes(tDigits) || email.includes(t);
+        });
+        filtered.forEach(c => results.set(c.id, c));
+      } catch (_) {}
+    }
+
+    // Sortiranje po izboru
+    const out = Array.from(results.values());
+    if (sort === "created") {
+      const ts = v => (v?.seconds ? v.seconds * 1000 : (v ? new Date(v).getTime() : 0));
+      out.sort((a,b) => ts(b.createdAt) - ts(a.createdAt));
+    } else {
+      out.sort((a,b) =>
+        (`${a.firstName || ""} ${a.lastName || ""}`)
+        .localeCompare(`${b.firstName || ""} ${b.lastName || ""}`)
+      );
+    }
+
+    setClients(out.slice(0, PAGE_SIZE)); // cap da lista ostane brza
+    setLoading(false);
+  }
+
+  // Reaguj na sort/promenu i (ne)postojanje pretrage
+  useEffect(() => {
+    if (debouncedQ) {
+      runSearch(debouncedQ);
+    } else {
+      loadFirstPage();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sort, debouncedQ]);
+
+  /* --- akcije --- */
   async function handleDelete(c) {
     if (!c?.id) return;
     if (!window.confirm(`Obrisati klijenta ${c.firstName} ${c.lastName}?`)) return;
     await deleteDoc(doc(db, "clients", c.id));
     setSelClient(null);
+    // nakon brisanja, osveži listu
+    if (debouncedQ) {
+      runSearch(debouncedQ);
+    } else {
+      loadFirstPage();
+    }
   }
 
   async function handleToggleBlock(c) {
     const dref = doc(db, "clients", c.id);
     await setDoc(dref, { blocked: !c.blocked, updatedAt: new Date() }, { merge: true });
+    // nema potrebe za dodatnim osvežavanjem — sledeće učitavanje će povući stanje
   }
 
   async function handleCsvImport(file) {
@@ -138,7 +324,6 @@ export default function AdminClients() {
     ]);
     const mailKeys  = new Set(["email","e-mail","mail"]);
     const noteKeys  = new Set(["napomena","notes","note","beleska","beleška"]);
-
 
     const batch = writeBatch(db);
     let imported = 0;
@@ -195,20 +380,23 @@ export default function AdminClients() {
 
     await batch.commit();
     alert(`Uvezeno klijenata: ${imported}`);
+    // nakon importa – refresh
+    if (debouncedQ) {
+      runSearch(debouncedQ);
+    } else {
+      loadFirstPage();
+    }
   }
 
+  /* --- render --- */
   return (
     <div className="admin-clients">
       <style>{`
         .admin-clients{
-          /* dno je ostalo isto zbog donje navigacije */
           padding: 0 0 90px;
-          /* blago spuštanje početka + iOS safe area */
           padding-top: env(safe-area-inset-top, 0px);
           background: #fdfaf7;
         }
-
-        /* Sticky top bar */
         .clients-bar{
           position: sticky; top: 0; z-index: 3;
           display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
@@ -244,7 +432,6 @@ export default function AdminClients() {
           border-bottom:1px solid #efe7dd;
         }
 
-        /* Row content */
         .clients-row{
           display:grid; grid-template-columns: 1fr 140px 1fr 100px; gap:10px;
           padding: 12px 12px; border-top:1px solid #f1ede7; cursor:pointer; align-items:center;
@@ -260,22 +447,15 @@ export default function AdminClients() {
         }
         .status-badge.blocked{ color:#ef4444; border-color:#ef4444; }
 
-        /* ---------- MOBILE (≤720px): card-style rows + dodatni razmak gore ---------- */
+        .loadmore-wrap{
+          display:flex; justify-content:center; padding: 14px;
+        }
+
         @media (max-width: 720px){
-          /* dodatno spusti početak na telefonu */
-          .admin-clients{
-            padding-top: calc(env(safe-area-inset-top, 0px) + 40px);
-          }
-
-          .header{
-            font-size:18px;
-            /* više gornjeg prostora za naslov */
-            padding: 20px 14px 8px;
-          }
-
+          .admin-clients{ padding-top: calc(env(safe-area-inset-top, 0px) + 40px); }
+          .header{ font-size:18px; padding: 20px 14px 8px; }
           .clients-list{ border:none; background:transparent; margin: 8px 8px 60px; }
           .clients-header{ display:none; }
-
           .clients-row{
             grid-template-columns: 1fr;
             gap: 6px;
@@ -292,10 +472,7 @@ export default function AdminClients() {
           }
           .col-phone{ font-size:14px; color:#4b5563; }
           .col-email{ font-size:13px; color:#6b7280; }
-          .status-badge{
-            justify-self: start;
-            font-size:12px; padding: 3px 8px; margin-top: 2px;
-          }
+          .status-badge{ justify-self: start; font-size:12px; padding: 3px 8px; margin-top: 2px; }
         }
       `}</style>
 
@@ -323,7 +500,7 @@ export default function AdminClients() {
           <div>Ime i prezime</div><div>Telefon</div><div>E-mail</div><div>Status</div>
         </div>
 
-        {filtered.map(c=>(
+        {clients.map(c=>(
           <div key={c.id} className="clients-row" onClick={()=>setSelClient(c)}>
             <div className="col-name">
               <span>{c.firstName} {c.lastName}</span>
@@ -335,6 +512,23 @@ export default function AdminClients() {
             <div className="col-email">{c.email || "—"}</div>
           </div>
         ))}
+
+        {/* Load more: samo kada nema pretrage */}
+        {!debouncedQ && hasMore && (
+          <div className="loadmore-wrap">
+            <button className="btn" onClick={loadMore} disabled={loading}>
+              {loading ? "Učitavam..." : "Učitaj još"}
+            </button>
+          </div>
+        )}
+
+        {/* Info poruke */}
+        {loading && clients.length === 0 && (
+          <div className="loadmore-wrap"><span>Učitavanje…</span></div>
+        )}
+        {!loading && clients.length === 0 && (
+          <div className="loadmore-wrap"><span>Nema rezultata.</span></div>
+        )}
       </div>
 
       {!!selClient && (

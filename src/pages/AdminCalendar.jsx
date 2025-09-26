@@ -1028,6 +1028,102 @@ const onTouchEndHandler = (ev) => {
           border:2px dashed #2563eb; background: rgba(59,130,246,0.08); 
           border-radius:12px; pointer-events:none; z-index: 3; 
         }
+/* Podrazumevano (desktop): nazad stoji u istom redu kao ostali */
+.cal-bar .btn-back{
+  order: 0;
+}
+/* ===== Mobile header layout – lep raspored ===== */
+@media (max-width: 900px){
+  .cal-bar{
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "back back"
+      "date date"
+      "nav  nav"
+      "input input"
+      "emp   emp";
+    gap: 8px;
+    margin-top: 12px;
+    margin-bottom: 12px;
+    padding: 0 4px;
+  }
+
+  .cal-bar .btn-back{
+    grid-area: back;
+    justify-self: start;
+    flex-basis: 100%;
+    align-self: center;
+    margin-top:10px;
+    justify-self: center;
+  }
+
+  /* Datum kao “pilula”, centriran */
+  .cal-bar .date-chip{
+    grid-area: date;
+    justify-self: center;
+    background: #faf6f0;
+    border: 1px solid #e6e0d7;
+    border-radius: 999px;
+    padding: 8px 14px;
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: .2px;
+  }
+
+  /* Grupisane strelice + Danas */
+  .cal-bar .nav-group{
+    grid-area: nav;
+    display: grid;
+    grid-template-columns: 44px 1fr 44px;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .cal-bar .icon-btn{
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 40px;
+    border: 1px solid #ddd6cc;
+    background: #fff;
+    border-radius: 10px;
+    font-size: 18px;
+    padding: 0 8px;
+    line-height: 1;
+  }
+
+  .cal-bar .today-btn{
+    min-height: 40px;
+    font-weight: 700;
+  }
+
+  .cal-bar .date-input{
+    grid-area: input;
+    width: 100%;
+  }
+
+  .cal-bar .top-actions{
+    grid-area: emp;
+    justify-self: stretch;
+  }
+
+  .cal-bar .emp-select{
+    width: 100%;
+  }
+
+  /* Sakrij staru 'title' fleks-logiku na mobilnom (koristimo date-chip) */
+  .title{ flex: unset; text-align: center; }
+}
+
+/* Telefon/tablet: 'Nazad' ide u poseban red iznad navigacije dana */
+@media (max-width: 900px){
+  .cal-bar .btn-back{
+    flex-basis: 100%;      /* zauzmi ceo red */
+    align-self: flex-start;
+    margin-bottom: 6px;    /* mali razmak do sledećeg reda */
+  }
+}
 
         /* ===== MOBILE OPTIMIZATIONS ===== */
         @media (max-width: 900px) {
@@ -1146,49 +1242,44 @@ const onTouchEndHandler = (ev) => {
 
       <div className="admin-cal">
         <div className="cal-bar">
-          <button className="btn" onClick={()=>setDay(d=>{const x=new Date(d); x.setDate(x.getDate()-1); return startOfDay(x);})}>◀</button>
-          <button className="btn" onClick={()=>setDay(startOfDay(new Date()))}>Danas</button>
-          <button className="btn" onClick={()=>setDay(d=>{const x=new Date(d); x.setDate(x.getDate()+1); return startOfDay(x);})}>▶</button>
+  {/* ← Nazad */}
+  <button
+    className="btn btn-back"
+    onClick={() => (window.history.length > 1 ? window.history.back() : null)}
+  >
+    ← Nazad
+  </button>
 
-          <input 
-            type="date" 
-            className="select" 
-            value={dateToInputValue(dayStart)} 
-            onChange={e => {
-              const v = e.target.value; 
-              if (v) { 
-                const next = new Date(v + "T00:00:00"); 
-                setDay(startOfDay(next)); 
-              }
-            }}
-          />
-          
-          <div className="title">
-            {dayStart.toLocaleDateString("sr-RS",{
-              weekday:"long", 
-              day:"2-digit", 
-              month:"long", 
-              year:"numeric"
-            })}
-          </div>
+  {/* Datum (lepa “pilula” na mobilnom) */}
+  <div className="title date-chip">
+    {dayStart.toLocaleDateString("sr-RS",{
+      weekday:"long",
+      day:"2-digit",
+      month:"long",
+      year:"numeric"
+    })}
+  </div>
 
-          <div className="top-actions">
-            {showEmployeeFilter && (
-              <select 
-                className="select" 
-                value={employeeFilter} 
-                onChange={e=>setEmployeeFilter(e.target.value)}
-              >
-                <option value="all">Sve radnice</option>
-                {(employees||[]).map(e=>(
-                  <option key={e.username} value={e.username}>
-                    {e.firstName} {e.lastName}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
-        </div>
+  {/* Strelice + Danas – kompaktan red na mobilnom */}
+  <div className="nav-group">
+    <button className="icon-btn" onClick={()=>setDay(d=>{const x=new Date(d); x.setDate(x.getDate()-1); return startOfDay(x);})}>‹</button>
+    <button className="btn today-btn" onClick={()=>setDay(startOfDay(new Date()))}>Danas</button>
+    <button className="icon-btn" onClick={()=>setDay(d=>{const x=new Date(d); x.setDate(x.getDate()+1); return startOfDay(x);})}>›</button>
+  </div>
+
+  {/* Ručni izbor datuma */}
+  <input
+    type="date"
+    className="select date-input"
+    value={dateToInputValue(dayStart)}
+    onChange={e=>{
+      const v=e.target.value;
+      if(v){ const next=new Date(v+"T00:00:00"); setDay(startOfDay(next)); }
+    }}
+  />
+
+
+</div>
 
         <div className="grid-wrap" ref={gridWrapRef}>
           {/* timeline levo */}

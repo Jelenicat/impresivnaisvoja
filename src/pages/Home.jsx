@@ -14,7 +14,7 @@ export default function Home() {
 
   /* === AUTO-REDIRECT za admin/salon/radnik ako su već ulogovani === */
   useEffect(() => {
-    const role = localStorage.getItem("role"); // "admin" | "salon" | "worker" (kako već snimaš)
+    const role = localStorage.getItem("role");
     if (role) {
       nav("/admin", { replace: true });
     }
@@ -79,7 +79,6 @@ export default function Home() {
     const emailNorm = (profile?.email || "").trim().toLowerCase();
     const tempId = phoneNorm || emailNorm || crypto.randomUUID();
 
-    // 1) Odmah snimi sesiju lokalno
     localStorage.setItem("clientProfile", JSON.stringify({
       firstName: profile.firstName || "",
       lastName : profile.lastName  || "",
@@ -88,10 +87,8 @@ export default function Home() {
       id       : tempId
     }));
 
-    // 2) Odmah vodi korisnika dalje
     goToServices();
 
-    // 3) U pozadini rešavaj Firestore + FCM
     (async () => {
       try {
         let fcmToken = null;
@@ -142,46 +139,50 @@ export default function Home() {
 
   return (
     <div className="page">
-      {/* Hero */}
+      {/* Hero sa CTA preko slike */}
       <div className="hero">
-        <img src="/Home.webp" alt="impresivnaisvoja" />
+        <picture>
+          <source srcSet="/IMG_4989-1.webp" media="(min-width: 1024px)" />
+          <img src="/IMG_4989.webp" alt="impresivnaisvoja" />
+        </picture>
+
+        {/* Glavno CTA dugme na hero slici (desktop), centrirano ispod na mobilnom */}
+        <div className="cta-wrap hero-cta">
+          <button className="btn btn-accent btn-big" onClick={handleBookClick}>
+            ZAKAŽI TERMIN
+          </button>
+        </div>
       </div>
 
-      {/* CTA */}
-      <div className="cta-wrap" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <button className="btn btn-accent btn-big" onClick={handleBookClick}>
-          ZAKAŽI TERMIN
-        </button>
+      {/* Sekundarna dugmad za klijenta (ispod hero-a) */}
+      {isClientLogged && (
+        <div className="cta-wrap" style={{ flexDirection: "column", gap: 12 }}>
+          <button
+            className="btn btn-outline btn-big"
+            onClick={() => nav("/me/history", { state:{ tab:"upcoming", autoCancel:true }})}
+          >
+            OTKAŽI USLUGU
+          </button>
 
-        {isClientLogged && (
-          <>
-            <button
-              className="btn btn-outline btn-big"
-              onClick={() => nav("/me/history", { state:{ tab:"upcoming", autoCancel:true }})}
-            >
-              OTKAŽI USLUGU
-            </button>
+          <button
+            className="btn btn-outline btn-big"
+            onClick={() => nav("/me/history")}
+          >
+            ISTORIJA
+          </button>
 
-            <button
-              className="btn btn-outline btn-big"
-              onClick={() => nav("/me/history")}
-            >
-              ISTORIJA
-            </button>
-
-            <button
-              className="btn btn-outline btn-big"
-              onClick={() => {
-                localStorage.removeItem("clientProfile");
-                alert("Odjavljeni ste.");
-                nav("/home", { replace:true });
-              }}
-            >
-              ODJAVI SE
-            </button>
-          </>
-        )}
-      </div>
+          <button
+            className="btn btn-outline btn-big"
+            onClick={() => {
+              localStorage.removeItem("clientProfile");
+              alert("Odjavljeni ste.");
+              nav("/home", { replace:true });
+            }}
+          >
+            ODJAVI SE
+          </button>
+        </div>
+      )}
 
       {/* O NAMA */}
       <section className="section">
@@ -220,7 +221,7 @@ export default function Home() {
         </p>
       </section>
 
-      {/* Admin/salon login na dnu */}
+      {/* Admin login */}
       <div className="footer-login">
         <Link className="btn btn-dark btn-small" to="/admin-login">ULOGUJ SE</Link>
       </div>

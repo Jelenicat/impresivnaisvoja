@@ -331,6 +331,35 @@ export default function AdminFinance({
           .desktop-only{ display: none !important; }
           .mobile-only{ display: block; }
         }
+          /* Samo za telefon */
+@media (max-width: 600px){
+.btn-group{
+  display: flex;
+  gap: 10px;        /* razmak između dugmića */
+  margin-top: 8px;
+}
+
+.btn-group .btn{
+  flex: 1;          /* dugmići zauzimaju jednaku širinu */
+  border-radius: 8px;
+  padding: 10px;
+  font-weight: 600;
+}
+
+/* skini plavi outline */
+.btn-group .btn:focus{
+  outline: none;
+  box-shadow: none;
+}
+
+}
+
+/* Ukloni plavi outline kod klika */
+.fin-top .btn-group button:focus{
+  outline: none;
+  box-shadow: none;
+}
+
 
         /* ===== DESKTOP – ULEPŠANO ===== */
        @media (min-width: 641px) {
@@ -578,16 +607,30 @@ export default function AdminFinance({
           />
           {canPickRange && (
             <>
-              <button className="btn" onClick={()=>{ setFrom(startOfDay(new Date())); setTo(endOfDay(new Date())); }}>
-                Danas
-              </button>
-              <button className="btn" onClick={()=>{ 
-                const n=new Date(); const s=new Date(n.getFullYear(), n.getMonth(), 1);
-                const e=endOfDay(new Date(n.getFullYear(), n.getMonth()+1, 0));
-                setFrom(s); setTo(e);
-              }}>
-                Mjesec
-              </button>
+          <div className="btn-group">
+  <button
+    className="btn"
+    onClick={()=>{
+      setFrom(startOfDay(new Date()));
+      setTo(endOfDay(new Date()));
+    }}
+  >
+    Danas
+  </button>
+
+  <button
+    className="btn"
+    onClick={()=>{
+      const n=new Date();
+      const s=new Date(n.getFullYear(), n.getMonth(), 1);
+      const e=endOfDay(new Date(n.getFullYear(), n.getMonth()+1, 0));
+      setFrom(s); setTo(e);
+    }}
+  >
+    Mjesec
+  </button>
+</div>
+
             </>
           )}
           {!canPickRange && <span className="chip">Dnevni pazar</span>}
