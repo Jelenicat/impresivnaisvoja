@@ -776,358 +776,469 @@ const onTouchEndHandler = (ev) => {
 
   return (
     <div className="admin-cal">
-    <style>{`
-  /* ===== BASE STYLES ===== */
-  .admin-cal{ padding:20px 16px 80px; }
-  .cal-bar{ 
-    display:flex; gap:10px; align-items:center; margin-bottom:16px; 
-    flex-wrap:wrap; 
-  }
-  .btn{ 
-    padding:8px 12px; border-radius:10px; border:1px solid #ddd6cc; 
-    background:#fff; cursor:pointer; font-size:14px; 
-    touch-action:manipulation;
-  }
-  .btn:hover{ background:#faf6f0; }
-  .btn:active{ transform:translateY(1px); }
-  .title{ 
-    font-weight:800; font-size:18px; letter-spacing:.2px; 
-    flex:1; text-align:center; 
-  }
-  .select{ 
-    padding:8px 12px; border-radius:10px; border:1px solid #ddd6cc; 
-    background:#fff; font-size:16px; /* touch-friendly */
-  }
-  .top-actions{ 
-    margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; 
-  }
+     <style>{`
+        /* ===== BASE STYLES ===== */
+        .admin-cal{ padding:20px 16px 80px; }
+        .cal-bar{ 
+          display:flex; gap:10px; align-items:center; margin-bottom:16px; 
+          flex-wrap:wrap; 
+        }
+        .btn{ 
+          padding:8px 12px; border-radius:10px; border:1px solid #ddd6cc; 
+          background:#fff; cursor:pointer; font-size:14px; 
+          touch-action:manipulation;
+        }
+        .btn:hover{ background:#faf6f0; }
+        .btn:active{ transform:translateY(1px); }
+        .title{ 
+          font-weight:800; font-size:18px; letter-spacing:.2px; 
+          flex:1; text-align:center; 
+        }
+        .select{ 
+          padding:8px 12px; border-radius:10px; border:1px solid #ddd6cc; 
+          background:#fff; font-size:16px; /* touch-friendly */
+        }
+        .top-actions{ 
+          margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; 
+        }
 
-  .grid-wrap{ 
-    display:grid; grid-template-columns:80px 1fr; gap:10px; 
-    height: calc(100vh - 160px); /* responsive height */
-  }
+        .grid-wrap{ 
+          display:grid; grid-template-columns:80px 1fr; gap:10px; 
+          height: calc(100vh - 160px); /* responsive height */
+        }
 
-  /* ===== Timeline ===== */
-  .timeline{ 
-    border:1px solid #e6e0d7; border-radius:12px; background:#fff; 
-  }
-  .timeline-inner{ position:relative; height:100%; }
-  .timeline-header{ 
-    position:sticky; top:0; height:${HEADER_H}px; 
-    background:#faf6f0; border-bottom:1px solid #e6e0d7; z-index:2; 
-  }
-  .timeline-viewport{ position:relative; overflow:hidden; }
-  .timeline-body{ position:relative; height:${CONTENT_H}px; will-change: transform; }
-  .timeline .hour{ position:absolute; left:8px; font-size:12px; color:#6b7280; transform:translateY(-50%); }
-  .timeline .line{ position:absolute; left:0; right:0; height:1px; background:#eee; }
-  .now-line-left{ position:absolute; left:6px; right:6px; height:0; border-top:3px solid #ef4444; z-index:5; }
+        /* ===== Timeline ===== */
+        .timeline{ 
+          border:1px solid #e6e0d7; border-radius:12px; background:#fff; 
+        }
+        .timeline-inner{ position:relative; height:100%; }
+        .timeline-header{ 
+          position:sticky; top:0; height:${HEADER_H}px; 
+          background:#faf6f0; border-bottom:1px solid #e6e0d7; z-index:2; 
+        }
+        .timeline-viewport{ 
+          position:relative; overflow:hidden; 
+        }
+        .timeline-body{ 
+          position:relative; height:${CONTENT_H}px; 
+          will-change: transform; 
+        }
+        .timeline .hour{ 
+          position:absolute; left:8px; font-size:12px; color:#6b7280; 
+          transform:translateY(-50%); 
+        }
+        .timeline .line{ 
+          position:absolute; left:0; right:0; height:1px; background:#eee; 
+        }
+        .now-line-left{ 
+          position:absolute; left:6px; right:6px; height:0; 
+          border-top:3px solid #ef4444; z-index:5; 
+        }
 
-  /* ===== Columns ===== */
-  .columns-outer{ 
-    border:1px solid #e6e0d7; border-radius:12px; 
-    background:#fff; overflow:auto; 
-    position: relative;
-    overscroll-behavior: contain;   /* spreči gum-band efekat */
-  }
-  .columns{ 
-    display:grid; grid-auto-flow:column; 
-    grid-auto-columns:minmax(240px,1fr); position:relative; 
-  }
-  .col{ position:relative; }
-  .col:not(:first-child)::before{ 
-    content:""; position:absolute; top:0; bottom:0; left:0; 
-    width:2px; background:#e6e0d7; opacity:.95; z-index:2; 
-  }
+        /* ===== Columns ===== */
+        .columns-outer{ 
+          border:1px solid #e6e0d7; border-radius:12px; 
+          background:#fff; overflow:auto; 
+        }
+        .columns{ 
+          display:grid; grid-auto-flow:column; 
+          grid-auto-columns:minmax(240px,1fr); position:relative; 
+        }
+        .col{ position:relative; }
+        .col:not(:first-child)::before{ 
+          content:""; position:absolute; top:0; bottom:0; left:0; 
+          width:2px; background:#e6e0d7; opacity:.95; z-index:2; 
+        }
 
-  .col-header{ 
-    position: sticky; top:0; height:${HEADER_H}px; 
-    display:flex; align-items:center; justify-content:center; 
-    font-weight:700; background:#faf6f0; 
-    border-bottom:1px solid #e6e0d7; 
-    z-index: 20; /* UVEK iznad termina */
-    font-size:14px; padding:0 8px; text-align:center;
-    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-  }
+        .col-header{ 
+          position: sticky; top:0; height:${HEADER_H}px; 
+          display:flex; align-items:center; justify-content:center; 
+          font-weight:700; background:#faf6f0; 
+          border-bottom:1px solid #e6e0d7; z-index:3; 
+          font-size:14px; padding:0 8px; text-align:center;
+          white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+        }
+        .col-body{ 
+          position:relative; height:${CONTENT_H}px; 
+        }
 
-  /* Ključna promena: padding-top da sadržaj ne ide ispod header-a */
-  .col-body{ 
-    position:relative; 
-    height:${CONTENT_H}px; 
-    padding-top:${HEADER_H}px;  /* <<< sprečava preklapanje sa imenom zaposlenog */
-    box-sizing: border-box;
-  }
+        .grid-hour{ 
+          position:absolute; left:0; right:0; height:1px; 
+          background:#eee; z-index:0; 
+        }
 
-  .grid-hour{ position:absolute; left:0; right:0; height:1px; background:#eee; z-index:0; }
+        .hover-line{ 
+          position:absolute; left:6px; right:6px; height:0; 
+          border-top:1px dashed rgba(0,0,0,.25); 
+          pointer-events:none; z-index:2; 
+        }
+        .hover-badge{ 
+          position:absolute; left:50%; transform:translate(-50%,-50%); 
+          padding:3px 8px; font-size:12px; font-weight:700; 
+          background:#1f1f1f; color:#fff; border-radius:999px; 
+          border:1px solid rgba(255,255,255,.4); white-space:nowrap; 
+          box-shadow:0 2px 10px rgba(0,0,0,.15); 
+        }
 
-  .hover-line{ position:absolute; left:6px; right:6px; height:0; border-top:1px dashed rgba(0,0,0,.25); pointer-events:none; z-index:2; }
-  .hover-badge{ position:absolute; left:50%; transform:translate(-50%,-50%); padding:3px 8px; font-size:12px; font-weight:700; background:#1f1f1f; color:#fff; border-radius:999px; border:1px solid rgba(255,255,255,.4); white-space:nowrap; box-shadow:0 2px 10px rgba(0,0,0,.15); }
+        .now-line-global{ 
+          position:absolute; left:0; right:0; height:0; 
+          border-top:3px solid #ef4444; z-index:4; pointer-events:none; 
+        }
 
-  .now-line-global{ position:absolute; left:0; right:0; height:0; border-top:3px solid #ef4444; z-index:4; pointer-events:none; }
+        /* ===== Appointments ===== */
+        .appt {
+          position: absolute; left: 8px; right: 8px;
+          border-radius: 12px; padding: 8px 10px;
+          background: var(--col, #fff); color: #1f1f1f;
+          box-shadow: 0 1px 2px rgba(0, 0, 0, .06);
+          cursor: grab; overflow: hidden;
+          border: 1px solid #ddd6cc; z-index: 1; /* Bazni z-index za desktop */
+          touch-action: manipulation;
+        }
+        .appt:active { cursor: grabbing; }
+        .appt.block {
+          background: #fff !important; border: 2px solid #ef4444;
+          color: #ef4444;
+        }
+        .appt.paid {
+          background: #f3f4f6 !important; color: #6b7280;
+        }
 
-  /* ===== Appointments ===== */
-  .appt {
-    position: absolute; left: 8px; right: 8px;
-    border-radius: 12px; padding: 8px 10px;
-    background: var(--col, #fff); color: #1f1f1f;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, .06);
-    cursor: grab; overflow: hidden;
-    border: 1px solid #ddd6cc; 
-    z-index: 5; /* bazno – ali ispod headera (header je 20) */
-    touch-action: manipulation;
-  }
-  .appt:active { cursor: grabbing; }
-  .appt.block { background:#fff!important; border:2px solid #ef4444; color:#ef4444; }
-  .appt.paid  { background:#f3f4f6!important; color:#6b7280; }
+        .appt .time{ 
+          font-weight:800; font-size:12px; 
+        }
+        .appt .title{ 
+          font-size:13px; margin-top:2px; 
+          line-height:1.2;
+        }
+        .appt .muted{ 
+          color:inherit; opacity:.8; font-size:12px; 
+          margin-top:2px; 
+        }
+        .appt .tag{ 
+          display:inline-block; margin-top:4px; font-size:11px; 
+          border:1px solid #e6e0d7; padding:2px 6px; 
+          border-radius:999px; background:#faf6f0; 
+        }
 
-  .appt .time{ font-weight:800; font-size:12px; }
-  .appt .title{ font-size:13px; margin-top:2px; line-height:1.2; }
-  .appt .muted{ color:inherit; opacity:.8; font-size:12px; margin-top:2px; }
-  .appt .tag{ display:inline-block; margin-top:4px; font-size:11px; border:1px solid #e6e0d7; padding:2px 6px; border-radius:999px; background:#faf6f0; }
+        .resize-handle{ 
+          position:absolute; left:0; right:0; height:10px; 
+          bottom:0; cursor:ns-resize; 
+        }
+        .resize-handle:before{ 
+          content:""; display:block; width:36px; height:4px; 
+          margin:3px auto 0; border-radius:4px; 
+          background:rgba(0,0,0,0.12); 
+        }
 
-  .resize-handle{ position:absolute; left:0; right:0; height:10px; bottom:0; cursor:ns-resize; }
-  .resize-handle:before{ content:""; display:block; width:36px; height:4px; margin:3px auto 0; border-radius:4px; background:rgba(0,0,0,0.12); }
+        /* Ikonice u uglu (online / specific / plaćanje) */
+        .corner-icons{
+          position:absolute; top:6px; right:8px;
+          display:flex; gap:6px; font-size:16px; line-height:1;
+          filter: drop-shadow(0 1px 1px rgba(0,0,0,.15));
+          user-select:none;
+        }
 
-  .corner-icons{
-    position:absolute; top:6px; right:8px;
-    display:flex; gap:6px; font-size:16px; line-height:1;
-    filter: drop-shadow(0 1px 1px rgba(0,0,0,.15));
-    user-select:none;
-  }
+        /* ===== Chooser ===== */
+        .chooser-backdrop{ 
+          position:fixed; inset:0; background:rgba(0,0,0,.25); 
+          display:flex; align-items:center; justify-content:center; 
+          z-index:50; 
+        }
+        .chooser-card{ 
+          background:#fff; border-radius:16px; padding:16px; 
+          border:1px solid #e6e0d7; box-shadow:0 12px 30px rgba(0,0,0,.18); 
+          min-width:260px; max-width:90vw; 
+        }
+        .chooser-title{ 
+          font-weight:800; margin-bottom:10px; 
+          text-align:center; font-size:16px;
+        }
+        .chooser-actions{ 
+          display:flex; gap:10px; 
+        }
+        .btn-ghost{ 
+          padding:10px 12px; border-radius:12px; 
+          border:1px solid #ddd6cc; background:#fff; cursor:pointer; 
+          flex:1; font-size:14px;
+        }
+        .btn-dark{ 
+          padding:10px 12px; border-radius:12px; 
+          background:#1f1f1f; color:#fff; 
+          border:1px solid #1f1f1f; cursor:pointer; 
+          flex:1; font-size:14px;
+        }
 
-  /* ===== Chooser ===== */
-  .chooser-backdrop{ position:fixed; inset:0; background:rgba(0,0,0,.25); display:flex; align-items:center; justify-content:center; z-index:50; }
-  .chooser-card{ background:#fff; border-radius:16px; padding:16px; border:1px solid #e6e0d7; box-shadow:0 12px 30px rgba(0,0,0,.18); min-width:260px; max-width:90vw; }
-  .chooser-title{ font-weight:800; margin-bottom:10px; text-align:center; font-size:16px; }
-  .chooser-actions{ display:flex; gap:10px; }
-  .btn-ghost{ padding:10px 12px; border-radius:12px; border:1px solid #ddd6cc; background:#fff; cursor:pointer; flex:1; font-size:14px; }
-  .btn-dark{ padding:10px 12px; border-radius:12px; background:#1f1f1f; color:#fff; border:1px solid #1f1f1f; cursor:pointer; flex:1; font-size:14px; }
+        /* ===== Hover kartica ===== */
+        .hover-appt{ 
+          position: fixed; z-index: 200; pointer-events: none; 
+          width: 320px; background: #ffffff; 
+          border: 1px solid #e6e0d7; border-radius: 14px; 
+          box-shadow: 0 14px 34px rgba(0,0,0,.20); overflow: hidden; 
+          background: var(--col,#fff); color:#1f1f1f; 
+        }
+        .hover-appt .stripe{ 
+          position:absolute; left:0; top:0; bottom:0; width:6px; 
+          background:#e6e0d7; 
+        }
+        .hover-appt .inner{ 
+          padding: 12px 14px 12px 18px; 
+        }
+        .hover-appt .time{ 
+          font-weight:800; font-size:13px; margin-bottom:6px; 
+        }
+        .hover-appt .title{ 
+          font-weight:800; font-size:15px; 
+        }
+        .hover-appt .sub{ 
+          color:#6b7280; font-size:13px; margin-top:2px; 
+        }
+        .hover-appt .chips{ 
+          display:flex; gap:6px; flex-wrap:wrap; margin:8px 0 2px; 
+        }
+        .hover-appt .chip{ 
+          font-size:11px; font-weight:700; line-height:1; 
+          padding:4px 8px; border-radius:999px; 
+          border:1px solid #e6e0d7; background:#faf6f0; 
+        }
+        .hover-appt .price{ 
+          font-weight:800; margin-top:6px; font-size:14px; 
+        }
+        .hover-appt .hr{ 
+          height:1px; background:#f1ebe4; margin:10px 0; 
+        }
+        .hover-appt .note-row{ 
+          display:flex; gap:8px; align-items:flex-start; 
+        }
+        .hover-appt .note-ico{ opacity:.7; }
+        .hover-appt .note-text{ 
+          font-size:13px; color:#374151; white-space:pre-wrap; 
+        }
 
-  /* ===== Hover kartica ===== */
-  .hover-appt{ position: fixed; z-index: 200; pointer-events: none; width: 320px; background: #ffffff; border: 1px solid #e6e0d7; border-radius: 14px; box-shadow: 0 14px 34px rgba(0,0,0,.20); overflow: hidden; background: var(--col,#fff); color:#1f1f1f; }
-  .hover-appt .stripe{ position:absolute; left:0; top:0; bottom:0; width:6px; background:#e6e0d7; }
-  .hover-appt .inner{ padding: 12px 14px 12px 18px; }
-  .hover-appt .time{ font-weight:800; font-size:13px; margin-bottom:6px; }
-  .hover-appt .title{ font-weight:800; font-size:15px; }
-  .hover-appt .sub{ color:#6b7280; font-size:13px; margin-top:2px; }
-  .hover-appt .chips{ display:flex; gap:6px; flex-wrap:wrap; margin:8px 0 2px; }
-  .hover-appt .chip{ font-size:11px; font-weight:700; line-height:1; padding:4px 8px; border-radius:999px; border:1px solid #e6e0d7; background:#faf6f0; }
-  .hover-appt .price{ font-weight:800; margin-top:6px; font-size:14px; }
-  .hover-appt .hr{ height:1px; background:#f1ebe4; margin:10px 0; }
-  .hover-appt .note-row{ display:flex; gap:8px; align-items:flex-start; }
-  .hover-appt .note-ico{ opacity:.7; }
-  .hover-appt .note-text{ font-size:13px; color:#374151; white-space:pre-wrap; }
+        /* ===== OFF maske ===== */
+        .off-mask{ 
+          position:absolute; left:0; right:0; 
+          background: rgba(0,0,0,0.06); pointer-events:none; 
+          border-radius: 0; z-index: 0; 
+        }
 
-  /* ===== OFF maske ===== */
-  .off-mask{ position:absolute; left:0; right:0; background: rgba(0,0,0,0.06); pointer-events:none; border-radius: 0; z-index: 0; }
-
-  /* ===== DND ghost ===== */
-  .drag-ghost{ position:absolute; left:8px; right:8px; border:2px dashed #2563eb; background: rgba(59,130,246,0.08); border-radius:12px; pointer-events:none; z-index: 3; }
-
-  /* Podrazumevano (desktop): nazad stoji u istom redu kao ostali */
-  .cal-bar .btn-back{ order: 0; }
-
-  /* ===== Mobile header layout – lep raspored ===== */
-  @media (max-width: 900px){
-    /* Globalna zaštita od horizontalnog prelivanja na mobilnom */
-    html, body { overflow-x: hidden; }
-
-    .cal-bar{
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      grid-template-areas:
-        "back back"
-        "date date"
-        "nav  nav"
-        "input input"
-        "emp   emp";
-      gap: 8px;
-      margin-top: 12px;
-      margin-bottom: 12px;
-      padding: 0 4px;
-    }
-
-    .cal-bar .btn-back{
-      grid-area: back;
-      justify-self: start;
-      flex-basis: 100%;
-      align-self: center;
-      margin-top:10px;
-      justify-self: center;
-    }
-
-    /* Datum kao “pilula”, centriran */
-    .cal-bar .date-chip{
-      grid-area: date;
-      justify-self: center;
-      background: #faf6f0;
-      border: 1px solid #e6e0d7;
-      border-radius: 999px;
-      padding: 8px 14px;
-      font-weight: 600;
-      font-size: 12px;
-      letter-spacing: .2px;
-    }
-
-    /* Grupisane strelice + Danas */
-    .cal-bar .nav-group{
-      grid-area: nav;
-      display: grid;
-      grid-template-columns: 44px 1fr 44px;
-      gap: 8px;
-      align-items: center;
-    }
-
-    .cal-bar .icon-btn{
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      height: 40px;
-      border: 1px solid #ddd6cc;
-      background: #fff;
-      border-radius: 10px;
-      font-size: 18px;
-      padding: 0 8px;
-      line-height: 1;
-    }
-
-    .cal-bar .today-btn{
-      min-height: 40px;
-      font-weight: 700;
-    }
-
-    .cal-bar .date-input{ grid-area: input; width: 100%; }
-    .cal-bar .top-actions{ grid-area: emp; justify-self: stretch; }
-    .cal-bar .emp-select{ width: 100%; }
-    .title{ flex: unset; text-align: center; }
-
-    .admin-cal { padding: 12px 8px 80px; }
-    .cal-bar { gap: 8px; margin-bottom: 12px; justify-content: space-between; padding: 0 4px; margin-top: 20px; }
-    .title { font-size: 16px; }
-    .select { min-width: 120px; font-size: 16px; }
-    .top-actions { margin-left: 0; gap: 4px; }
-
-    .grid-wrap { grid-template-columns: 1fr; grid-template-rows: auto 1fr; gap: 8px; height: calc(100vh - 140px); }
-    .timeline { order: 2; grid-row: 2; display: none; }
-    .timeline-header { display: none; }
-    .timeline .hour { font-size: 11px; left: 4px; }
-    .timeline .line { left: 4px; right: 4px; }
-
-    /* Fiksiraj širinu kolona na 100% i ukloni horizontalni skrol */
-    .columns { grid-auto-columns: 100%; min-width: 100%; overflow-x: hidden; }
-    .columns-outer { order: 1; grid-row: 1; overflow-x: hidden !important; }
-
-    .col-header { height: 48px; font-size: 13px; padding: 0 8px; justify-content: center; text-align: center; }
-    .appt {
-      left: 30px; right: 0; padding: 10px 8px; min-height: 44px; font-size: 13px;
-      border-radius: 14px;
-      z-index: 5; /* ostaje ispod header-a (z-index 20) */
-    }
-    .appt .time { font-size: 11px; line-height: 1.2; }
-    .appt .title { font-size: 12px; margin-top: 10px; -webkit-line-clamp: 2; -webkit-box-orient: vertical; display:-webkit-box; overflow:hidden; }
-    .appt .muted { font-size: 11px; margin-top: 2px; -webkit-line-clamp: 1; -webkit-box-orient: vertical; display:-webkit-box; overflow:hidden; }
-    .appt .tag { font-size: 8px; padding: 2px 4px; margin-top: 2px; }
-    .resize-handle { height: 12px; }
-    .resize-handle:before { width: 24px; height: 3px; }
-    .corner-icons { font-size:14px; right:4px; top:4px; }
-    .hover-line, .hover-badge { display: none; }
-    .chooser-card { min-width: auto; max-width: 280px; margin: 20px; padding: 20px; }
-    .chooser-title { font-size: 16px; margin-bottom: 16px; }
-    .chooser-actions { flex-direction: column; gap: 8px; }
-    .btn-ghost, .btn-dark { padding: 14px 16px; font-size: 16px; min-height: 48px; }
-    .hover-appt { width: 90vw; max-width: 340px; left: 5vw !important; top: auto !important; bottom: 20px !important; }
-    .hover-appt .inner { padding: 16px; }
-    .hover-appt .title { font-size: 16px; }
-    .hover-appt .sub { font-size: 14px; }
-    .hover-appt .chips { gap: 4px; }
-    .hover-appt .chip { font-size: 12px; padding: 4px 6px; }
-    .drag-ghost { left: 4px; right: 4px; min-height: 44px; }
-    .off-mask { left: 4px; right: 4px; }
-
-    .col-body .hour {
-      display: block; position: absolute; left: 2px; font-size: 10px; color: #6b7280;
-      transform: translateY(-50%); z-index: 1; width: 28px; text-align: right; overflow: hidden;
-    }
-    .grid-hour { left: 30px; right: 0; z-index: 1; } 
-    .hover-line { left: 30px; right: 0; }
-    .now-line-global { left: 30px; right: 0; }
-    .off-mask { left: 30px; right: 0; }
-    .drag-ghost { left: 30px; right: 0; }
+        /* ===== DND ghost ===== */
+        .drag-ghost{ 
+          position:absolute; left:8px; right:8px; 
+          border:2px dashed #2563eb; background: rgba(59,130,246,0.08); 
+          border-radius:12px; pointer-events:none; z-index: 3; 
+        }
+/* Podrazumevano (desktop): nazad stoji u istom redu kao ostali */
+.cal-bar .btn-back{
+  order: 0;
+}
+/* ===== Mobile header layout – lep raspored ===== */
+@media (max-width: 900px){
+  .cal-bar{
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "back back"
+      "date date"
+      "nav  nav"
+      "input input"
+      "emp   emp";
+    gap: 8px;
+    margin-top: 12px;
+    margin-bottom: 12px;
+    padding: 0 4px;
   }
 
-  /* Telefon/tablet: 'Nazad' ide u poseban red iznad navigacije dana */
-  @media (max-width: 900px){
-    .cal-bar .btn-back{
-      flex-basis: 100%; 
-      align-self: flex-start;
-      margin-bottom: 6px;
-    }
+  .cal-bar .btn-back{
+    grid-area: back;
+    justify-self: start;
+    flex-basis: 100%;
+    align-self: center;
+    margin-top:10px;
+    justify-self: center;
   }
 
-  @media (min-width: 901px) {
-    .col-body .hour { display: none; }
+  /* Datum kao “pilula”, centriran */
+  .cal-bar .date-chip{
+    grid-area: date;
+    justify-self: center;
+    background: #faf6f0;
+    border: 1px solid #e6e0d7;
+    border-radius: 999px;
+    padding: 8px 14px;
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: .2px;
   }
 
-  @media (max-width: 480px) {
-    .admin-cal { padding: 8px 4px 80px; }
-    .cal-bar { gap: 4px; padding: 0 2px; margin-top: 20px; }
-    .btn { padding: 10px 8px; font-size: 14px; min-height: 40px; }
-    .title { font-size: 15px; }
-    .select { min-width: 100px; padding: 10px 8px; }
-    .top-actions { gap: 2px; }
-    .grid-wrap { gap: 4px; height: calc(100vh - 120px); }
-    .col-header { height: 52px; font-size: 12px; }
-    .appt {
-      padding: 12px 6px; min-height: 48px; left: 24px; right: 0;
-      border-radius: 14px;
-      z-index: 5; /* i dalje ispod headera */
-    }
-    .appt .time { font-size: 10px; }
-    .appt .title { font-size: 11px; }
-    .appt .muted { font-size: 10px; }
-    .chooser-card { margin: 16px; padding: 16px; }
-    .hover-appt { width: 95vw; left: 2.5vw !important; bottom: 16px !important; }
-    .hover-appt .inner { padding: 12px; }
-    .hover-appt .title { font-size: 15px; }
-    .hover-appt .sub { font-size: 13px; }
-    .col-body .hour { font-size: 9px; left: 1px; width: 22px; }
-    .grid-hour { left: 24px; right: 0; z-index: 1; }
-    .hover-line { left: 24px; right: 0; }
-    .now-line-global { left: 24px; right: 0; }
-    .off-mask { left: 24px; right: 0; }
-    .drag-ghost { left: 24px; right: 0; }
+  /* Grupisane strelice + Danas */
+  .cal-bar .nav-group{
+    grid-area: nav;
+    display: grid;
+    grid-template-columns: 44px 1fr 44px;
+    gap: 8px;
+    align-items: center;
   }
 
-  @media (hover: none) and (pointer: coarse) {
-    .btn, .select, .appt { min-height: 44px; }
-    .col-header { min-height: 48px; }
-    .appt { touch-action: manipulation; }
-    .hover-line, .hover-badge { display: none; }
-    .resize-handle { height: 16px; }
-    .resize-handle:before { height: 4px; width: 32px; }
+  .cal-bar .icon-btn{
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 40px;
+    border: 1px solid #ddd6cc;
+    background: #fff;
+    border-radius: 10px;
+    font-size: 18px;
+    padding: 0 8px;
+    line-height: 1;
   }
 
-  @media (max-width: 900px) and (orientation: landscape) {
-    .grid-wrap { height: calc(100vh - 100px); }
-    .cal-bar { margin-bottom: 8px; margin-top: 20px; }
-    .title { font-size: 14px; }
+  .cal-bar .today-btn{
+    min-height: 40px;
+    font-weight: 700;
   }
 
-  @media (max-width: 900px) and (-webkit-min-device-pixel-ratio: 1) {
-    .appt { min-height: 48px; }
+  .cal-bar .date-input{
+    grid-area: input;
+    width: 100%;
   }
 
-  @supports (-webkit-touch-callout: none) {
-    .appt { -webkit-touch-callout: none; -webkit-user-select: none; }
-    .col-body { -webkit-overflow-scrolling: touch; }
+  .cal-bar .top-actions{
+    grid-area: emp;
+    justify-self: stretch;
   }
 
-  /* Ensures text color inheritance inside modal/drawer (iOS fix) */
-  .admin-cal .modal :is(input, select, button, .muted),
-  .admin-cal .drawer :is(input, select, button, .muted) {
-    color: inherit !important;
-    -webkit-text-fill-color: inherit !important;
+  .cal-bar .emp-select{
+    width: 100%;
   }
-`}</style>
+
+  /* Sakrij staru 'title' fleks-logiku na mobilnom (koristimo date-chip) */
+  .title{ flex: unset; text-align: center; }
+}
+
+/* Telefon/tablet: 'Nazad' ide u poseban red iznad navigacije dana */
+@media (max-width: 900px){
+  .cal-bar .btn-back{
+    flex-basis: 100%;      /* zauzmi ceo red */
+    align-self: flex-start;
+    margin-bottom: 6px;    /* mali razmak do sledećeg reda */
+  }
+}
+
+        /* ===== MOBILE OPTIMIZATIONS ===== */
+        @media (max-width: 900px) {
+          .admin-cal { padding: 12px 8px 80px; }
+          .cal-bar { gap: 8px; margin-bottom: 12px; justify-content: space-between; padding: 0 4px; margin-top: 20px; }
+          .title { font-size: 16px; flex: none; order: 3; }
+          .select { min-width: 120px; font-size: 16px; }
+          .top-actions { order: 4; margin-left: 0; gap: 4px; }
+          .grid-wrap { grid-template-columns: 1fr; grid-template-rows: auto 1fr; gap: 8px; height: calc(100vh - 140px); }
+          .timeline { order: 2; grid-row: 2; display: none; }
+          .timeline-header { display: none; }
+          .timeline .hour { font-size: 11px; left: 4px; }
+          .timeline .line { left: 4px; right: 4px; }
+          .columns { grid-auto-columns: 1fr; min-width: 100%; }
+          .columns-outer { order: 1; grid-row: 1; }
+          .col-header { height: 48px; font-size: 13px; padding: 0 4px; justify-content: flex-start; text-align: left; }
+          .appt {
+            left: 30px; right: 0; padding: 10px 8px; min-height: 44px; font-size: 13px;
+            border-radius: 14px; /* Zaobljeni uglovi na telefonu */
+            z-index: 10; /* Povećan z-index da prekriva vremensku osu */
+          }
+          .appt .time { font-size: 11px; line-height: 1.2; }
+          .appt .title { font-size: 12px; margin-top: 10px; -webkit-line-clamp: 2; -webkit-box-orient: vertical; display:-webkit-box; overflow:hidden; }
+          .appt .muted { font-size: 11px; margin-top: 2px; -webkit-line-clamp: 1; -webkit-box-orient: vertical; display:-webkit-box; overflow:hidden; }
+          .appt .tag { font-size: 8px; padding: 2px 4px; margin-top: 2px; }
+          .resize-handle { height: 12px; }
+          .resize-handle:before { width: 24px; height: 3px; }
+          .corner-icons { font-size:14px; right:4px; top:4px; }
+          .hover-line, .hover-badge { display: none; }
+          .chooser-card { min-width: auto; max-width: 280px; margin: 20px; padding: 20px; }
+          .chooser-title { font-size: 16px; margin-bottom: 16px; }
+          .chooser-actions { flex-direction: column; gap: 8px; }
+          .btn-ghost, .btn-dark { padding: 14px 16px; font-size: 16px; min-height: 48px; }
+          .hover-appt { width: 90vw; max-width: 340px; left: 5vw !important; top: auto !important; bottom: 20px !important; }
+          .hover-appt .inner { padding: 16px; }
+          .hover-appt .title { font-size: 16px; }
+          .hover-appt .sub { font-size: 14px; }
+          .hover-appt .chips { gap: 4px; }
+          .hover-appt .chip { font-size: 12px; padding: 4px 6px; }
+          .drag-ghost { left: 4px; right: 4px; min-height: 44px; }
+          .off-mask { left: 4px; right: 4px; }
+          .col-body .hour {
+            display: block; position: absolute; left: 2px; font-size: 10px; color: #6b7280;
+            transform: translateY(-50%); z-index: 1; width: 28px; text-align: right; overflow: hidden;
+          }
+          .grid-hour { left: 30px; right: 0; z-index: 1; } /* Ostaje ispod kartica */
+          .hover-line { left: 30px; right: 0; }
+          .now-line-global { left: 30px; right: 0; }
+          .off-mask { left: 30px; right: 0; }
+          .drag-ghost { left: 30px; right: 0; }
+        }
+
+        @media (min-width: 901px) {
+          .col-body .hour { display: none; }
+        }
+
+        @media (max-width: 480px) {
+          .admin-cal { padding: 8px 4px 80px; }
+          .cal-bar { gap: 4px; padding: 0 2px; margin-top: 20px; }
+          .btn { padding: 10px 8px; font-size: 14px; min-height: 40px; }
+          .title { font-size: 15px; }
+          .select { min-width: 100px; padding: 10px 8px; }
+          .top-actions { gap: 2px; }
+          .grid-wrap { gap: 4px; height: calc(100vh - 120px); }
+          .col-header { height: 52px; font-size: 12px; }
+          .appt {
+            padding: 12px 6px; min-height: 48px; left: 24px; right: 0;
+            border-radius: 14px; /* Zaobljeni uglovi */
+            z-index: 10; /* Povećan z-index */
+          }
+          .appt .time { font-size: 10px; }
+          .appt .title { font-size: 11px; }
+          .appt .muted { font-size: 10px; }
+          .chooser-card { margin: 16px; padding: 16px; }
+          .hover-appt { width: 95vw; left: 2.5vw !important; bottom: 16px !important; }
+          .hover-appt .inner { padding: 12px; }
+          .hover-appt .title { font-size: 15px; }
+          .hover-appt .sub { font-size: 13px; }
+          .col-body .hour { font-size: 9px; left: 1px; width: 22px; }
+          .grid-hour { left: 24px; right: 0; z-index: 1; } /* Ostaje ispod kartica */
+          .hover-line { left: 24px; right: 0; }
+          .now-line-global { left: 24px; right: 0; }
+          .off-mask { left: 24px; right: 0; }
+          .drag-ghost { left: 24px; right: 0; }
+        }
+
+        @media (hover: none) and (pointer: coarse) {
+          .btn, .select, .appt { min-height: 44px; }
+          .col-header { min-height: 48px; }
+          .appt { touch-action: manipulation; }
+          .hover-line, .hover-badge { display: none; }
+          .resize-handle { height: 16px; }
+          .resize-handle:before { height: 4px; width: 32px; }
+        }
+
+        @media (max-width: 900px) and (orientation: landscape) {
+          .grid-wrap { height: calc(100vh - 100px); }
+          .cal-bar { margin-bottom: 8px; margin-top: 20px; }
+          .title { font-size: 14px; }
+        }
+
+        @media (max-width: 900px) and (-webkit-min-device-pixel-ratio: 1) {
+          .appt { min-height: 48px; }
+        }
+
+        @supports (-webkit-touch-callout: none) {
+          .appt { -webkit-touch-callout: none; -webkit-user-select: none; }
+          .col-body { -webkit-overflow-scrolling: touch; }
+        }
+     .admin-cal .modal :is(input, select, button, .muted),
+.admin-cal .drawer :is(input, select, button, .muted) {
+  color: inherit !important;
+  -webkit-text-fill-color: inherit !important;
+}
+      `}</style>
 
       <div className="admin-cal">
         <div className="cal-bar">
