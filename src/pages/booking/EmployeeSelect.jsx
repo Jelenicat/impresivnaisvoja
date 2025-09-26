@@ -55,10 +55,8 @@ export default function EmployeeSelect(){
   /* Podnaslov za zaposlenog – kategorije izvedene iz serviceIds */
   function buildSubtitleForEmployee(e){
     const sids = Array.isArray(e?.serviceIds) ? e.serviceIds.filter(Boolean) : [];
-
     if (sids.length === 0) return "Usluge nisu podešene";
 
-    // Izvuci unikatne kategorije iz serviceIds
     const catSet = new Set();
     for (const sid of sids){
       const cid = serviceToCat.get(sid);
@@ -67,8 +65,6 @@ export default function EmployeeSelect(){
 
     const catIds = Array.from(catSet);
     if (catIds.length === 0) return "Usluge nisu podešene";
-
-    // Ako pokrivaju sve postojeće kategorije – može „Sve kategorije“
     if (categories.length > 0 && catIds.length === categories.length) {
       return "Sve kategorije";
     }
@@ -98,42 +94,65 @@ export default function EmployeeSelect(){
         .map(w=>w[0]?.toUpperCase())
         .slice(0,2)
         .join("");
+
+      // Specijalan avatar za Jovana Smolović
+      const isJovana = fullName.toLowerCase() === "jovana smolović" || fullName.toLowerCase() === "jovana smolovic";
+      const avatar = e.photoURL || (isJovana ? "/IMG_4985.JPG" : null);
+
       return {
         value: e.username,
         title: fullName,
         subtitle: buildSubtitleForEmployee(e),
-        avatar: e.photoURL || null,
+        avatar,
         initials
       };
     });
     return [...first, ...rest];
-  },[employees, categories, serviceToCat, catNameById]); // zavisi i od services/kategorija
+  },[employees, categories, serviceToCat, catNameById]);
 
   return (
     <div className="wrap">
       <style>{`
         .wrap{min-height:100dvh;background:#0f0f10;}
-        .sheet{background:#fff;min-height:100dvh;border-top-left-radius:22px;
-               border-top-right-radius:22px;padding:20px;}
+        .wrap *{ -webkit-tap-highlight-color: transparent; } /* bez plavog tap efekta */
+
+        .sheet{
+          background:#fff;min-height:100dvh;border-top-left-radius:22px;
+          border-top-right-radius:22px;padding:20px;
+        }
+
         .hdr{display:flex;align-items:center;gap:10px;margin-bottom:14px;}
-        .back{appearance:none;border:0;background:transparent;font-weight:800;}
-        .title{font-size:24px;font-weight:900;margin:10px 0;text-align:center;}
+        .back{
+          appearance:none; -webkit-appearance:none;
+          border:0;background:transparent;font-weight:800;color:#0f0f10;
+        }
+
+        .title{font-size:24px;font-weight:900;margin:10px 0;text-align:center;color:#0f0f10;}
+
         .hero{width:100%;height:160px;border-radius:20px;overflow:hidden;margin-bottom:20px;}
         .hero img{width:100%;height:100%;object-fit:cover}
+
         .list{display:flex;flex-direction:column;gap:12px;}
-        .row{display:flex;align-items:center;justify-content:space-between;
-             padding:14px 16px;border:1px solid #eee;border-radius:18px;
-             background:#fafafa;transition:.2s;}
+        .row{
+          appearance:none; -webkit-appearance:none;
+          display:flex;align-items:center;justify-content:space-between;
+          padding:14px 16px;border:1px solid #eee;border-radius:18px;
+          background:#fafafa;transition:.2s; cursor:pointer;
+          text-decoration:none; color:#0f0f10; /* fiks boja teksta */
+        }
         .row:hover{background:#f0f0f0;}
+
         .l{display:flex;align-items:center;gap:14px;}
         .av{width:48px;height:48px;border-radius:50%;overflow:hidden;
             box-shadow:0 2px 6px rgba(0,0,0,0.1);display:flex;
             align-items:center;justify-content:center;font-weight:800;font-size:16px;color:#fff;background:#111;}
         .av img{width:100%;height:100%;object-fit:cover}
+
         .t{display:flex;flex-direction:column;text-align:left;}
-        .tt{font-weight:800;font-size:15px;}
-        .st{font-size:13px;opacity:.7;}
-        .chev{font-size:20px;opacity:.4;}
+        .tt{font-weight:800;font-size:15px;color:#0f0f10;} /* ime – fiks boja, bez plave */
+        .st{font-size:13px;color:#6b7280;}                 /* kategorije – siva, bez plave */
+
+        .chev{font-size:20px;opacity:.4;color:#0f0f10;}
       `}</style>
 
       <div className="sheet">

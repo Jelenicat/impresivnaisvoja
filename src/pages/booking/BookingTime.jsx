@@ -469,9 +469,8 @@ export default function BookingTime(){
         }
 
         const names = g.services.map(s => s.name).filter(Boolean);
-const servicesLabel = names.join(", ");
-const servicesFirstName = names[0] || null;   // ← bez "the"
-
+        const servicesLabel = names.join(", ");
+        const servicesFirstName = names[0] || null;
 
         const ref = await addDoc(collection(db, "appointments"), {
           start: new Date(rollingStart),
@@ -570,6 +569,22 @@ const servicesFirstName = names[0] || null;   // ← bez "the"
   return (
     <div className="wrap">
       <style>{`
+        :root { color-scheme: light; } /* NEW: izbegni sistemske plave naglaske */
+        /* NEW: globalno ukloni mobilni tap highlight i plave outline-ove na dugmadima */
+        button, .btn, .btnx, .pill, .d {
+          -webkit-tap-highlight-color: transparent;
+        }
+        button:focus, button:active,
+        .btn:focus, .btn:active,
+        .btnx:focus, .btnx:active,
+        .pill:focus, .pill:active,
+        .d:focus, .d:active {
+          outline: none !important;
+          box-shadow: none !important;
+        }
+        /* Zadrži pristupačnost za tastaturu, ali bez plavog: */
+        .d:focus-visible { outline: 2px solid #111; }
+
         .wrap{min-height:100dvh;background:#0f0f10;}
         .sheet{background:#fff;min-height:100dvh;border-top-left-radius:22px;border-top-right-radius:22px;padding:16px 14px 120px;}
         .hdr{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
@@ -584,8 +599,24 @@ const servicesFirstName = names[0] || null;   // ← bez "the"
         .btnx{appearance:none;border:1px solid #eee;background:#fafafa;padding:8px 10px;border-radius:10px;font-weight:700;}
         .grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;}
         .dow{font-size:12px;opacity:.6;text-align:center;margin-bottom:6px}
-        .d{aspect-ratio:1;border:1px solid #eee;border-radius:12px;display:flex;align-items:center;justify-content:center;background:#fff;font-weight:800;}
-        .d.sel{outline:2px solid #111}
+        .d{
+          aspect-ratio:1;
+          border:1px solid #eee;
+          border-radius:12px;
+          display:flex;align-items:center;justify-content:center;
+          background:#fff;
+          font-weight:900;              /* NEW: jači broj */
+          font-size:16px;               /* NEW: malo veći broj */
+          color:#111;                   /* NEW: fiksiraj boju cifre (nema plave) */
+          user-select:none;             /* NEW: ne selektuje cifru */
+          -webkit-user-select:none;     /* NEW */
+        }
+        .d.sel{
+          outline:2px solid #111;       /* zadržavamo jasnoću selekcije */
+          background:#111;              /* NEW: lep kontrast za selektovani dan */
+          color:#fff;                   /* NEW: belo slovo na selektovanom */
+          border-color:#111;            /* NEW */
+        }
         .d.disabled{opacity:.25;pointer-events:none}
 
         .msg{margin:14px 0;padding:12px;border-radius:12px;background:#fff7f0;border:1px solid #ffe6d2;font-weight:700}
@@ -599,7 +630,10 @@ const servicesFirstName = names[0] || null;   // ← bez "the"
         .chk{width:20px;height:20px;border:1px solid #ddd;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;background:#fff}
         .chk.on{background:#111;color:#fff;border-color:#111}
         .sum{font-weight:900;margin-top:8px;display:flex;justify-content:space-between;align-items:center}
-        .pill{font-size:12px;padding:6px 10px;border:1px solid #eee;border-radius:999px;background:#fafafa;font-weight:700}
+        .pill{
+          font-size:12px;padding:6px 10px;border:1px solid #eee;border-radius:999px;background:#fafafa;font-weight:700;
+          color:#111;                   /* NEW: eksplicitno crna, bez plave */
+        }
         .helpers{display:flex;gap:8px;margin-top:8px}
 
         .fab{position:fixed;left:14px;right:14px;bottom:18px;display:flex;gap:10px}

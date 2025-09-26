@@ -34,8 +34,25 @@ export default function BookingCategories(){
           margin-top:-24px; background:rgba(255,255,255,.9);
           color:#111; backdrop-filter:saturate(140%) blur(10px);
           border-top-left-radius:22px; border-top-right-radius:22px;
-          padding:16px 12px 24px;
+          padding:26px 12px 24px; /* veći odmak od vrha */
         }
+
+        /* Header sa “Nazad” */
+        .bk-hdr{
+          display:flex; align-items:center; justify-content:flex-start;
+          margin-bottom:12px;
+        }
+        .bk-back{
+          appearance:none; border:0; background:transparent; cursor:pointer;
+          font-weight:800; font-size:16px; padding:10px 6px;
+          border-radius:12px; color:#0f0f10;
+          box-shadow:0 2px 8px rgba(0,0,0,0.06);
+          background:rgba(255,255,255,0.8);
+          transition:transform .15s ease, box-shadow .2s ease, opacity .2s ease;
+        }
+        .bk-back:hover{ transform:translateX(-1px); box-shadow:0 4px 12px rgba(0,0,0,0.12); }
+        .bk-back:active{ transform:translateY(1px); }
+
         .bk-title{ font-size:22px; font-weight:900; text-align:center; margin:6px 0 14px; }
 
         /* LISTA: slika levo, naziv desno */
@@ -68,6 +85,11 @@ export default function BookingCategories(){
       <div className="bk-hero" />
 
       <div className="bk-sheet">
+        {/* Header sa dugmetom Nazad */}
+        <div className="bk-hdr">
+          <button className="bk-back" onClick={() => nav("/home")}>← Nazad</button>
+        </div>
+
         <div className="bk-title">Kategorije</div>
 
         <div className="list">

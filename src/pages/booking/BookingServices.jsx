@@ -8,27 +8,45 @@ function readCart(){ try{return JSON.parse(localStorage.getItem("bookingCart")||
 function writeCart(items){ localStorage.setItem("bookingCart", JSON.stringify(items)); }
 
 // helper: iz naziva kategorije izaberi niz slika
-function imagesForCategory(name = ""){
+// helper: iz naziva kategorije izaberi niz slika
+function imagesForCategory(name = "") {
   const n = name.toLowerCase();
+
+  // TREPAVICE
+  if (n.includes("trepav") || n.includes("lash")) {
+    return ["/trepavice1.webp", "/trepavice2.webp"];
+  }
+
+  // OBRVE (trenutno koristimo iste fotke; zameni putanje kad dodaš npr. /obrve1.webp, /obrve2.webp)
+  if (n.includes("obrve") || n.includes("obrva") || n.includes("brow")) {
+    return ["/trepavice1.webp", "/trepavice2.webp","/trepavice3.webp"
+    ];
+  }
+
   // MANIKIR
   if (n.includes("manik")) {
-    return ["/manikir1.webp", "/manikir2.webp", "/manikir3.webp"];
+    return ["/manikir1.webp", "/manikir2.webp", "/manikir4.webp", "/manikir5.webp", "/manikir6.webp", "/manikir7.webp", "/manikir8.webp", "/manikir9.webp", "/manikir10.webp"];
   }
+
   // PEDIKIR
   if (n.includes("pedik")) {
     return ["/pedikir1.webp", "/pedikir2.webp", "/pedikir3.webp"];
   }
+
   // DEPILACIJA ŠEĆERNOM PASTOM
   if (n.includes("šećer") || n.includes("secer") || n.includes("pasta")) {
     return ["/depilacijapasta.webp"];
   }
+
   // KLASIČNA DEPILACIJA
   if (n.includes("depil")) {
     return ["/depilacija1.webp"];
   }
+
   // fallback
   return ["/usluge1.webp"];
 }
+
 
 export default function BookingServices(){
   const { catId } = useParams();
@@ -45,15 +63,13 @@ export default function BookingServices(){
   const next = () => setIdx(i => (i + 1) % imgs.length);
 
   useEffect(() => {
-    // naziv kategorije u naslovu
     (async () => {
       const snap = await getDoc(doc(db, "categories", catId));
       const name = snap.exists() ? snap.data().name : "Usluge";
       setCatName(name);
-      setIdx(0); // reset slidera na promenu kategorije
+      setIdx(0);
     })();
 
-    // usluge iz kategorije
     const q = query(
       collection(db, "services"),
       where("categoryId", "==", catId),
@@ -79,7 +95,6 @@ export default function BookingServices(){
       });
     }
     writeCart(items);
-    // re-render
     setServices([...services]);
   }
 
@@ -87,6 +102,9 @@ export default function BookingServices(){
     <div className="sv-wrap">
       <style>{`
         .sv-wrap{ min-height:100dvh; background:#0f0f10; color:#111; }
+        /* ukini plavi tap highlight na mobilnim */
+        .sv-wrap *{ -webkit-tap-highlight-color: transparent; }
+
         .hero {
           position: relative;
           height: 220px;
@@ -102,6 +120,7 @@ export default function BookingServices(){
           background: rgba(17,17,17,.7);
           color:#fff; border:0; width:36px; height:36px; border-radius:10px; cursor:pointer;
           display:flex; align-items:center; justify-content:center; font-size:18px; font-weight:800;
+          -webkit-appearance:none; appearance:none;
         }
         .hero .arrow.left{ left:10px; }
         .hero .arrow.right{ right:10px; }
@@ -117,6 +136,27 @@ export default function BookingServices(){
           min-height:100dvh; background:#fff; border-top-left-radius:22px; border-top-right-radius:22px;
           padding:18px 14px 100px;
         }
+
+        /* gornji header sa 'Nazad' */
+        .sv-hdr{
+          display:flex; align-items:center; justify-content:flex-start;
+          margin: 6px 0 8px;
+        }
+        .sv-back{
+          -webkit-appearance:none; appearance:none;
+          background: rgba(255,255,255,0.9);
+          color:#0f0f10;
+          border:1px solid #eaeaea;
+          padding:10px 12px;
+          border-radius:12px;
+          font-weight:800; font-size:15px;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+          cursor:pointer;
+          transition: transform .15s ease, box-shadow .2s ease, opacity .2s ease;
+        }
+        .sv-back:hover{ transform: translateX(-1px); box-shadow:0 4px 12px rgba(0,0,0,0.12); }
+        .sv-back:active{ transform: translateY(1px); }
+
         .title{ font-size:22px; font-weight:900; text-align:center; margin:12px 0 14px; }
 
         .item{
@@ -125,10 +165,17 @@ export default function BookingServices(){
         }
         .name{ font-weight:900; font-size:18px; color:#0f0f10; }
         .meta{ font-size:14px; color:#6b7280; margin-top:2px; }
+
         .actions{ display:flex; align-items:center; gap:8px; }
-        .btn{ padding:10px 14px; border-radius:12px; border:1px solid #e5e5e5; background:#fff; cursor:pointer; font-weight:700; }
+        .btn{
+          -webkit-appearance:none; appearance:none;
+          padding:10px 14px; border-radius:12px; border:1px solid #e5e5e5;
+          background:#fff; cursor:pointer; font-weight:800;
+          color:#111; text-decoration:none; outline:none;
+        }
+        .btn:focus, .btn:active { outline:none; color:#111; }
+        .btn-ghost{ background:#fff; color:#111; }
         .btn-dark{ background:#1f1f1f; color:#fff; border-color:#1f1f1f; }
-        .btn-ghost{ background:#fff; }
 
         .fab{ position:fixed; left:14px; right:14px; bottom:18px; display:flex; gap:10px; }
         .fab .btn-dark{ flex:1; padding:14px; border-radius:14px; font-size:16px; }
@@ -153,6 +200,11 @@ export default function BookingServices(){
       </div>
 
       <div className="sv-sheet">
+        {/* Gornje dugme Nazad → /booking (kategorije) */}
+        <div className="sv-hdr">
+          <button className="sv-back" onClick={()=>nav("/booking")}>← Nazad</button>
+        </div>
+
         <div className="title">{catName || "Usluge"}</div>
 
         {services.map(s=>(
@@ -174,7 +226,7 @@ export default function BookingServices(){
 
         <div className="fab">
           <button className="btn btn-dark" onClick={()=>nav("/booking")}>Nazad</button>
-           <button className="btn btn-dark" onClick={()=>nav("/booking/employee")}>Nastavi</button>
+          <button className="btn btn-dark" onClick={()=>nav("/booking/employee")}>Nastavi</button>
         </div>
       </div>
 
