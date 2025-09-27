@@ -11,6 +11,11 @@
 
 html, body, #root { height: 100%; }
 
+html, body {
+  overflow-x: hidden;                  /* << zaključaj horizontalni skrol */
+  width: 100%;
+}
+
 body {
   margin: 0;
   font-family: 'Montserrat', sans-serif;
@@ -60,6 +65,7 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }
   max-width: 100%;
   width: 100%;
   margin: 0;
+  overflow-x: hidden;                  /* << dodat safety */
 }
 
 /* ===== Hero ===== */
@@ -70,47 +76,33 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }
   position: relative;
 }
 
+/* okvir slike (picture) da "seče" animaciju unutar hero-a */
+.kb-frame {
+  display: block;
+  overflow: hidden;
+  width: 100%;
+}
+
+/* slika koja animira (samo ona, ne i dugmad) */
+.kb-img {
+  width: 100%;
+  height: auto;
+  display: block;
+  will-change: transform;
+  animation: kenburns-top 12s ease-in-out infinite alternate;
+}
+
+/* fallback ako negde koristiš <img> bez klase */
 .hero img {
   width: 100%;
   display: block;
   height: auto;
 }
 
-/* ===== Ken Burns efekat ===== */
-/* ===== Ken Burns efekat (loop) ===== */
-.kenburns-top {
-  -webkit-animation: kenburns-top 12s ease-in-out infinite alternate;
-          animation: kenburns-top 12s ease-in-out infinite alternate;
-}
-
-
-@-webkit-keyframes kenburns-top {
-  0% {
-    -webkit-transform: scale(1) translateY(0);
-            transform: scale(1) translateY(0);
-    -webkit-transform-origin: 50% 16%;
-            transform-origin: 50% 16%;
-  }
-  100% {
-    -webkit-transform: scale(1.25) translateY(-15px);
-            transform: scale(1.25) translateY(-15px);
-    -webkit-transform-origin: top;
-            transform-origin: top;
-  }
-}
+/* ===== Ken Burns (samo na .kb-img) ===== */
 @keyframes kenburns-top {
-  0% {
-    -webkit-transform: scale(1) translateY(0);
-            transform: scale(1) translateY(0);
-    -webkit-transform-origin: 50% 16%;
-            transform-origin: 50% 16%;
-  }
-  100% {
-    -webkit-transform: scale(1.25) translateY(-15px);
-            transform: scale(1.25) translateY(-15px);
-    -webkit-transform-origin: top;
-            transform-origin: top;
-  }
+  0%   { transform: scale(1) translateY(0);        transform-origin: 50% 16%; }
+  100% { transform: scale(1.25) translateY(-15px); transform-origin: top; }
 }
 
 /* ===== Sekcije ===== */
@@ -443,10 +435,10 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }
   /* CENTRIRANJE desktop dugmadi + razmak + prelamanje po potrebi */
   .cta-wrap {
     display: flex;
-    justify-content: center;   /* <<< centar */
-    gap: 16px;                 /* ravnomeran razmak */
-    flex-wrap: wrap;           /* ako ih je više, prelomi */
-    margin: 24px 0 40px;       /* postojeća margina + malo veća donja */
+    justify-content: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin: 24px 0 40px;
   }
 
   .btn-wide { max-width: 360px; }

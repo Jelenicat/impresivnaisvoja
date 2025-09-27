@@ -163,10 +163,10 @@ export default function Home() {
   return (
     <div className="page">
       {/* Hero sa CTA preko slike */}
-      <div className="hero kenburns-top">
-        <picture>
+      <div className="hero">
+        <picture className="kb-frame">
           <source srcSet="/IMG_4989-1.webp" media="(min-width: 1024px)" />
-          <img src="/IMG_4989.webp" alt="impresivnaisvoja" />
+          <img className="kb-img" src="/IMG_4989.webp" alt="impresivnaisvoja" />
         </picture>
 
         {/* Glavno CTA dugme */}
@@ -177,7 +177,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Sekundarna dugmad za klijenta */}
+      {/* Sekundarna dugmad */}
       {isClientLogged && (
         <div className="cta-wrap" style={{ flexDirection: "column", gap: 12, alignItems: "center" }}>
           <button
@@ -207,7 +207,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* O nama */}
+      {/* O NAMA */}
       <section className="section">
         <h2>O Nama</h2>
         <p>
@@ -224,7 +224,7 @@ export default function Home() {
         <button className="btn btn-outline btn-wide" onClick={() => setGalleryOpen(true)}>GALERIJA</button>
       </div>
 
-      {/* Mapa + kontakt */}
+      {/* Mapa + adresa + kontakt info */}
       <section className="section">
         <h2>Gde se nalazimo?</h2>
         <div style={{ margin: "12px 0 8px" }}>
@@ -253,12 +253,10 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Admin login */}
       <div className="footer-login">
         <Link className="btn btn-dark btn-small" to="/admin-login">ULOGUJ SE</Link>
       </div>
 
-      {/* Footer potpis */}
       <footer className="app-footer">
         App by Jelena — 060 420 4623
       </footer>
@@ -273,7 +271,7 @@ export default function Home() {
         }}
       />
 
-      {/* Modal: Usluge */}
+      {/* Modal: USLUGE */}
       {servicesOpen && (
         <div className="modal-backdrop" onClick={() => setServicesOpen(false)}>
           <div className="modal" onClick={(e)=>e.stopPropagation()}>
@@ -298,7 +296,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* Modal: Galerija */}
+      {/* Modal: GALERIJA */}
       {galleryOpen && (
         <div className="modal-backdrop" onClick={() => setGalleryOpen(false)}>
           <div className="modal" onClick={(e)=>e.stopPropagation()} style={{ maxWidth: 980, width: "95%" }}>
