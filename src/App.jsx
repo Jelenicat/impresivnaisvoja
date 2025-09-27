@@ -34,9 +34,10 @@ function RequireFinance({ children }) {
 export default function App() {
   const { pathname } = useLocation();
 
-  // HEADER SAMO NA HOME (/home) I NIGDE VIŠE
+  // HEADER SAMO NA HOME (/home)
   const showTopBrand = pathname === "/home";
 
+  // dodajemo klasu .scrolled kad se skroluje
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
@@ -71,7 +72,11 @@ export default function App() {
         <header className={`brand-header ${scrolled ? "scrolled" : ""}`}>
           <Link to="/home">
             <div className="logo-wrap">
-              <img src="/logo.webp" alt="impresivnaisvoja" className="logo-header" />
+              <img
+                src="/logo.webp"
+                alt="impresivnaisvoja"
+                className="logo-header"
+              />
             </div>
           </Link>
         </header>
