@@ -286,7 +286,7 @@ export default function Home() {
         }}
       />
 
-      {/* ===== MODAL: USLUGE (žive iz Firestore-a, bez cena) ===== */}
+      {/* ===== MODAL: USLUGE (žive iz Firestore-a, bez cena; READ-ONLY) ===== */}
       {servicesOpen && (
         <div className="modal-backdrop" onClick={() => setServicesOpen(false)}>
           <div className="modal" onClick={(e)=>e.stopPropagation()}>
@@ -311,9 +311,7 @@ export default function Home() {
 
             <div className="actions">
               <button className="btn btn-outline" onClick={()=>setServicesOpen(false)}>Zatvori</button>
-              <button className="btn btn-accent" onClick={()=>{ setServicesOpen(false); handleBookClick(); }}>
-                Zakaži termin
-              </button>
+              {/* Nema zakazivanja iz ovog pregleda */}
             </div>
           </div>
         </div>
