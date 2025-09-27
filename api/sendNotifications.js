@@ -1,5 +1,5 @@
 // api/sendNotifications.js
-import * as admin from "firebase-admin";
+import admin from "firebase-admin";
 
 function initAdmin() {
   if (admin.apps.length) return admin.app();

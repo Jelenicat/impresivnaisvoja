@@ -112,7 +112,7 @@ export default function BookingServices(){
       });
     }
     writeCart(items);
-    // samo da triggerujemo re-render
+    // trigger re-render
     setServices([...services]);
   }
 
