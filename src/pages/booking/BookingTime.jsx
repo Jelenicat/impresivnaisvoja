@@ -517,6 +517,52 @@ export default function BookingTime(){
         createdIds.push(ref.id);
         rollingStart = gEnd;
       }
+// === ENQUEUE PUSH NOTIFIKACIJE ===
+// === ENQUEUE PUSH NOTIFIKACIJE + ODMAH POŠALJI ===
+try {
+  const notifRef = await addDoc(collection(db, "notifications"), {
+    kind: "appointment_created",
+    title: "📅 Novi zakazani termin",
+    body:
+      `${client?.name || "Klijent"} je zakazao ` +
+      `${(selectedServices[0]?.name || "uslugu")}` +
+      `${selectedServices.length > 1 ? ` (+${selectedServices.length - 1})` : ""} — ` +
+      `${niceDate(confirmData.start)} u ${hhmm(confirmData.start)}`,
+
+    // kome šaljemo:
+    toRoles: ["admin", "salon"],                   // uvek admin + salon
+    toEmployeeId: confirmData.employeeId || null,  // i konkretni zaposleni (ako je dodeljen)
+
+    // dodatni podaci (služe za deep-link i prikaz)
+    data: {
+      appointmentIds: createdIds,                  // sve napravljene kartice
+      employeeId: confirmData.employeeId || "",
+      employeeUsername: confirmData.employeeId || "",
+      clientName: client?.name || "",
+      startTs: confirmData.start?.getTime?.() ?? null,
+      screen: "/admin/calendar",
+      // direktan URL koji će SW otvoriti na klik:
+      url: `/admin/calendar?appointmentId=${createdIds?.[0] || ""}${
+        confirmData?.employeeId ? `&employeeId=${confirmData.employeeId}` : ""
+      }`
+    },
+
+    createdAt: serverTimestamp(),
+    sent: false
+  });
+
+  // Odmah pingujemo backend da pošalje ovu notifikaciju
+  fetch("/api/sendNotifications", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ notifId: notifRef.id })
+  }).catch((e) => console.warn("sendNotifications POST error:", e));
+
+} catch (e) {
+  console.warn("enqueue notifikacije nije uspeo:", e);
+}
+
+
 
       pushToast(`✅ Rezervacija sačuvana (${createdIds.length} kartica)`);
 

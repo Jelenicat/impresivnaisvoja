@@ -1,8 +1,11 @@
 // public/firebase-messaging-sw.js
+/* eslint-disable no-undef */
+
+// --- Firebase (compat) ---
 importScripts("https://www.gstatic.com/firebasejs/10.12.3/firebase-app-compat.js");
 importScripts("https://www.gstatic.com/firebasejs/10.12.3/firebase-messaging-compat.js");
 
-// Firebase init (kao i do sada)
+// Init Firebase – isto kao na frontu
 firebase.initializeApp({
   apiKey: "AIzaSyDH0mxtNU3poGUhYFfZkcX-kWljSw9hgg4",
   authDomain: "impresivnaisvoja-7da43.firebaseapp.com",
@@ -14,7 +17,7 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-// --- PWA: jednostavan offline cache ---
+// --- PWA: jednostavan offline cache (app shell) ---
 const CACHE_NAME = "impresivna-v1";
 const APP_SHELL = [
   "/",                // SPA entry
@@ -62,6 +65,7 @@ messaging.onBackgroundMessage((payload) => {
   const body = payload?.notification?.body || "";
   const data = payload?.data || {};
 
+  // Ikone (badge za Android, icon u listi)
   self.registration.showNotification(title, {
     body,
     icon: "/icons/icon-192.png",
@@ -70,17 +74,36 @@ messaging.onBackgroundMessage((payload) => {
   });
 });
 
+// Klik na notifikaciju -> otvori/fokusiraj tab i navigiraj
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = event.notification?.data?.url || "/me/history";
+
+  // Deep-link: prioritet je eksplicitni URL iz payload-a; zatim screen ruta; fallback na istoriju
+  const d = event.notification?.data || {};
+  let url = d.url || d.screen || "/me/history";
+
+  // Ako backend nije poslao kompletan URL (d.url), dodaj parametre lokalno
+  if (!d.url) {
+    const params = new URLSearchParams();
+    if (d.appointmentId) params.set("appointmentId", d.appointmentId);
+    if (d.employeeId) params.set("employeeId", d.employeeId);
+    if ([...params].length) {
+      url += "?" + params.toString();
+    }
+  }
+
   event.waitUntil(
     clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
       for (const client of list) {
-        if ("focus" in client) {
+        // Ako već imamo otvoren tab – pokušaj navigaciju i fokus
+        try {
           client.navigate(url);
           return client.focus();
+        } catch (_) {
+          // neke implementacije ne podržavaju navigate na postojećem clientu
         }
       }
+      // Ako nema otvorenih – otvori novi prozor/tab
       return clients.openWindow ? clients.openWindow(url) : null;
     })
   );
