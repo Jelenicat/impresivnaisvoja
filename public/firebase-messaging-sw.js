@@ -1,11 +1,10 @@
-// public/firebase-messaging-sw.js
 /* eslint-disable no-undef */
 
-// --- Firebase (compat) ---
+/* ---------------- Firebase (compat) ---------------- */
 importScripts("https://www.gstatic.com/firebasejs/10.12.3/firebase-app-compat.js");
 importScripts("https://www.gstatic.com/firebasejs/10.12.3/firebase-messaging-compat.js");
 
-// Init Firebase – isto kao na frontu
+// Init Firebase – isti config kao na frontu
 firebase.initializeApp({
   apiKey: "AIzaSyDH0mxtNU3poGUhYFfZkcX-kWljSw9hgg4",
   authDomain: "impresivnaisvoja-7da43.firebaseapp.com",
@@ -17,10 +16,10 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-// --- PWA: jednostavan offline cache (app shell) ---
+/* --------------- PWA: jednostavan offline cache --------------- */
 const CACHE_NAME = "impresivna-v1";
 const APP_SHELL = [
-  "/",                // SPA entry
+  "/", // SPA entry
   "/index.html",
   "/manifest.webmanifest",
   "/icons/icon-192.png",
@@ -34,8 +33,8 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.map(k => (k !== CACHE_NAME ? caches.delete(k) : null)))
+    caches.keys().then((keys) =>
+      Promise.all(keys.map((k) => (k !== CACHE_NAME ? caches.delete(k) : null)))
     )
   );
   self.clients.claim();
@@ -47,25 +46,38 @@ self.addEventListener("fetch", (event) => {
   const isHTML = req.headers.get("accept")?.includes("text/html");
 
   if (isHTML) {
-    // Network-first za stranice
-    event.respondWith(
-      fetch(req).catch(() => caches.match("/index.html"))
-    );
+    event.respondWith(fetch(req).catch(() => caches.match("/index.html")));
   } else {
-    // Cache-first za ostalo (ikonice, manifest…)
-    event.respondWith(
-      caches.match(req).then((res) => res || fetch(req))
-    );
+    event.respondWith(caches.match(req).then((res) => res || fetch(req)));
   }
 });
 
-// --- FCM background notifikacije ---
+/* ----------------- FCM background notifikacije ----------------- */
+/*
+   Data-only pristup:
+   - Backend šalje SVE u `data` (title, body, url/screen, appointmentId, employeeId…)
+   - Ovdje sami prikazujemo notifikaciju (tačno jedna)
+   - Ako stigne i `notification`, fallback-ujemo na njega (kompatibilnost)
+*/
 messaging.onBackgroundMessage((payload) => {
-  const title = payload?.notification?.title || "Impresivna i svoja";
-  const body = payload?.notification?.body || "";
-  const data = payload?.data || {};
+  const title =
+    payload?.data?.title ||
+    payload?.notification?.title ||
+    "Impresivna i svoja";
 
-  // Ikone (badge za Android, icon u listi)
+  const body =
+    payload?.data?.body ||
+    payload?.notification?.body ||
+    "";
+
+  // Sačuvaj kompletan data objekat (za klik handler)
+  const data = {
+    ...(payload?.data || {}),
+    // Normalize: ako je backend slučajno poslao employeeUsername umesto employeeId,
+    // zadrži oba ključa (klik handler koristi employeeId)
+    employeeId: payload?.data?.employeeId || payload?.data?.employeeUsername || ""
+  };
+
   self.registration.showNotification(title, {
     body,
     icon: "/icons/icon-192.png",
@@ -74,37 +86,48 @@ messaging.onBackgroundMessage((payload) => {
   });
 });
 
-// Klik na notifikaciju -> otvori/fokusiraj tab i navigiraj
+/* --------------- Klik na notifikaciju -> deep-link --------------- */
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
 
-  // Deep-link: prioritet je eksplicitni URL iz payload-a; zatim screen ruta; fallback na istoriju
   const d = event.notification?.data || {};
+
+  // Prioritet: eksplicitni d.url, pa d.screen, pa fallback
   let url = d.url || d.screen || "/me/history";
 
-  // Ako backend nije poslao kompletan URL (d.url), dodaj parametre lokalno
-  if (!d.url) {
-    const params = new URLSearchParams();
-    if (d.appointmentId) params.set("appointmentId", d.appointmentId);
-    if (d.employeeId) params.set("employeeId", d.employeeId);
-    if ([...params].length) {
-      url += "?" + params.toString();
+  // Ako nije kompletan URL – pretvori u apsolutni na istom originu
+  if (!/^https?:\/\//i.test(url)) {
+    const u = new URL(url, self.location.origin);
+    // Ako nismo dobili eksplicitni d.url, dopuni query parametrima
+    if (!d.url) {
+      if (d.appointmentId) u.searchParams.set("appointmentId", d.appointmentId);
+      if (d.employeeId)    u.searchParams.set("employeeId", d.employeeId);
     }
+    url = u.toString();
   }
 
   event.waitUntil(
-    clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
-      for (const client of list) {
-        // Ako već imamo otvoren tab – pokušaj navigaciju i fokus
-        try {
-          client.navigate(url);
-          return client.focus();
-        } catch (_) {
-          // neke implementacije ne podržavaju navigate na postojećem clientu
+    (async () => {
+      const list = await clients.matchAll({ type: "window", includeUncontrolled: true });
+
+      // Fokusiraj postojeći tab ako ga ima; probaj i navigate
+      if (list && list.length) {
+        for (const client of list) {
+          try {
+            await client.focus();
+            // navigate radi samo za isti origin – ovdje jeste
+            await client.navigate(url);
+            return;
+          } catch (_) {
+            // ako ne uspe, probaj sledeći ili padni na openWindow
+          }
         }
       }
-      // Ako nema otvorenih – otvori novi prozor/tab
-      return clients.openWindow ? clients.openWindow(url) : null;
-    })
+
+      // Ako nema tabova – otvori novi
+      if (clients.openWindow) {
+        return clients.openWindow(url);
+      }
+    })()
   );
 });

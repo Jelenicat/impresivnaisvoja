@@ -3,9 +3,9 @@ import admin from "firebase-admin";
 
 function initAdmin() {
   if (admin.apps.length) return admin.app();
-  const projectId = process.env.FIREBASE_PROJECT_ID;
+  const projectId  = process.env.FIREBASE_PROJECT_ID;
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-  let privateKey = process.env.FIREBASE_PRIVATE_KEY;
+  let privateKey   = process.env.FIREBASE_PRIVATE_KEY;
   if (!projectId || !clientEmail || !privateKey) {
     throw new Error("Missing Firebase Admin env vars.");
   }
@@ -42,30 +42,30 @@ async function sendOne(db, messaging, notifSnap) {
   });
 
   if (!tokens.length) {
-    await notifSnap.ref.set(
-      {
-        sent: true,
-        sentAt: admin.firestore.FieldValue.serverTimestamp(),
-        targetCount: 0,
-        info: "No recipients",
-      },
-      { merge: true }
-    );
+    await notifSnap.ref.set({
+      sent: true,
+      sentAt: admin.firestore.FieldValue.serverTimestamp(),
+      targetCount: 0,
+      info: "No recipients",
+    }, { merge: true });
     return { successCount: 0, failureCount: 0, targetCount: 0, invalidTokens: [] };
   }
 
+  // ⬇️ DORADA: prosledi i url i oba identifikatora zaposlenog
   const payload = {
-    notification: {
-      title: notif.title || "Obaveštenje",
-      body: notif.body || "",
-    },
-    data: {
-      screen: (notif.data && String(notif.data.screen)) || "/admin",
-      appointmentId: (notif.data && String(notif.data.appointmentIds?.[0] || "")) || "",
-      employeeUsername: (notif.data && String(notif.data.employeeUsername || "")) || "",
-      click_action: "FLUTTER_NOTIFICATION_CLICK",
-    },
-  };
+  // notification: { ... }  // <- izbaci
+  data: {
+    title: notif.title || "Obaveštenje",
+    body:  notif.body  || "",
+    url:   notif.data?.url || "",
+    screen: notif.data?.screen || "/admin",
+    appointmentId: String(notif.data?.appointmentIds?.[0] || ""),
+    employeeId: String(notif.data?.employeeId || notif.toEmployeeId || ""),
+    employeeUsername: String(notif.data?.employeeUsername || ""),
+    click_action: "FLUTTER_NOTIFICATION_CLICK",
+  },
+};
+
 
   const batches = chunk(tokens, 500);
   let successCount = 0;
@@ -76,9 +76,11 @@ async function sendOne(db, messaging, notifSnap) {
     const resp = await messaging.sendEachForMulticast({ tokens: group, ...payload });
     successCount += resp.successCount;
     failureCount += resp.failureCount;
+
     resp.responses.forEach((r, idx) => {
       if (!r.success) {
-        const code = r?.error?.errorInfo?.code || r?.error?.code || "";
+        const code = r?.error?.errorInfo?.code || r?.error?.code || r?.error?.message || "";
+        // ⬇️ DORADA: tolerantniji detektor "not registered"
         if (String(code).includes("registration-token-not-registered")) {
           invalidTokens.push(group[idx]);
         }
@@ -86,16 +88,13 @@ async function sendOne(db, messaging, notifSnap) {
     });
   }
 
-  await notifSnap.ref.set(
-    {
-      sent: true,
-      sentAt: admin.firestore.FieldValue.serverTimestamp(),
-      targetCount: tokens.length,
-      successCount,
-      failCount: failureCount,
-    },
-    { merge: true }
-  );
+  await notifSnap.ref.set({
+    sent: true,
+    sentAt: admin.firestore.FieldValue.serverTimestamp(),
+    targetCount: tokens.length,
+    successCount,
+    failCount: failureCount,
+  }, { merge: true });
 
   return { successCount, failureCount, targetCount: tokens.length, invalidTokens };
 }
@@ -111,6 +110,14 @@ async function cleanupInvalidTokens(db, invalidTokens) {
 
 export default async function handler(req, res) {
   try {
+    // ⬇️ (opciono) dozvoli preflight ako zoveš sa drugog origin-a
+    if (req.method === "OPTIONS") {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Methods", "POST,GET,OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+      return res.status(200).end();
+    }
+
     initAdmin();
     const db = admin.firestore();
     const messaging = admin.messaging();
@@ -118,6 +125,7 @@ export default async function handler(req, res) {
     if (req.method === "POST") {
       const { notifId } = req.body || {};
       if (!notifId) return res.status(400).json({ ok: false, error: "Missing notifId" });
+
       const snap = await db.collection("notifications").doc(String(notifId)).get();
       if (!snap.exists) return res.status(404).json({ ok: false, error: "Notification not found" });
 
@@ -134,6 +142,7 @@ export default async function handler(req, res) {
       });
     }
 
+    // GET = batch slanje
     const lim = Math.max(1, Math.min(Number(req.query.limit || 20), 100));
     const q = await db
       .collection("notifications")

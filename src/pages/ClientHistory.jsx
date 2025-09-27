@@ -2,7 +2,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
-  collection, query, where, orderBy, onSnapshot, doc, updateDoc, serverTimestamp
+  collection, query, where, orderBy, onSnapshot,
+  doc, getDoc, setDoc, deleteDoc, addDoc, serverTimestamp
 } from "firebase/firestore";
 import { db } from "../firebase";
 
@@ -32,10 +33,12 @@ function getClient(){
 
 const toJsDate = (x) => (x?.toDate?.() ? x.toDate() : (x instanceof Date ? x : new Date(x)));
 const normPhone = (p) => String(p || "").replace(/\D+/g, "");
+const hhmm = (d) => d.toLocaleTimeString("sr-RS",{hour:"2-digit",minute:"2-digit"});
+const niceDate = (d) => d.toLocaleDateString("sr-RS",{weekday:"short", day:"2-digit", month:"2-digit", year:"numeric"});
 const fmtDate = (d) => {
   const x = toJsDate(d);
   if (!x || isNaN(x)) return "";
-  return x.toLocaleString("sr-RS", { dateStyle:"medium", timeStyle:"short" });
+  return `${niceDate(x)} ${hhmm(x)}`;
 };
 
 export default function ClientHistory(){
@@ -45,9 +48,8 @@ export default function ClientHistory(){
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Mod ekrana:
-  // - "cancel"  -> samo budući (za otkazivanje), npr. kad dođeš iz "Otkaži uslugu"
-  // - "history" -> samo prošli
+  // "cancel"  -> budući termini (za otkazivanje)
+  // "history" -> istorija (prošli + otkazani)
   const mode = location?.state?.autoCancel ? "cancel" : "history";
 
   useEffect(()=>{
@@ -57,9 +59,15 @@ export default function ClientHistory(){
       return;
     }
 
+    const unsubs = [];
+
+    // Helper koji spaja results u mapu i updejtuje listu
     const seen = new Map();
-    const pushSnap = (snap) => {
-      snap.forEach((d) => seen.set(d.id, { id: d.id, ...d.data() }));
+    const pushDocs = (snap, source) => {
+      snap.forEach(d => {
+        const val = { id: d.id, ...d.data(), __src: source };
+        seen.set(`${source}:${d.id}`, val);
+      });
       const all = Array.from(seen.values()).sort((a,b)=>{
         const ta = toJsDate(a.start)?.getTime() ?? 0;
         const tb = toJsDate(b.start)?.getTime() ?? 0;
@@ -69,59 +77,160 @@ export default function ClientHistory(){
       setLoading(false);
     };
 
-    const unsubs = [];
-    if (client?.id){
-      const q1 = query(
-        collection(db, "appointments"),
-        where("clientId","==", client.id),
-        orderBy("start","desc")
-      );
-      unsubs.push(onSnapshot(q1, pushSnap));
+    if (mode === "cancel") {
+      // Za otkazivanje nam trebaju samo budući iz ACTIVE kolekcije
+      if (client?.id){
+        const q1 = query(
+          collection(db, "appointments"),
+          where("clientId","==", client.id),
+          orderBy("start","desc")
+        );
+        unsubs.push(onSnapshot(q1, (snap)=>pushDocs(snap, "active")));
+      }
+      if (phoneNorm){
+        const q2 = query(
+          collection(db, "appointments"),
+          where("clientPhoneNorm","==", phoneNorm),
+          orderBy("start","desc")
+        );
+        unsubs.push(onSnapshot(q2, (snap)=>pushDocs(snap, "active")));
+      }
+    } else {
+      // ISTORIJA:
+      // 1) prošli termini iz ACTIVE kolekcije (ostali u bazi)
+      if (client?.id){
+        const q1 = query(
+          collection(db, "appointments"),
+          where("clientId","==", client.id),
+          orderBy("start","desc")
+        );
+        unsubs.push(onSnapshot(q1, (snap)=>pushDocs(snap, "active")));
+      }
+      if (phoneNorm){
+        const q2 = query(
+          collection(db, "appointments"),
+          where("clientPhoneNorm","==", phoneNorm),
+          orderBy("start","desc")
+        );
+        unsubs.push(onSnapshot(q2, (snap)=>pushDocs(snap, "active")));
+      }
+
+      // 2) OTKAZANI iz HISTORY kolekcije (mi ih premeštamo tamo prilikom otkazivanja)
+      if (client?.id){
+        const h1 = query(
+          collection(db, "appointments_history"),
+          where("clientId","==", client.id),
+          orderBy("start","desc")
+        );
+        unsubs.push(onSnapshot(h1, (snap)=>pushDocs(snap, "history")));
+      }
+      if (phoneNorm){
+        const h2 = query(
+          collection(db, "appointments_history"),
+          where("clientPhoneNorm","==", phoneNorm),
+          orderBy("start","desc")
+        );
+        unsubs.push(onSnapshot(h2, (snap)=>pushDocs(snap, "history")));
+      }
     }
-    if (phoneNorm){
-      const q2 = query(
-        collection(db, "appointments"),
-        where("clientPhoneNorm","==", phoneNorm),
-        orderBy("start","desc")
-      );
-      unsubs.push(onSnapshot(q2, pushSnap));
-    }
+
     return ()=> unsubs.forEach(u => u && u());
-  }, [client?.id, client?.phone, nav]);
+  }, [client?.id, client?.phone, nav, mode]);
 
   const nowMs = Date.now();
 
-  // Samo budući i ne-otkazani (za ekran "cancel")
+  // Budući (za ekran "cancel") računamo iz items ali filtriramo na kraju
   const upcoming = items
+    .filter(a => a.__src === "active")
     .filter(a => {
       const t = toJsDate(a.start)?.getTime();
       return Number.isFinite(t) && t >= nowMs && a.status !== "canceled";
     })
     .sort((a,b)=>toJsDate(a.start)-toJsDate(b.start));
 
-  // Samo prošli (otkazane NE izbacujemo, prikazujemo sa bedžom)
-  const past = items
-    .filter(a => {
+  // Istorija: prošli iz active + svi iz history
+  const past = [
+    // prošli iz active
+    ...items.filter(a => {
+      if (a.__src !== "active") return false;
       const t = toJsDate(a.start)?.getTime();
       return Number.isFinite(t) && t < nowMs;
-    })
-    .sort((a,b)=>toJsDate(b.start)-toJsDate(a.start));
+    }),
+    // i svi iz history (otkazani – bez obzira na vreme)
+    ...items.filter(a => a.__src === "history")
+  ].sort((a,b)=> (toJsDate(b.start) - toJsDate(a.start)));
 
+  // HARD-DELETE sa premeštanjem u appointments_history + push notifikacija
   async function cancel(id){
     if (!window.confirm("Sigurno želiš da otkažeš ovaj termin?")) return;
     try{
-      // optimistički: odmah skloni iz liste budućih
-      setItems(prev => prev.filter(x => x.id !== id));
+      const ref  = doc(db,"appointments", id);
+      const snap = await getDoc(ref);
+      if (!snap.exists()){
+        // već obrisan ili pomeren
+        setItems(prev => prev.filter(x => !(x.__src==="active" && x.id===id)));
+        alert("Termin više ne postoji.");
+        return;
+      }
+      const a = snap.data() || {};
+      const when = toJsDate(a.start);
 
-      await updateDoc(doc(db,"appointments", id), {
-        status: "canceled",
-        canceledAt: serverTimestamp(),
-        canceledBy: client?.id || "public"
+      // 1) upiši u appointments_history sa istim id-jem (lako spajanje)
+      await setDoc(
+        doc(db, "appointments_history", id),
+        {
+          ...a,
+          originalId: id,
+          status: "canceled",
+          canceledAt: serverTimestamp(),
+          canceledBy: getClient()?.id || "public",
+          archivedAt: serverTimestamp()
+        },
+        { merge: true }
+      );
+
+      // 2) obriši iz aktivne kolekcije (nestaje iz admin kalendara)
+      await deleteDoc(ref);
+
+      // 3) optimistički UI – skloni iz lokalne liste active
+      setItems(prev => prev.filter(x => !(x.__src==="active" && x.id===id)));
+
+      // 4) kreiraj notification dokument
+      const title = "❌ Termin otkazan";
+      const body =
+        `${a?.clientName || getClient()?.name || "Klijent"} je otkazao ` +
+        `${a?.servicesFirstName || a?.servicesLabel || "uslugu"}` +
+        `${when ? ` — ${niceDate(when)} u ${hhmm(when)}` : ""}`;
+
+      const notifRef = await addDoc(collection(db, "notifications"), {
+        kind: "appointment_canceled",
+        title, body,
+        toRoles: ["admin", "salon"],
+        toEmployeeId: a?.employeeUsername || null,
+        data: {
+          appointmentIds: [id],
+          employeeId: a?.employeeUsername || "",
+          employeeUsername: a?.employeeUsername || "",
+          screen: "/admin/calendar",
+          url: `/admin/calendar${
+            when ? `?date=${when.toISOString().slice(0,10)}` : ""
+          }${a?.employeeUsername ? `${when ? "&" : "?"}employeeId=${a.employeeUsername}` : ""}`
+        },
+        createdAt: serverTimestamp(),
+        sent: false
       });
-      // Ako admin kalendar filtrira status !== "canceled", termin će nestati i tamo.
+
+      // 5) odmah pinguj API da isporuči notifikaciju
+      fetch("/api/sendNotifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notifId: notifRef.id })
+      }).catch(()=>{});
+
+      alert("Termin je otkazan.");
     }catch(e){
-      alert("Greška pri otkazivanju.");
-      console.error(e);
+      console.error("Cancel error:", e);
+      alert("Greška pri otkazivanju. Pokušaj ponovo.");
     }
   }
 
@@ -175,7 +284,6 @@ export default function ClientHistory(){
         ) : (
           <>
             {mode === "cancel" ? (
-              // SAMO BUDUĆI (za otkazivanje)
               <div className="sec">
                 <h3>Budući termini</h3>
                 {upcoming.length === 0 ? (
@@ -203,13 +311,12 @@ export default function ClientHistory(){
                 ))}
               </div>
             ) : (
-              // SAMO PROŠLI (istorija)
               <div className="sec">
-                <h3>Prošli termini</h3>
+                <h3>Prošli i otkazani termini</h3>
                 {past.length === 0 ? (
-                  <div className="empty">Nema prošlih termina.</div>
+                  <div className="empty">Nema stavki u istoriji.</div>
                 ) : past.map(a=>(
-                  <div key={a.id} className="card">
+                  <div key={`${a.__src}:${a.id}`} className="card">
                     <div className="row">
                       <div><b>{a.servicesFirstName || a.servicesLabel || "Usluga"}</b></div>
                       <div className="muted">{fmtDate(a.start)}</div>
@@ -218,7 +325,7 @@ export default function ClientHistory(){
                       <div className="muted">{a.employeeUsername || "Zaposleni"}</div>
                       <div className="muted">{Number(a.totalAmountRsd||0).toLocaleString("sr-RS")} RSD</div>
                     </div>
-                    {a.status === "canceled" && (
+                    { (a.status === "canceled" || a.__src==="history") && (
                       <div style={{marginTop:6}}>
                         <span className="badge canceled">Otkazano</span>
                       </div>
