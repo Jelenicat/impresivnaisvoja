@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   collection, onSnapshot, query, orderBy, where,
-  addDoc, serverTimestamp, getDocs
+  addDoc, serverTimestamp, getDocs, setDoc, doc
 } from "firebase/firestore";
 import { db } from "../../firebase";
 
@@ -18,7 +18,7 @@ const SALON_HOURS = {
   7:[]
 };
 
-const MIN_STEP=15;
+const MIN_STEP = 15;
 
 /* ---------- Utils ---------- */
 const toHM = s => { const [h,m]=String(s||"").split(":").map(Number); return {h:h||0,m:m||0}; };
@@ -52,9 +52,9 @@ function intersectIntervals(a,b){
 }
 function slotsForIntervals(dayDate, intervals, durationMin){
   const res=[];
-  for(const iv of intervals){
-    let cur=setHM(dayDate,toHM(iv.start));
-    const hardEnd=setHM(dayDate,toHM(iv.end));
+  for(const seg of intervals){
+    let cur=setHM(dayDate,toHM(seg.start));
+    const hardEnd=setHM(dayDate,toHM(seg.end));
     while(true){
       const until=addMin(cur,durationMin);
       if (until>hardEnd) break;
@@ -106,7 +106,7 @@ function pickDayFromSchedule(sched, date){
 
   const diffDays=Math.floor((cur-start)/(24*3600*1000));
   const totalWeeks=PATTERN_WEEKS[sched.pattern]||1;
-  const weekIdx=Math.floor(diffDays/7)%totalWeeks;
+  const weekIdx=((Math.floor(diffDays/7))%totalWeeks);
   const dayIdx=jsDayToIdx(cur);
   const weekArr=sched.weeks?.[String(weekIdx)] || [];
   const day=weekArr[dayIdx];
@@ -117,13 +117,10 @@ function pickDayFromSchedule(sched, date){
 /* ---------- Skill helpers ---------- */
 function canEmployeeDo(service, employee){
   if (!employee) return true; // "Prvi dostupan" – ne filtriramo
-
   const sids = Array.isArray(employee.serviceIds) ? employee.serviceIds : [];
   const cids = Array.isArray(employee.categoryIds) ? employee.categoryIds : [];
-
   const sid = service?.serviceId || service?.id || null;
   const cid = service?.categoryId || null;
-
   if (sids.length || cids.length){
     if (sid && sids.includes(sid)) return true;
     if (cid && cids.includes(cid)) return true;
@@ -135,7 +132,7 @@ function canEmployeeDo(service, employee){
 /* ---------- Toast helper ---------- */
 function uid(){ return Math.random().toString(36).slice(2); }
 
-/* ---------- Client helper ---------- */
+/* ---------- Client helpers ---------- */
 function getLoggedClient(){
   try{
     const raw = localStorage.getItem("clientProfile");
@@ -151,8 +148,6 @@ function getLoggedClient(){
     return { id, name, phone, email };
   }catch{ return { id:null, name:"", phone:"", email:"" }; }
 }
-
-/* ---------- Per-user korpa ---------- */
 function getCartKey(){
   try{
     const raw = localStorage.getItem("clientProfile");
@@ -161,6 +156,12 @@ function getCartKey(){
   }catch{
     return "bookingCart:anon";
   }
+}
+function splitName(full=""){
+  const parts = String(full||"").trim().split(/\s+/);
+  const first = parts.shift() || "";
+  const last  = parts.join(" ");
+  return { first, last };
 }
 
 export default function BookingTime(){
@@ -177,8 +178,6 @@ export default function BookingTime(){
       const key = getCartKey();
       const perUser = localStorage.getItem(key);
       if (perUser) return JSON.parse(perUser);
-
-      // migracija sa starog globalnog ključa, jednom
       const legacy = localStorage.getItem("bookingCart");
       if (legacy){
         localStorage.setItem(key, legacy);
@@ -251,7 +250,6 @@ export default function BookingTime(){
   /* ---------- Busy map po radnici za izabrani dan ---------- */
   const [busyByEmp, setBusyByEmp] = useState(new Map());
   useEffect(()=>{
-    // vremenski opseg dana
     const s = new Date(selectedDay); s.setHours(0,0,0,0);
     const e = new Date(selectedDay); e.setHours(23,59,59,999);
 
@@ -289,7 +287,6 @@ export default function BookingTime(){
     if (!salon.length || !totalDurationMin) return { slots:[], anyWork:false };
 
     function freeForEmp(empUsername, dayCfg){
-      // radni intervali (salon ∩ smena)
       const base = intersectIntervals(salon, [{start:dayCfg.from, end:dayCfg.to}])
         .map(r => iv(hmToMin(r.start), hmToMin(r.end)));
       const busy = busyByEmp.get(empUsername) || [];
@@ -297,8 +294,7 @@ export default function BookingTime(){
       return slotsFromMinuteIntervals(d, free, totalDurationMin);
     }
 
-    let resultSlots=[];
-    let any=false;
+    let resultSlots=[]; let any=false;
 
     if (chosenEmployeeId !== "firstFree"){
       const sched = latestByUser[chosenEmployeeId];
@@ -320,7 +316,6 @@ export default function BookingTime(){
       resultSlots = all;
     }
 
-    // ukloni slotove u prošlosti (za današnji dan ukloni < sada)
     if (isSameDay(d, today0)) {
       const now = new Date();
       resultSlots = resultSlots.filter(s => s.start >= now);
@@ -358,24 +353,17 @@ export default function BookingTime(){
   function ensureValidSelectionForEmployee(cb){
     if (chosenEmployeeId === "firstFree" || !chosenEmployee) { cb(); return; }
     const { doable, notDoable } = splitByCanDo(selectedServices, chosenEmployee);
-
     if (notDoable.length === 0) { cb(); return; }
-
     if (doable.length === 0){
       setMismatch({
-        open:true,
-        doable,
-        notDoable,
+        open:true, doable, notDoable,
         proceedCb:null,
         backCb:()=>nav("/booking/employee", { state:{ reason:"employee-does-not-do-selected-services" } })
       });
       return;
     }
-
     setMismatch({
-      open:true,
-      doable,
-      notDoable,
+      open:true, doable, notDoable,
       proceedCb:()=>{
         setSelectedIds(doable.map(s=>s.serviceId));
         pushToast("Nastavljam samo sa uslugama koje ova radnica radi.");
@@ -391,7 +379,6 @@ export default function BookingTime(){
   const [saving, setSaving] = useState(false);
 
   function pickSlot(opt){
-    // zabrana biranja termina u prošlosti (safety guard)
     if (opt?.start < new Date()){
       pushToast("Ne možeš izabrati vreme u prošlosti.");
       return;
@@ -414,7 +401,7 @@ export default function BookingTime(){
     });
   }
 
-  // ——— grupisanje usluga po kategoriji (za više kartica po terminu) ———
+  // grupisanje usluga po kategoriji (više kartica po terminu)
   function groupServicesByCategory(list){
     const map = new Map();
     for (const s of list){
@@ -425,7 +412,7 @@ export default function BookingTime(){
     return Array.from(map.values());
   }
 
-  // proveri konflikt (race guard) pre upisa
+  // proveri konflikt pre upisa
   async function hasConflict(empUsername, start, end){
     const qConf = query(
       collection(db,"appointments"),
@@ -438,199 +425,194 @@ export default function BookingTime(){
   }
 
   async function confirmBooking(){
-  if (!confirmData) return;
+    if (!confirmData) return;
+    if (confirmData.start < new Date()){
+      pushToast("Vreme je isteklo, izaberi novi termin.");
+      setConfirmOpen(false);
+      return;
+    }
 
-  // zaštita — ne upisuj prošlost
-  if (confirmData.start < new Date()){
-    pushToast("Vreme je isteklo, izaberi novi termin.");
-    setConfirmOpen(false);
-    return;
-  }
+    try{
+      setSaving(true);
 
-  try{
-    setSaving(true);
-// --- Obezbedi pravi clientId iz kolekcije "clients" ---
-let clientId = client?.id || null;
-let firstName = "", lastName = "";
-if (client?.name) {
-  const parts = String(client.name).trim().split(/\s+/);
-  firstName = parts.shift() || "";
-  lastName  = parts.join(" ");
-}
+      // --- Klijent: nadji po phone/email -> kreiraj ako ne postoji -> merge update ---
+      let clientId = client?.id || null;
+      let foundId = null;
 
-if (!clientId) {
-  let foundId = null;
+      if (!clientId && client.phone){
+        const q1 = query(collection(db, "clients"), where("phone", "==", client.phone));
+        const s1 = await getDocs(q1);
+        if (!s1.empty) foundId = s1.docs[0].id;
+      }
+      if (!foundId && !clientId && client.email){
+        const q2 = query(collection(db, "clients"), where("email", "==", client.email));
+        const s2 = await getDocs(q2);
+        if (!s2.empty) foundId = s2.docs[0].id;
+      }
+      if (!foundId && !clientId){
+        const { first, last } = splitName(client.name||"");
+        const cref = await addDoc(collection(db,"clients"),{
+          firstName:first, lastName:last,
+          phone: client.phone || "",
+          email: client.email || "",
+          createdAt: serverTimestamp(),
+          source: "public_app"
+        });
+        foundId = cref.id;
+      }
+      clientId = clientId || foundId;
 
-  // probaj po telefonu
-  if (client.phone) {
-    const q1 = query(collection(db, "clients"), where("phone", "==", client.phone));
-    const s1 = await getDocs(q1);
-    if (!s1.empty) foundId = s1.docs[0].id;
-  }
-
-  // ako nema, probaj po emailu
-  if (!foundId && client.email) {
-    const q2 = query(collection(db, "clients"), where("email", "==", client.email));
-    const s2 = await getDocs(q2);
-    if (!s2.empty) foundId = s2.docs[0].id;
-  }
-
-  // ako i dalje nema → napravi novog
-  if (!foundId) {
-    const cref = await addDoc(collection(db, "clients"), {
-      firstName, lastName,
-      phone: client.phone || "",
-      email: client.email || "",
-      createdAt: serverTimestamp(),
-      source: "public_app"
-    });
-    foundId = cref.id;
-  }
-
-  clientId = foundId;
-}
-
-    const groups = groupServicesByCategory(selectedServices);
-    let rollingStart = new Date(confirmData.start);
-    const createdIds = [];
-
-    for (let i=0;i<groups.length;i++){
-      const g = groups[i];
-      const gDuration = g.services.reduce((a,b)=>a+(Number(b.durationMin)||0),0);
-      const gAmount   = g.services.reduce((a,b)=>a+(Number(b.priceRsd)||0),0);
-      const gEnd      = addMin(rollingStart, gDuration);
-
-      // FINALNA PROVERA BEZ PREKLAPANJA
-      if (await hasConflict(confirmData.employeeId, rollingStart, gEnd)){
-        setSaving(false);
-        pushToast("Ups, termin je upravo zauzet. Izaberi drugi slobodan.");
-        return;
+      // merge osveži ime/phone/email ako imamo podatke
+      if (clientId){
+        const { first, last } = splitName(client.name||"");
+        await setDoc(
+          doc(db,"clients", clientId),
+          {
+            firstName:first, lastName:last,
+            phone: client.phone || "",
+            email: client.email || "",
+            updatedAt: serverTimestamp()
+          },
+          { merge:true }
+        );
       }
 
-      const names = g.services.map(s => s.name).filter(Boolean);
-      const servicesLabel = names.join(", ");
-      const servicesFirstName = names[0] || null;
+      const groups = groupServicesByCategory(selectedServices);
+      let rollingStart = new Date(confirmData.start);
+      const createdIds = [];
 
-      const ref = await addDoc(collection(db, "appointments"), {
-        start: new Date(rollingStart),
-        end:   new Date(gEnd),
-        date:  dayKey(rollingStart),
+      for (let i=0;i<groups.length;i++){
+        const g = groups[i];
+        const gDuration = g.services.reduce((a,b)=>a+(Number(b.durationMin)||0),0);
+        const gAmount   = g.services.reduce((a,b)=>a+(Number(b.priceRsd)||0),0);
+        const gEnd      = addMin(rollingStart, gDuration);
 
-        
- employeeId: confirmData.employeeId || null,          // ← DODATO (radi Admin Calendar-a)
- employeeUsername: confirmData.employeeId || null,    
+        // FINAL RACE GUARD
+        if (await hasConflict(confirmData.employeeId, rollingStart, gEnd)){
+          setSaving(false);
+          pushToast("Ups, termin je upravo zauzet. Izaberi drugi slobodan.");
+          return;
+        }
 
-        services: g.services.map(s=>({
-          serviceId: s.serviceId,
-          name: s.name,
-          durationMin: Number(s.durationMin)||0,
-          priceRsd: Number(s.priceRsd)||0,
-          categoryId: s.categoryId || null,
-          categoryName: s.categoryName || null,
-        })),
-        totalDurationMin: gDuration,
-        totalAmountRsd:   gAmount,
-        priceRsd:         gAmount, // da se cena vidi i na kartici
+        const names = g.services.map(s => s.name).filter(Boolean);
+        const servicesLabel = names.join(", ");
+        const servicesFirstName = names[0] || null;
 
-        servicesLabel,
-        servicesFirstName,
-        servicesCategoryId: g.categoryId,
-        servicesCategoryName: g.categoryName || null,
-        groupIndex: i+1,
-        groupCount: groups.length,
-clientId: clientId,     
-        clientName: client.name,
-        clientPhone: client.phone,
-        clientEmail: client.email,
+        const ref = await addDoc(collection(db, "appointments"), {
+          start: new Date(rollingStart),
+          end:   new Date(gEnd),
+          date:  dayKey(rollingStart),
 
-        isOnline: true,
-        bookedVia: "public_app",
-        pickedMode: (chosenEmployeeId==="firstFree") ? "firstFree" : "specific",
-        isPaid: false,
-        paymentStatus: "unpaid",
-        paymentMethod: null,
+          employeeId: confirmData.employeeId || null,
+          employeeUsername: confirmData.employeeId || null,
 
-        status: "booked",
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        createdBy: clientId || "public"
+          services: g.services.map(s=>({
+            serviceId: s.serviceId,
+            name: s.name,
+            durationMin: Number(s.durationMin)||0,
+            priceRsd: Number(s.priceRsd)||0,
+            categoryId: s.categoryId || null,
+            categoryName: s.categoryName || null,
+          })),
+          totalDurationMin: gDuration,
+          totalAmountRsd:   gAmount,
+          priceRsd:         gAmount,
 
-      });
+          servicesLabel,
+          servicesFirstName,
+          servicesCategoryId: g.categoryId,
+          servicesCategoryName: g.categoryName || null,
+          groupIndex: i+1,
+          groupCount: groups.length,
 
-      createdIds.push(ref.id);
-      rollingStart = gEnd;
+          clientId: clientId || null,
+          clientName: client.name || "",
+          clientPhone: client.phone || "",
+          clientEmail: client.email || "",
+
+          isOnline: true,
+          bookedVia: "public_app",
+          pickedMode: (chosenEmployeeId==="firstFree") ? "firstFree" : "specific",
+          isPaid: false,
+          paymentStatus: "unpaid",
+          paymentMethod: null,
+
+          status: "booked",
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          createdBy: clientId || "public"
+        });
+
+        createdIds.push(ref.id);
+        rollingStart = gEnd;
+      }
+
+      // === ENQUEUE PUSH NOTIFIKACIJE + ODMAH POŠALJI ===
+      try {
+        const notifRef = await addDoc(collection(db, "notifications"), {
+          kind: "appointment_created",
+          title: "📅 Novi zakazani termin",
+          body:
+            `${client?.name || "Klijent"} je zakazao ` +
+            `${(selectedServices[0]?.name || "uslugu")}` +
+            `${selectedServices.length > 1 ? ` (+${selectedServices.length - 1})` : ""} — ` +
+            `${niceDate(confirmData.start)} u ${hhmm(confirmData.start)}`,
+
+          toRoles: ["admin", "salon"],
+          toEmployeeId: confirmData.employeeId || null,
+
+          data: {
+            appointmentIds: createdIds,
+            employeeId: confirmData.employeeId || "",
+            employeeUsername: confirmData.employeeId || "",
+            clientName: client?.name || "",
+            startTs: confirmData.start?.getTime?.() ?? null,
+            screen: "/admin/calendar",
+            url: `/admin/calendar?appointmentId=${createdIds?.[0] || ""}${
+              confirmData?.employeeId ? `&employeeId=${confirmData.employeeId}` : ""
+            }`
+          },
+
+          createdAt: serverTimestamp(),
+          sent: false
+        });
+
+        fetch("/api/sendNotifications", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ notifId: notifRef.id })
+        }).catch((e) => console.warn("sendNotifications POST error:", e));
+
+      } catch (e) {
+        console.warn("enqueue notifikacije nije uspeo:", e);
+      }
+
+      pushToast(`✅ Rezervacija sačuvana (${createdIds.length} kartica)`);
+      setConfirmOpen(false);
+
+      // očisti korpu (po korisniku)
+      const remaining = cart.filter(s=>!selectedIds.includes(s.serviceId));
+      localStorage.setItem(getCartKey(), JSON.stringify(remaining));
+      setCart(remaining);
+      setSelectedIds([]);
+
+      if (remaining.length > 0){
+        const left = remaining.length;
+        pushToast(`Ostala je još ${left} usluga`);
+        setTimeout(()=>{
+          nav("/booking/employee", { state:{ info:`Ostalo za zakazivanje: ${left} usluga` } });
+        }, 400);
+      } else {
+        setTimeout(()=>nav("/home"), 400);
+      }
+
+    } catch (err){
+      console.error(err);
+      pushToast("Greška pri čuvanju rezervacije.");
+    } finally {
+      setSaving(false);
     }
-
-    // === ENQUEUE PUSH NOTIFIKACIJE + ODMAH POŠALJI ===
-    try {
-      const notifRef = await addDoc(collection(db, "notifications"), {
-        kind: "appointment_created",
-        title: "📅 Novi zakazani termin",
-        body:
-          `${client?.name || "Klijent"} je zakazao ` +
-          `${(selectedServices[0]?.name || "uslugu")}` +
-          `${selectedServices.length > 1 ? ` (+${selectedServices.length - 1})` : ""} — ` +
-          `${niceDate(confirmData.start)} u ${hhmm(confirmData.start)}`,
-
-        // kome šaljemo:
-        toRoles: ["admin", "salon"],
-        toEmployeeId: confirmData.employeeId || null,
-
-        // dodatni podaci (deep-link)
-        data: {
-          appointmentIds: createdIds,
-          employeeId: confirmData.employeeId || "",
-          employeeUsername: confirmData.employeeId || "",
-          clientName: client?.name || "",
-          startTs: confirmData.start?.getTime?.() ?? null,
-          screen: "/admin/calendar",
-          url: `/admin/calendar?appointmentId=${createdIds?.[0] || ""}${
-            confirmData?.employeeId ? `&employeeId=${confirmData.employeeId}` : ""
-          }`
-        },
-
-        createdAt: serverTimestamp(),
-        sent: false
-      });
-
-      // ping backenda
-      fetch("/api/sendNotifications", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notifId: notifRef.id })
-      }).catch((e) => console.warn("sendNotifications POST error:", e));
-
-    } catch (e) {
-      console.warn("enqueue notifikacije nije uspeo:", e);
-    }
-
-    pushToast(`✅ Rezervacija sačuvana (${createdIds.length} kartica)`);
-    setConfirmOpen(false);
-
-    // očisti korpu (po korisniku)
-    const remaining = cart.filter(s=>!selectedIds.includes(s.serviceId));
-    localStorage.setItem(getCartKey(), JSON.stringify(remaining));
-    setCart(remaining);
-    setSelectedIds([]);
-
-    if (remaining.length > 0){
-      const left = remaining.length;
-      pushToast(`Ostala je još ${left} usluga`);
-      setTimeout(()=>{
-        nav("/booking/employee", { state:{ info:`Ostalo za zakazivanje: ${left} usluga` } });
-      }, 400);
-    } else {
-      setTimeout(()=>nav("/home"), 400);
-    }
-
-  } catch (err){
-    console.error(err);
-    pushToast("Greška pri čuvanju rezervacije.");
-  } finally {
-    setSaving(false);
   }
-}
-
 
   // header ime radnice
   const headerName = useMemo(()=>{
@@ -657,22 +639,12 @@ clientId: clientId,
   return (
     <div className="wrap">
       <style>{`
-        :root { color-scheme: light; } /* NEW: izbegni sistemske plave naglaske */
-        /* NEW: globalno ukloni mobilni tap highlight i plave outline-ove na dugmadima */
-        button, .btn, .btnx, .pill, .d {
-          -webkit-tap-highlight-color: transparent;
+        :root { color-scheme: light; }
+        button, .btn, .btnx, .pill, .d { -webkit-tap-highlight-color: transparent; }
+        button:focus, button:active, .btn:focus, .btn:active, .btnx:focus, .btnx:active, .pill:focus, .pill:active, .d:focus, .d:active {
+          outline: none !important; box-shadow: none !important;
         }
-        button:focus, button:active,
-        .btn:focus, .btn:active,
-        .btnx:focus, .btnx:active,
-        .pill:focus, .pill:active,
-        .d:focus, .d:active {
-          outline: none !important;
-          box-shadow: none !important;
-        }
-        /* Zadrži pristupačnost za tastaturu, ali bez plavog: */
         .d:focus-visible { outline: 2px solid #111; }
-
         .wrap{min-height:100dvh;background:#0f0f10;}
         .sheet{background:#fff;min-height:100dvh;border-top-left-radius:22px;border-top-right-radius:22px;padding:16px 14px 120px;}
         .hdr{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
@@ -681,63 +653,39 @@ clientId: clientId,
         .sub{opacity:.7;font-weight:700;margin-bottom:10px;}
         .hero{width:100%;height:140px;border-radius:18px;overflow:hidden;margin:10px 0 12px;}
         .hero img{width:100%;height:100%;object-fit:cover}
-
         .cal{margin-top:6px;border:1px solid #eee;border-radius:16px;padding:12px;}
         .cal .mbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
         .btnx{appearance:none;border:1px solid #eee;background:#fafafa;padding:8px 10px;border-radius:10px;font-weight:700;}
         .grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;}
         .dow{font-size:12px;opacity:.6;text-align:center;margin-bottom:6px}
         .d{
-          aspect-ratio:1;
-          border:1px solid #eee;
-          border-radius:12px;
-          display:flex;align-items:center;justify-content:center;
-          background:#fff;
-          font-weight:900;              /* NEW: jači broj */
-          font-size:16px;               /* NEW: malo veći broj */
-          color:#111;                   /* NEW: fiksiraj boju cifre (nema plave) */
-          user-select:none;             /* NEW: ne selektuje cifru */
-          -webkit-user-select:none;     /* NEW */
+          aspect-ratio:1; border:1px solid #eee; border-radius:12px; display:flex;align-items:center;justify-content:center;
+          background:#fff; font-weight:900; font-size:16px; color:#111; user-select:none; -webkit-user-select:none;
         }
-        .d.sel{
-          outline:2px solid #111;       /* zadržavamo jasnoću selekcije */
-          background:#111;              /* NEW: lep kontrast za selektovani dan */
-          color:#fff;                   /* NEW: belo slovo na selektovanom */
-          border-color:#111;            /* NEW */
-        }
+        .d.sel{ outline:2px solid #111; background:#111; color:#fff; border-color:#111; }
         .d.disabled{opacity:.25;pointer-events:none}
-
         .msg{margin:14px 0;padding:12px;border-radius:12px;background:#fff7f0;border:1px solid #ffe6d2;font-weight:700}
         .slots{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
         .slot{padding:10px 12px;border:1px solid #eee;border-radius:12px;background:#f7f7f7;font-weight:800}
         .slot.emp{border-style:dashed}
-
         .res{margin-top:14px;border-top:1px dashed #eee;padding-top:10px}
         .svc{display:flex;justify-content:space-between;align-items:center;padding:6px 0;gap:10px}
         .svc .l{display:flex;align-items:center;gap:10px}
         .chk{width:20px;height:20px;border:1px solid #ddd;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;background:#fff}
         .chk.on{background:#111;color:#fff;border-color:#111}
         .sum{font-weight:900;margin-top:8px;display:flex;justify-content:space-between;align-items:center}
-        .pill{
-          font-size:12px;padding:6px 10px;border:1px solid #eee;border-radius:999px;background:#fafafa;font-weight:700;
-          color:#111;                   /* NEW: eksplicitno crna, bez plave */
-        }
+        .pill{ font-size:12px;padding:6px 10px;border:1px solid #eee;border-radius:999px;background:#fafafa;font-weight:700; color:#111; }
         .helpers{display:flex;gap:8px;margin-top:8px}
-
         .fab{position:fixed;left:14px;right:14px;bottom:18px;display:flex;gap:10px}
         .btn{padding:14px;border-radius:14px;font-weight:800;border:1px solid #1f1f1f}
         .btn-dark{background:#1f1f1f;color:#fff;border-color:#1f1f1f;flex:1}
         .btn-ghost{background:#fff;color:#111}
-
-        /* Confirm Sheet */
         .confirm-overlay{position:fixed; inset:0; background:rgba(0,0,0,.35); display:flex; align-items:flex-end; z-index:50;}
         .confirm-sheet{background:#fff; width:100%; border-top-left-radius:22px; border-top-right-radius:22px; padding:16px; max-height:80dvh; overflow:auto;}
         .cs-title{font-size:18px; font-weight:900; margin-bottom:10px;}
         .cs-row{display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px dashed #eee;}
         .cs-row:last-child{border-bottom:none;}
         .cs-sub{margin-top:12px; font-weight:800;}
-
-        /* Pretty mismatch modal */
         .mm-backdrop{position:fixed; inset:0; background:rgba(0,0,0,.35); display:flex; align-items:center; justify-content:center; z-index:70;}
         .mm-card{width:min(560px, 92vw); background:#fff; border-radius:18px; border:1px solid #eee; box-shadow:0 16px 44px rgba(0,0,0,.22); padding:18px;}
         .mm-head{display:flex; align-items:center; gap:10px; margin-bottom:8px;}
@@ -752,8 +700,6 @@ clientId: clientId,
         .mm-btn.dark{background:#1f1f1f; color:#fff;}
         .mm-btn.ghost{background:#fff; color:#111; border-color:#ddd;}
         @media (max-width: 520px){ .mm-card{padding:16px;} .mm-title{font-size:16px;} .mm-btn{flex:1;} }
-
-        /* Toasts */
         .toasts{position:fixed; left:12px; right:12px; bottom:90px; display:flex; flex-direction:column; gap:8px; z-index:60;}
         .toast{background:#111;color:#fff;padding:10px 12px;border-radius:12px;font-weight:800;opacity:.95}
       `}</style>
@@ -789,7 +735,7 @@ clientId: clientId,
               daysInMonth.forEach(d=>{
                 const sel = dayKey(d)===dayKey(selectedDay);
                 const isOff = (SALON_HOURS[wd1to7(d)]||[]).length===0;
-                const isPastDay = d < today0; // zabrana dana u prošlosti
+                const isPastDay = d < today0;
                 const disabled = isOff || isPastDay;
                 elems.push(
                   <button
