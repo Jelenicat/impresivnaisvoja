@@ -210,7 +210,7 @@ export default function AdminFinance({
           width:100%;
           max-width: 100%;
           margin:0;
-          padding:30px;
+          padding:50px;
           border-radius:0;
           position:relative;
           background: transparent;
@@ -223,7 +223,7 @@ export default function AdminFinance({
         .fin-title{
           font-size: 22px; font-weight: 900; letter-spacing:.2px; color:#2f2f33;
           text-align:center; margin:0 0 16px 0;
-          padding: 30px 0;
+          padding: 50px 0;
           background: rgba(255,255,255,0.9);
           border-radius: 12px;
           box-shadow: 0 2px 8px rgba(0,0,0,0.08);
@@ -801,6 +801,42 @@ export default function AdminFinance({
   .fin-wrap .bar .date-group .inp{ flex: 0 0 178px; }
   .fin-wrap .bar .btn-group .btn{ flex: 0 0 120px; }
 }
+/* --- 2.1. Tvrdo fiksiraj boju teksta za Danas/Mjesec dugmad --- */
+.fin-wrap .bar .btn,
+.fin-wrap .bar .btn:link,
+.fin-wrap .bar .btn:visited {
+  color: #1f1f1f !important;
+  -webkit-text-fill-color: #1f1f1f !important;
+  text-decoration: none !important;
+}
+
+/* --- 2.2. Tvrdo fiksiraj boju vrednosti u date inputima --- */
+.fin-wrap .bar .inp[type="date"],
+.fin-wrap .bar .inp[type="date"]::-webkit-datetime-edit,
+.fin-wrap .bar .inp[type="date"]::-webkit-date-and-time-value,
+.fin-wrap .bar .inp[type="date"]::-webkit-datetime-edit-fields-wrapper,
+.fin-wrap .bar .inp[type="date"]::-webkit-datetime-edit-text,
+.fin-wrap .bar .inp[type="date"]::-webkit-datetime-edit-month-field,
+.fin-wrap .bar .inp[type="date"]::-webkit-datetime-edit-day-field,
+.fin-wrap .bar .inp[type="date"]::-webkit-datetime-edit-year-field {
+  color: #1f1f1f !important;
+  -webkit-text-fill-color: #1f1f1f !important;
+  caret-color: #1f1f1f !important;
+}
+
+/* --- 2.3. iOS-specifičan “šrafciger” (uzima prednost na Safari-ju) --- */
+@supports (-webkit-touch-callout: none) {
+  .fin-wrap .bar .btn,
+  .fin-wrap .bar .btn * {
+    color: #1f1f1f !important;
+    -webkit-text-fill-color: #1f1f1f !important;
+  }
+  .fin-wrap .bar .inp[type="date"],
+  .fin-wrap .bar .inp[type="date"] * {
+    color: #1f1f1f !important;
+    -webkit-text-fill-color: #1f1f1f !important;
+  }
+}
 
 
       `}</style>
@@ -833,7 +869,7 @@ export default function AdminFinance({
         Danas
       </button>
       <button className="btn" onClick={()=>{ const n=new Date(); const s=new Date(n.getFullYear(), n.getMonth(), 1); const e=endOfDay(new Date(n.getFullYear(), n.getMonth()+1, 0)); setFrom(s); setTo(e); }}>
-        Mjesec
+        Mesec
       </button>
     </div>
   )}
