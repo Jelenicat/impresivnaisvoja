@@ -882,11 +882,10 @@ const onTouchEndHandler = (ev) => {
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
     z-index:30; /* uvek iznad termina */
 
-    /* ➕ za auto-skracivanje imena putem container queries */
+    /* Container queries za auto-skraćivanje imena */
     container-type: inline-size;
     container-name: colhead;
   }
-  /* Puna vs skraćena varijanta naslova kolone */
   .col-header .full-name{ display:inline; }
   .col-header .abbr-name{ display:none; }
   @container colhead (max-width: 140px){
@@ -975,12 +974,12 @@ const onTouchEndHandler = (ev) => {
     .cal-bar{
       display: grid;
       grid-template-columns: 1fr 1fr;
+      /* Danas + datum u ISTOM redu */
       grid-template-areas:
         "back back"
         "date date"
-        "nav  nav"
-        "input input"
-        "emp   emp";
+        "nav  input"
+        "emp  emp";
       gap: 8px;
       margin-top: 12px;
       margin-bottom: 12px;
@@ -993,6 +992,7 @@ const onTouchEndHandler = (ev) => {
       grid-area: date; justify-self: center; background: #faf6f0; border: 1px solid #e6e0d7;
       border-radius: 999px; padding: 8px 14px; font-weight: 600; font-size: 12px; letter-spacing: .2px;
     }
+    /* Leva strana reda: strelice + Danas */
     .cal-bar .nav-group{
       grid-area: nav; display: grid; grid-template-columns: 44px 1fr 44px; gap: 8px; align-items: center;
     }
@@ -1001,7 +1001,14 @@ const onTouchEndHandler = (ev) => {
       border: 1px solid #ddd6cc; background: #fff; border-radius: 10px; font-size: 18px; padding: 0 8px; line-height: 1;
     }
     .cal-bar .today-btn{ min-height: 40px; font-weight: 700; }
-    .cal-bar .date-input{ grid-area: input; width: 100%; }
+
+    /* Desna strana reda: input za datum */
+    .cal-bar .date-input{
+      grid-area: input; width: 100%;
+      min-height: 40px;
+      align-self: stretch;
+    }
+
     .cal-bar .top-actions{ grid-area: emp; justify-self: stretch; }
     .cal-bar .emp-select{ width: 100%; }
     .title{ flex: unset; text-align: center; }
@@ -1132,6 +1139,7 @@ const onTouchEndHandler = (ev) => {
     outline-offset:2px;
   }
 `}</style>
+
 
 
       <div className="admin-cal">

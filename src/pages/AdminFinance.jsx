@@ -331,34 +331,101 @@ export default function AdminFinance({
           .desktop-only{ display: none !important; }
           .mobile-only{ display: block; }
         }
-          /* Samo za telefon */
+/* ===== MOBILE: uniform dugmad + bez plave i native strelica ===== */
+@media (max-width: 760px){
+  /* Raspored i osnovni stil za kontrole na vrhu */
+  .bar{
+    gap: 10px !important;
+  }
+  .bar .inp,
+  .bar .btn{
+    flex: 1 1 calc(50% - 6px) !important;
+    height: 40px !important;
+    border-radius: 10px !important;
+    -webkit-tap-highlight-color: transparent !important;
+    outline: none !important;
+    box-shadow: none !important;
+  }
+
+  /* Date input kao dugme (Početak/Kraj) */
+  .bar .inp[type="date"]{
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    -moz-appearance: none !important;
+
+    background: #fff !important;
+    border: 1px solid #e0d9cf !important;
+    color: #1f1f1f !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+
+    /* naša kalendar ikonica desno */
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='%238a8378'><path d='M7 2v2H5a2 2 0 0 0-2 2v1h18V6a2 2 0 0 0-2-2h-2V2h-2v2H9V2H7zm14 7H3v11a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9zm-2 4H5v7h14v-7z'/></svg>");
+    background-repeat: no-repeat !important;
+    background-position: right 10px center !important;
+    background-size: 14px !important;
+
+    padding-right: 34px !important;
+    padding-left: 12px !important;
+  }
+
+  /* Sakrij iOS/Android picker ikonu (plavi indikator) */
+  .bar .inp[type="date"]::-webkit-calendar-picker-indicator{
+    opacity: 0 !important;
+    display: none !important;
+    -webkit-appearance: none !important;
+    appearance: none !important;
+  }
+
+  /* iOS poravnanja vrednosti */
+  .bar .inp[type="date"]::-webkit-datetime-edit,
+  .bar .inp[type="date"]::-webkit-date-and-time-value{
+    text-align: left !important;
+  }
+
+  /* Dugmad Danas/Mjesec – bez plavog fokusa */
+  .btn-group .btn{
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+  }
+}
+
+/* Tighter layout ispod 600px: btn-group jednaka širina, bez plavog outline-a */
 @media (max-width: 600px){
-.btn-group{
-  display: flex;
-  gap: 10px;        /* razmak između dugmića */
-  margin-top: 8px;
+  .btn-group{
+    display: flex;
+    gap: 10px;
+    margin-top: 8px;
+  }
+  .btn-group .btn{
+    flex: 1 1 0%;
+    border-radius: 8px;
+    padding: 10px;
+    font-weight: 600;
+    outline: none !important;
+    box-shadow: none !important;
+  }
 }
 
-.btn-group .btn{
-  flex: 1;          /* dugmići zauzimaju jednaku širinu */
-  border-radius: 8px;
-  padding: 10px;
-  font-weight: 600;
+/* Ukloni plavi outline kod klika — bilo gde gore */
+.bar .btn-group button:focus,
+.fin-top .btn-group button:focus,
+.bar .btn:focus,
+.bar .inp[type="date"]:focus{
+  outline: none !important;
+  box-shadow: none !important;
 }
 
-/* skini plavi outline */
-.btn-group .btn:focus{
-  outline: none;
-  box-shadow: none;
+/* Globalni override (sigurnosno) — pobedi native stil svakako */
+.fin-wrap .bar .inp[type="date"],
+.fin-wrap .bar .btn{
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
 }
 
-}
-
-/* Ukloni plavi outline kod klika */
-.fin-top .btn-group button:focus{
-  outline: none;
-  box-shadow: none;
-}
 
 
         /* ===== DESKTOP – ULEPŠANO ===== */
@@ -651,6 +718,16 @@ export default function AdminFinance({
   -webkit-appearance: none;
   -moz-appearance: none;
 }
+  /* Globalni override – pobedi native stil i „plavi” fokus */
+.fin-wrap .bar input.inp[type="date"],
+.fin-wrap .bar .btn{
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
 
       `}</style>
 
