@@ -881,7 +881,19 @@ const onTouchEndHandler = (ev) => {
     font-size:14px; padding:0 8px; text-align:center;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
     z-index:30; /* uvek iznad termina */
+
+    /* ➕ za auto-skracivanje imena putem container queries */
+    container-type: inline-size;
+    container-name: colhead;
   }
+  /* Puna vs skraćena varijanta naslova kolone */
+  .col-header .full-name{ display:inline; }
+  .col-header .abbr-name{ display:none; }
+  @container colhead (max-width: 140px){
+    .col-header .full-name{ display:none; }
+    .col-header .abbr-name{ display:inline; }
+  }
+
   .col-body{ 
     position:relative; height:${CONTENT_H}px; 
     padding-top:${HEADER_H}px;
@@ -1203,6 +1215,7 @@ const onTouchEndHandler = (ev) => {
 >
 
 
+
               {visibleEmployees.map(emp=>{
                 const list=apptsByEmployee.get(emp.username)||[];
                 return (
@@ -1216,9 +1229,15 @@ const onTouchEndHandler = (ev) => {
                     }}
                     onClick={(e)=>handleColumnClick(e, emp.username)}
                   >
-                    <div className="col-header">
-                      {emp.firstName} {emp.lastName}
-                    </div>
+               <div className="col-header">
+  <span className="full-name">
+    {emp.firstName} {emp.lastName}
+  </span>
+  <span className="abbr-name">
+    {emp.firstName} {emp.lastName ? (emp.lastName[0].toUpperCase() + ".") : ""}
+  </span>
+</div>
+
                     <div
                       className="col-body"
                       ref={el=>{

@@ -608,7 +608,7 @@ export default function Services() {
         .btn-danger:hover{ background:#ffecec; }
 
         .new-cat{
-          display:flex; gap:10px; margin: 18px 0 24px; flex-wrap: wrap; align-items:center;
+          padding-top:30px;display:flex; gap:10px; margin: 18px 0 24px; flex-wrap: wrap; align-items:center;
         }
         .new-cat input[type="text"]{
           flex:1; min-width: 220px; padding:10px 12px; border-radius:12px; border:1px solid #e6e0d7; background:#fff; font-size:15px;

@@ -210,7 +210,7 @@ export default function AdminFinance({
           width:100%;
           max-width: 100%;
           margin:0;
-          padding:16px;
+          padding:30px;
           border-radius:0;
           position:relative;
           background: transparent;
@@ -223,7 +223,7 @@ export default function AdminFinance({
         .fin-title{
           font-size: 22px; font-weight: 900; letter-spacing:.2px; color:#2f2f33;
           text-align:center; margin:0 0 16px 0;
-          padding: 16px 0;
+          padding: 30px 0;
           background: rgba(255,255,255,0.9);
           border-radius: 12px;
           box-shadow: 0 2px 8px rgba(0,0,0,0.08);
@@ -584,6 +584,74 @@ export default function AdminFinance({
         .chip{ display:inline-block; padding:6px 12px; border-radius:20px; background:rgba(255,255,255,0.8); border:1px solid #e8e2da; font-weight:700; font-size: 13px; backdrop-filter: blur(6px); }
         @keyframes fadeInUp { from { opacity:0; transform: translateY(10px);} to { opacity:1; transform: translateY(0);} }
         .fade-in { animation: fadeInUp .3s ease forwards; }
+        /* ===== Mobile: skini iOS/Android "plavu" i native UI sa date i dugmadi ===== */
+@media (max-width: 760px){
+
+  /* Ukloni tap highlight i fokus obrube */
+  .bar .btn,
+  .bar .inp{
+    -webkit-tap-highlight-color: transparent;
+    outline: none !important;
+    box-shadow: none !important;
+  }
+
+  /* Date input: bez native strelice/boje, kao dugme */
+  .bar .inp[type="date"]{
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+
+    /* izgled kao dugme */
+    background: #fff url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='%238a8378'><path d='M7 2v2H5a2 2 0 0 0-2 2v1h18V6a2 2 0 0 0-2-2h-2V2h-2v2H9V2H7zm14 7H3v11a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9zm-2 4H5v7h14v-7z'/></svg>") no-repeat right 10px center;
+    background-size: 14px;
+
+    border: 1px solid #e0d9cf;
+    border-radius: 10px;
+    height: 38px;
+    padding: 6px 34px 6px 12px; /* mesto za ikonicu desno */
+    font-weight: 600;
+    color: #1f1f1f;
+    cursor: pointer;
+  }
+
+  /* Ukloni plavi fokus na iOS */
+  .bar .inp[type="date"]:focus{
+    border-color: #e0d9cf !important;
+    box-shadow: none !important;
+  }
+
+  /* Poravnaj tekst vrednosti unutra (Safari/iOS) */
+  .bar .inp[type="date"]::-webkit-date-and-time-value{
+    text-align: left;
+  }
+
+  /* Ujednači izgled dugmadi i date inputa – dva para kao "dugmići" */
+  .bar{
+    gap: 10px;
+  }
+  .bar .inp, .bar .btn{
+    flex: 1 1 calc(50% - 6px); /* po dva u redu na mobilnom */
+    height: 38px;
+    border-radius: 10px;
+  }
+
+  /* Grupica „Danas / Mjesec” – već postoji, samo skidamo plavi fokus */
+  .btn-group .btn{
+    -webkit-appearance: none;
+    appearance: none;
+    outline: none !important;
+    box-shadow: none !important;
+  }
+}
+
+/* Globalno (sigurnosno) – ukloni native appearance sa dugmadi i inputa datuma */
+.bar .btn,
+.bar .inp[type="date"]{
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+}
+
       `}</style>
 
       <div className="fin-container">
