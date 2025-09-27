@@ -141,10 +141,12 @@ export default function Home() {
     <div className="page">
       {/* Hero sa CTA preko slike */}
       <div className="hero">
-        <picture>
-          <source srcSet="/IMG_4989-1.webp" media="(min-width: 1024px)" />
-          <img src="/IMG_4989.webp" alt="impresivnaisvoja" />
-        </picture>
+<img
+  src="/IMG_4989.webp"
+  alt="impresivnaisvoja"
+  className="kenburns-top"
+/>
+
 
         {/* Glavno CTA dugme */}
         <div className="cta-wrap hero-cta">
