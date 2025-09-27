@@ -1,11 +1,10 @@
 // src/pages/Home.jsx
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { db, getFcmToken } from "../firebase";
 import {
   doc, setDoc, serverTimestamp, getDoc,
-  collection, query, orderBy, onSnapshot,
-  where, getDocs
+  collection, getDocs, query, where
 } from "firebase/firestore";
 import AuthModal from "../components/AuthModal.jsx";
 
@@ -17,7 +16,7 @@ export default function Home() {
   const [servicesOpen, setServicesOpen] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
 
-  // === AUTO-REDIRECT za admin/salon/radnik ako su već ulogovani ===
+  /* === AUTO-REDIRECT za admin/salon/radnik ako su već ulogovani === */
   useEffect(() => {
     const role = localStorage.getItem("role");
     if (role) nav("/admin", { replace: true });
@@ -133,37 +132,71 @@ export default function Home() {
   const isClientLogged = !!localStorage.getItem("clientProfile");
 
   /* ===================== Usluge iz Firestore-a (bez cena) ===================== */
-  const [svcGroups, setSvcGroups] = useState([]);   // [{ cat, items: [name, ...] }]
+  const [svcGroups, setSvcGroups] = useState([]);
+  const [svcLoading, setSvcLoading] = useState(false);
+  const [svcError, setSvcError] = useState("");
 
-  useEffect(() => {
-    // čitamo sve iz "services", sortirano, pa lokalno filtriramo inactive i pravimo grupe
-    // (bez where != false da ne zahteva indeks)
-    const q = query(
-      collection(db, "services"),
-      orderBy("category", "asc"),
-      orderBy("name", "asc")
-    );
-    const unsub = onSnapshot(q, (snap) => {
-      const byCat = new Map();
-      snap.forEach((d) => {
-        const s = d.data() || {};
-        if (s.active === false) return; // preskoči neaktivne
-        const cat  = (s.category || s.cat || "Usluge").toString();
-        const name = (s.name || s.title || s.naziv || "").toString().trim();
-        if (!name) return;
-        if (!byCat.has(cat)) byCat.set(cat, new Set());
-        byCat.get(cat).add(name);
+  const loadServices = useCallback(async () => {
+    setSvcLoading(true);
+    setSvcError("");
+    try {
+      const [catSnap, svcSnap] = await Promise.all([
+        getDocs(collection(db, "categories")),
+        getDocs(collection(db, "services")),
+      ]);
+
+      const catById = new Map();
+      catSnap.forEach(d => {
+        const data = d.data() || {};
+        const name = (data.name || data.title || "").toString().trim();
+        if (name) catById.set(d.id, name);
       });
-      const groups = Array.from(byCat.entries()).map(([cat, set]) => ({
-        cat, items: Array.from(set)
-      }));
+
+      const raw = [];
+      svcSnap.forEach(d => raw.push({ id: d.id, ...(d.data() || {}) }));
+
+      // filtriraj validne usluge (imaju name)
+      const valid = raw.filter(s => (s.name || "").toString().trim());
+
+      // sort (order pa ime)
+      valid.sort((a, b) => {
+        const ao = Number.isFinite(a.order) ? a.order : 999999;
+        const bo = Number.isFinite(b.order) ? b.order : 999999;
+        if (ao !== bo) return ao - bo;
+        return String(a.name || "").localeCompare(String(b.name || ""), "sr-RS", { sensitivity: "base" });
+      });
+
+      // grupiši po kategoriji (prevedi categoryId -> naziv)
+      const byCat = new Map();
+      for (const s of valid) {
+        const catName = catById.get(s.categoryId) || "Usluge";
+        if (!byCat.has(catName)) byCat.set(catName, []);
+        byCat.get(catName).push(s.name);
+      }
+
+      const groups = Array.from(byCat.entries())
+        .sort(([a],[b]) => a.localeCompare(b, "sr-RS", { sensitivity: "base" }))
+        .map(([cat, items]) => ({
+          cat,
+          items: Array.from(new Set(items)).sort((a,b) =>
+            a.localeCompare(b, "sr-RS", { sensitivity: "base" })
+          )
+        }));
+
       setSvcGroups(groups);
-    }, (err) => {
-      console.warn("Greška pri čitanju services:", err);
-      setSvcGroups([]); // fallback prazan
-    });
-    return () => unsub();
+    } catch (e) {
+      console.error("Greška pri učitavanju usluga:", e);
+      setSvcError("Ne mogu da učitam usluge. Pokušaj kasnije.");
+      setSvcGroups([]);
+    } finally {
+      setSvcLoading(false);
+    }
   }, []);
+
+  // Učitaj usluge tek kada se modal otvori (da se ne radi nepotreban fetch)
+  useEffect(() => {
+    if (servicesOpen) loadServices();
+  }, [servicesOpen, loadServices]);
 
   /* ===================== Galerija ===================== */
   const gallerySources = useCallback(() => {
@@ -286,14 +319,18 @@ export default function Home() {
         }}
       />
 
-      {/* ===== MODAL: USLUGE (žive iz Firestore-a, bez cena; READ-ONLY) ===== */}
+      {/* ===== MODAL: USLUGE (bez cena) ===== */}
       {servicesOpen && (
         <div className="modal-backdrop" onClick={() => setServicesOpen(false)}>
           <div className="modal" onClick={(e)=>e.stopPropagation()}>
             <h3>Usluge salona</h3>
 
-            {svcGroups.length === 0 ? (
+            {svcLoading ? (
               <p style={{ textAlign:"center", margin:"8px 0 0" }}>Učitavam usluge…</p>
+            ) : svcError ? (
+              <p style={{ textAlign:"center", margin:"8px 0 0", color:"#c00" }}>{svcError}</p>
+            ) : svcGroups.length === 0 ? (
+              <p style={{ textAlign:"center", margin:"8px 0 0" }}>Nema unetih usluga.</p>
             ) : (
               <div style={{ display:"grid", gap:12, maxHeight: "70vh", overflow:"auto" }}>
                 {svcGroups.map(group => (
@@ -311,7 +348,9 @@ export default function Home() {
 
             <div className="actions">
               <button className="btn btn-outline" onClick={()=>setServicesOpen(false)}>Zatvori</button>
-              {/* Nema zakazivanja iz ovog pregleda */}
+              <button className="btn btn-accent" onClick={()=>{ setServicesOpen(false); handleBookClick(); }}>
+                Zakaži termin
+              </button>
             </div>
           </div>
         </div>

@@ -47,10 +47,11 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }
 }
 
 .brand-header.scrolled {
-  background: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.7); /* providno belo */
   border-bottom: 1px solid #eee;
   backdrop-filter: blur(6px);
 }
+
 
 .logo-wrap {
   height: 80px;
