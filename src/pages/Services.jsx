@@ -491,7 +491,7 @@ export default function Services() {
       <style>{`
         .services-page{
           min-height:100vh;
-          padding: 16px clamp(10px, 4vw, 40px);
+            padding: 16px clamp(10px, 4vw, 40px);
           background: #f7f4ef;
         }
         .page-title{
@@ -565,13 +565,24 @@ export default function Services() {
           border: 1px solid #e6e0d7;
           background:#fff;
           font-size: 15px;
+          * 🔽 ovo dodaj za uklanjanje plavih boja i native strelica */
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  color: #1f1f1f;      /* tekst neka bude neutralan */
         }
         .srv-input.name{ grid-area: name; }
         .srv-input.dur{ grid-area: dur; }
         .price-wrap{ grid-area: price; position:relative; }
         .srv-input.price{ padding-right:56px; }
         .rsd{ position:absolute; right:10px; top:50%; transform:translateY(-50%); color:#8a8378; font-size:12px; }
-        .srv-input.cat{ grid-area: cat; }
+        .srv-input.dur,
+.srv-input.cat {
+  background:#fff url("data:image/svg+xml;utf8,<svg fill='%238a8378' height='12' viewBox='0 0 24 24' width='12' xmlns='http://www.w3.org/2000/svg'><path d='M7 10l5 5 5-5z'/></svg>") no-repeat right 10px center;
+  background-size: 12px;
+  padding-right: 32px; /* da ne prelazi tekst preko ikonice */
+}
+
         .row-actions{ grid-area: actions; display:flex; gap:8px; justify-content:flex-end; align-items:center; flex-wrap: wrap; }
         .srv-input.desc{
           grid-area: desc;
@@ -626,7 +637,7 @@ export default function Services() {
 
         /* VERY SMALL PHONES */
         @media (max-width: 480px){
-          .services-page{ padding:12px 10px; }
+              padding: 30px 10px 12px; /* gore 30px, levo/desno 10px, dole 12px */
           .category-card{ padding:12px; }
           .srv-row{ gap:8px; }
           .srv-input{ font-size:14px; padding:9px 10px; }

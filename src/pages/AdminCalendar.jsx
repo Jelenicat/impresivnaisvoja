@@ -521,6 +521,8 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
     const rect = body.getBoundingClientRect();
     const scrollTop = body.scrollTop || 0;
     const coords = getClientCoords(e);
+    document.body.classList.add("is-resizing");
+
     resizingRef.current = {
       id: appt.id,
       startMin: Math.max(DAY_START_MIN, minsInDay(appt.start, dayStart)),
@@ -540,6 +542,8 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
     resizingRef.current = null;
     setTempEndMap(new Map());
     tempEndRef.current = new Map();
+    document.body.classList.remove("is-resizing");
+
     window.removeEventListener("mousemove", onResizingMouseMove);
     window.removeEventListener("mouseup", onResizingMouseUp);
     window.removeEventListener("touchmove", onResizingTouchMove);
@@ -593,6 +597,7 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
     window.removeEventListener("click", swallowNextClick, true);
     document.body.style.userSelect = "";
     document.body.style.touchAction = "";
+document.body.classList.remove("is-dnd");
 
     setDragGhost(null);
     draggingRef.current = null;
@@ -652,6 +657,7 @@ function startDrag(ev, appt, top) {
   if (!body) return;
 
   ev.stopPropagation();
+document.body.classList.add("is-dnd");
 
   const startMin = Math.max(DAY_START_MIN, minsInDay(appt.start, dayStart));
   const endMin = Math.min(DAY_END_MIN, minsInDay(appt.end, dayStart));
@@ -776,8 +782,16 @@ const onTouchEndHandler = (ev) => {
 
   return (
     <div className="admin-cal">
- <style>{`
+<style>{`
   /* ===== BASE STYLES ===== */
+  html, body{
+    overscroll-behavior: none;              /* bez bounce-a */
+  }
+  body.is-dnd, body.is-resizing{
+    overflow: hidden !important;            /* zamrzni skrol dok DnD/resize */
+    position: relative;
+  }
+
   .admin-cal{ padding:20px 16px 80px; }
   .cal-bar{ 
     display:flex; gap:10px; align-items:center; margin-bottom:16px; 
@@ -786,7 +800,7 @@ const onTouchEndHandler = (ev) => {
   .btn{ 
     padding:8px 12px; border-radius:10px; border:1px solid #ddd6cc; 
     background:#fff; cursor:pointer; font-size:14px; 
-    touch-action:manipulation;
+    touch-action: manipulation;
   }
   .btn:hover{ background:#faf6f0; }
   .btn:active{ transform:translateY(1px); }
@@ -805,6 +819,7 @@ const onTouchEndHandler = (ev) => {
   .grid-wrap{ 
     display:grid; grid-template-columns:80px 1fr; gap:10px; 
     height: calc(100vh - 160px); /* responsive height */
+    overscroll-behavior: contain;               /* ne lanči skrol */
   }
 
   /* ===== Timeline ===== */
@@ -826,19 +841,25 @@ const onTouchEndHandler = (ev) => {
   .columns-outer{ 
     border:1px solid #e6e0d7; border-radius:12px; 
     background:#fff; overflow:auto;
-    overflow-x:hidden !important;  /* nikad horizontalni skrol */
+    overflow-x:hidden !important;                 /* nikad horizontalni skrol */
+    overscroll-behavior: contain;                 /* ne lanči skrol */
+    touch-action: pan-y;                          /* dozvoli samo vertikalni pan */
+    -webkit-overflow-scrolling: touch;
+  }
+  body.is-dnd .columns-outer{
+    touch-action: none !important;                /* dok vučeš - bez pomeranja */
+    -webkit-overflow-scrolling: auto !important;  /* stop inercija na iOS */
+    overflow: hidden !important;                  /* zamrzni i vertikalno */
   }
 
   /* Sve kolone se uvek uklope u ekran (dele širinu) */
   .columns{ 
     display:grid;
-    grid-auto-flow:initial;              /* bez auto-kolona */
+    grid-auto-flow:initial;
     grid-auto-columns:initial;
     grid-template-columns: repeat(var(--cols, 1), minmax(140px, 1fr));
     position:relative; 
   }
-
-  /* Opciono: ako JSX dodaje columns--fit, isto ponašanje */
   .columns--fit{
     grid-auto-flow: initial;
     grid-template-columns: repeat(var(--cols, 1), minmax(140px, 1fr));
@@ -863,7 +884,7 @@ const onTouchEndHandler = (ev) => {
   }
   .col-body{ 
     position:relative; height:${CONTENT_H}px; 
-    padding-top:${HEADER_H}px; /* da kartice ne uđu u header */
+    padding-top:${HEADER_H}px;
     box-sizing:border-box;
   }
 
@@ -1068,11 +1089,35 @@ const onTouchEndHandler = (ev) => {
     .col-body { -webkit-overflow-scrolling: touch; }
   }
 
-  /* Ensures text color inheritance inside modal/drawer (iOS fix) */
-  .admin-cal .modal :is(input, select, button, .muted),
-  .admin-cal .drawer :is(input, select, button, .muted) {
-    color: inherit !important;
-    -webkit-text-fill-color: inherit !important;
+  /* iOS/Android "plavi akcenat" neutralizacija */
+  .cal-bar .today-btn,
+  .cal-bar .date-chip,
+  .cal-bar .date-input,
+  .cal-bar .btn,
+  button,
+  input[type="date"]{
+    color:#1f1f1f !important;
+    -webkit-text-fill-color:#1f1f1f !important;
+    -webkit-appearance:none;
+    appearance:none;
+    text-decoration:none;
+    accent-color:#1f1f1f;
+  }
+  input[type="date"]::-webkit-datetime-edit,
+  input[type="date"]::-webkit-datetime-edit-fields-wrapper,
+  input[type="date"]::-webkit-datetime-edit-text,
+  input[type="date"]::-webkit-datetime-edit-month-field,
+  input[type="date"]::-webkit-datetime-edit-day-field,
+  input[type="date"]::-webkit-datetime-edit-year-field{
+    color:#1f1f1f !important;
+  }
+  input[type="date"]::-webkit-calendar-picker-indicator{
+    filter:none; opacity:.8;
+  }
+  .cal-bar *, .btn, .select, input, button { -webkit-tap-highlight-color: transparent; }
+  button:focus, input[type="date"]:focus{
+    outline:2px solid rgba(0,0,0,.15);
+    outline-offset:2px;
   }
 `}</style>
 
@@ -1275,6 +1320,7 @@ const onTouchEndHandler = (ev) => {
                             onTouchStart={(ev)=>!isBlock && startDrag(ev, a, top)}
                             onClick={(ev)=>{ 
                               ev.stopPropagation(); 
+                           
                               if (justResizedRef.current || justDraggedRef.current) return; 
                               setHoverAppt(null); 
                               openEdit(a); 
