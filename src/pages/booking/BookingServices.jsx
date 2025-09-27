@@ -4,10 +4,22 @@ import { useNavigate, useParams } from "react-router-dom";
 import { db } from "../../firebase";
 import { collection, doc, onSnapshot, orderBy, query, where, getDoc } from "firebase/firestore";
 
-function readCart(){ try{return JSON.parse(localStorage.getItem("bookingCart")||"[]");}catch{return[];} }
-function writeCart(items){ localStorage.setItem("bookingCart", JSON.stringify(items)); }
+// --- Cart helpers (isti kao u BookingTime) ---
+function getCartKey() {
+  const cid = localStorage.getItem("clientId");
+  return cid ? `bookingCart:${cid}` : "bookingCart";
+}
+function readCart() {
+  try {
+    return JSON.parse(localStorage.getItem(getCartKey()) || "[]");
+  } catch {
+    return [];
+  }
+}
+function writeCart(items) {
+  localStorage.setItem(getCartKey(), JSON.stringify(items));
+}
 
-// helper: iz naziva kategorije izaberi niz slika
 // helper: iz naziva kategorije izaberi niz slika
 function imagesForCategory(name = "") {
   const n = name.toLowerCase();
@@ -17,15 +29,18 @@ function imagesForCategory(name = "") {
     return ["/trepavice1.webp", "/trepavice2.webp"];
   }
 
-  // OBRVE (trenutno koristimo iste fotke; zameni putanje kad dodaš npr. /obrve1.webp, /obrve2.webp)
+  // OBRVE
   if (n.includes("obrve") || n.includes("obrva") || n.includes("brow")) {
-    return ["/trepavice1.webp", "/trepavice2.webp","/trepavice3.webp"
-    ];
+    return ["/trepavice1.webp", "/trepavice2.webp", "/trepavice3.webp"];
   }
 
   // MANIKIR
   if (n.includes("manik")) {
-    return ["/manikir1.webp", "/manikir2.webp", "/manikir4.webp", "/manikir5.webp", "/manikir6.webp", "/manikir7.webp", "/manikir8.webp", "/manikir9.webp", "/manikir10.webp"];
+    return [
+      "/manikir1.webp", "/manikir2.webp", "/manikir4.webp",
+      "/manikir5.webp", "/manikir6.webp", "/manikir7.webp",
+      "/manikir8.webp", "/manikir9.webp", "/manikir10.webp"
+    ];
   }
 
   // PEDIKIR
@@ -47,8 +62,7 @@ function imagesForCategory(name = "") {
   return ["/usluge1.webp"];
 }
 
-
-export default function BookingServices(){
+export default function BookingServices() {
   const { catId } = useParams();
   const nav = useNavigate();
   const [services, setServices] = useState([]);
@@ -80,11 +94,13 @@ export default function BookingServices(){
     });
   }, [catId]);
 
-  function inCart(id){ return readCart().some(x=>x.serviceId===id); }
-  function toggleAdd(svc){
+  function inCart(id) {
+    return readCart().some(x => x.serviceId === id);
+  }
+  function toggleAdd(svc) {
     let items = readCart();
-    if (items.some(x=>x.serviceId===svc.id)){
-      items = items.filter(x=>x.serviceId!==svc.id);
+    if (items.some(x => x.serviceId === svc.id)) {
+      items = items.filter(x => x.serviceId !== svc.id);
     } else {
       items.push({
         serviceId: svc.id,
@@ -102,77 +118,45 @@ export default function BookingServices(){
     <div className="sv-wrap">
       <style>{`
         .sv-wrap{ min-height:100dvh; background:#0f0f10; color:#111; }
-        /* ukini plavi tap highlight na mobilnim */
         .sv-wrap *{ -webkit-tap-highlight-color: transparent; }
 
-        .hero {
-          position: relative;
-          height: 220px;
-          background: #111;
-          overflow: hidden;
-        }
-        .hero img{
-          width: 100%; height: 100%;
-          object-fit: cover; display:block;
-        }
-        .hero .arrow{
-          position:absolute; top:50%; transform: translateY(-50%);
-          background: rgba(17,17,17,.7);
-          color:#fff; border:0; width:36px; height:36px; border-radius:10px; cursor:pointer;
-          display:flex; align-items:center; justify-content:center; font-size:18px; font-weight:800;
-          -webkit-appearance:none; appearance:none;
+        .hero { position: relative; height: 220px; background: #111; overflow: hidden; }
+        .hero img{ width: 100%; height: 100%; object-fit: cover; display:block; }
+        .hero .arrow{ position:absolute; top:50%; transform: translateY(-50%);
+          background: rgba(17,17,17,.7); color:#fff; border:0; width:36px; height:36px;
+          border-radius:10px; cursor:pointer; display:flex; align-items:center; justify-content:center;
+          font-size:18px; font-weight:800; -webkit-appearance:none; appearance:none;
         }
         .hero .arrow.left{ left:10px; }
         .hero .arrow.right{ right:10px; }
-        .hero .dots{
-          position:absolute; left:0; right:0; bottom:10px; display:flex; gap:6px; justify-content:center;
-        }
-        .hero .dot{
-          width:8px; height:8px; border-radius:999px; background:rgba(255,255,255,.45);
-        }
+        .hero .dots{ position:absolute; left:0; right:0; bottom:10px;
+          display:flex; gap:6px; justify-content:center; }
+        .hero .dot{ width:8px; height:8px; border-radius:999px; background:rgba(255,255,255,.45); }
         .hero .dot.active{ background:#fff; }
 
-        .sv-sheet{
-          min-height:100dvh; background:#fff; border-top-left-radius:22px; border-top-right-radius:22px;
-          padding:18px 14px 100px;
-        }
+        .sv-sheet{ min-height:100dvh; background:#fff;
+          border-top-left-radius:22px; border-top-right-radius:22px;
+          padding:18px 14px 100px; }
 
-        /* gornji header sa 'Nazad' */
-        .sv-hdr{
-          display:flex; align-items:center; justify-content:flex-start;
-          margin: 6px 0 8px;
-        }
-        .sv-back{
-          -webkit-appearance:none; appearance:none;
-          background: rgba(255,255,255,0.9);
-          color:#0f0f10;
-          border:1px solid #eaeaea;
-          padding:10px 12px;
-          border-radius:12px;
-          font-weight:800; font-size:15px;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-          cursor:pointer;
-          transition: transform .15s ease, box-shadow .2s ease, opacity .2s ease;
-        }
+        .sv-hdr{ display:flex; align-items:center; justify-content:flex-start; margin: 6px 0 8px; }
+        .sv-back{ -webkit-appearance:none; appearance:none; background: rgba(255,255,255,0.9);
+          color:#0f0f10; border:1px solid #eaeaea; padding:10px 12px; border-radius:12px;
+          font-weight:800; font-size:15px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); cursor:pointer;
+          transition: transform .15s ease, box-shadow .2s ease, opacity .2s ease; }
         .sv-back:hover{ transform: translateX(-1px); box-shadow:0 4px 12px rgba(0,0,0,0.12); }
         .sv-back:active{ transform: translateY(1px); }
 
         .title{ font-size:22px; font-weight:900; text-align:center; margin:12px 0 14px; }
 
-        .item{
-          display:grid; grid-template-columns: 1fr auto; gap:10px;
-          padding:12px; border-radius:16px; border:1px solid #eee; margin-bottom:10px; background:#fff;
-        }
+        .item{ display:grid; grid-template-columns: 1fr auto; gap:10px;
+          padding:12px; border-radius:16px; border:1px solid #eee; margin-bottom:10px; background:#fff; }
         .name{ font-weight:900; font-size:18px; color:#0f0f10; }
         .meta{ font-size:14px; color:#6b7280; margin-top:2px; }
 
         .actions{ display:flex; align-items:center; gap:8px; }
-        .btn{
-          -webkit-appearance:none; appearance:none;
+        .btn{ -webkit-appearance:none; appearance:none;
           padding:10px 14px; border-radius:12px; border:1px solid #e5e5e5;
-          background:#fff; cursor:pointer; font-weight:800;
-          color:#111; text-decoration:none; outline:none;
-        }
+          background:#fff; cursor:pointer; font-weight:800; color:#111; text-decoration:none; outline:none; }
         .btn:focus, .btn:active { outline:none; color:#111; }
         .btn-ghost{ background:#fff; color:#111; }
         .btn-dark{ background:#1f1f1f; color:#fff; border-color:#1f1f1f; }
@@ -200,7 +184,7 @@ export default function BookingServices(){
       </div>
 
       <div className="sv-sheet">
-        {/* Gornje dugme Nazad → /booking (kategorije) */}
+        {/* Nazad → kategorije */}
         <div className="sv-hdr">
           <button className="sv-back" onClick={()=>nav("/booking")}>← Nazad</button>
         </div>
@@ -239,7 +223,8 @@ function DetailsModal({ svc, onClose }){
   return (
     <div className="mdk" onClick={onClose}>
       <style>{`
-        .mdk{ position:fixed; inset:0; background:rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center; z-index:30; }
+        .mdk{ position:fixed; inset:0; background:rgba(0,0,0,.55);
+          display:flex; align-items:center; justify-content:center; z-index:30; }
         .dlg{ background:#fff; width:min(560px,90vw); border-radius:16px; padding:16px; }
         .dlg h3{ margin:0 0 6px; font-size:18px; font-weight:900; }
         .dlg p{ margin:0; color:#4b5563; white-space:pre-wrap; }

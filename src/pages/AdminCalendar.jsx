@@ -141,6 +141,7 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
   const [appointments,setAppointments]=useState([]);
   const [employeeFilter,setEmployeeFilter]=useState("all");
 
+
   // schedules – poslednja po radnici
   const [latestSchedules, setLatestSchedules] = useState(new Map());
 
@@ -180,7 +181,10 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
 
   // sada linija
   const [nowMinAbs, setNowMinAbs] = useState(0);
-
+const loc = useLocation();
+const qs = new URLSearchParams(loc.search);
+const focusApptId = qs.get("appointmentId");
+const focusEmpFromUrl = qs.get("employeeId"); // opcionalno
   // mape
   const serviceMap=useMemo(()=>new Map(services.map(s=>[s.id,s])),[services]);
   const categoriesMap = useMemo(()=>new Map(categories.map(c=>[c.id,c])),[categories]);
@@ -251,6 +255,33 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
   },[apptsForDay,visibleEmployees]);
 
   /* ---------- load base ---------- */
+  // Ako imamo ?appointmentId=... u URL-u, učitaj taj termin,
+  // postavi kalendar na TAJ dan i (ako si admin/salon) fokusiraj kolonu radnice
+  useEffect(() => {
+    if (!focusApptId) return;
+    let isCancelled = false;
+    (async () => {
+      try {
+        const snap = await (await import("firebase/firestore")).getDoc(
+          (await import("firebase/firestore")).doc(db, "appointments", focusApptId)
+        );
+        if (!snap.exists() || isCancelled) return;
+        const a = snap.data();
+        const start = toJsDate(a?.start);
+        if (start) {
+          setDay(startOfDay(start));
+        }
+        // Ako nije worker, fokusiraj kolonu radnika
+        const emp = a?.employeeUsername || focusEmpFromUrl || null;
+        if (emp && role !== "worker") {
+          setEmployeeFilter(emp);
+        }
+      } catch (e) {
+        console.warn("Ne mogu da učitam appointment za focus:", e);
+      }
+    })();
+    return () => { isCancelled = true; };
+}, [focusApptId, focusEmpFromUrl, role]);
 
   useEffect(()=>onSnapshot(collection(db,"clients"),snap=>{
     const rows = snap.docs
@@ -318,6 +349,20 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
     });
     return ()=>unsub&&unsub();
   },[dayStart,dayEnd]);
+ // Kad su termini za taj dan učitani, skroluj i highlight-uj baš fokusirani termin
+  useEffect(() => {
+    if (!focusApptId || !appointments?.length) return;
+    // Pričekaj jedan frame da se DOM renderuje
+    const t = setTimeout(() => {
+      const el = document.querySelector(`[data-appt-id="${focusApptId}"]`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        el.classList.add("appt--highlight");
+        setTimeout(() => el.classList.remove("appt--highlight"), 1600);
+      }
+    }, 0);
+    return () => clearTimeout(t);
+  }, [focusApptId, appointments]);
 
   /* ---------- actions ---------- */
   function openCreateAt(date,employeeUsername){
@@ -918,6 +963,17 @@ const onTouchEndHandler = (ev) => {
     z-index: 10; /* iznad linija i brojeva, ispod headera */
     touch-action: manipulation;
   }
+      /* kratki highlight kada stignemo deep-linkom */
+  .appt.appt--highlight {
+    outline: 3px solid #2563eb;
+    outline-offset: 0;
+    animation: apptFlash 1.2s ease-out;
+  }
+  @keyframes apptFlash {
+    0%   { box-shadow: 0 0 0 0 rgba(37,99,235,0.35); }
+    70%  { box-shadow: 0 0 0 12px rgba(37,99,235,0); }
+    100% { box-shadow: 0 0 0 0 rgba(37,99,235,0); }
+  }
   .appt:active { cursor: grabbing; }
   .appt.block { background:#fff!important; border:2px solid #ef4444; color:#ef4444; }
   .appt.paid  { background:#f3f4f6!important; color:#6b7280; }
@@ -1342,6 +1398,7 @@ const onTouchEndHandler = (ev) => {
                         return (
                           <div
                             key={a.id}
+                            data-appt-id={a.id}
                             className={`appt ${isBlock?"block":""} ${isPaid && canSeePayment?"paid":""}`}
                             style={{ top, height, '--col': col }}
                             onMouseDown={(ev)=>!isBlock && startDrag(ev, a, top)}
