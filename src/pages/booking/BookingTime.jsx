@@ -449,6 +449,46 @@ export default function BookingTime(){
 
   try{
     setSaving(true);
+// --- Obezbedi pravi clientId iz kolekcije "clients" ---
+let clientId = client?.id || null;
+let firstName = "", lastName = "";
+if (client?.name) {
+  const parts = String(client.name).trim().split(/\s+/);
+  firstName = parts.shift() || "";
+  lastName  = parts.join(" ");
+}
+
+if (!clientId) {
+  let foundId = null;
+
+  // probaj po telefonu
+  if (client.phone) {
+    const q1 = query(collection(db, "clients"), where("phone", "==", client.phone));
+    const s1 = await getDocs(q1);
+    if (!s1.empty) foundId = s1.docs[0].id;
+  }
+
+  // ako nema, probaj po emailu
+  if (!foundId && client.email) {
+    const q2 = query(collection(db, "clients"), where("email", "==", client.email));
+    const s2 = await getDocs(q2);
+    if (!s2.empty) foundId = s2.docs[0].id;
+  }
+
+  // ako i dalje nema → napravi novog
+  if (!foundId) {
+    const cref = await addDoc(collection(db, "clients"), {
+      firstName, lastName,
+      phone: client.phone || "",
+      email: client.email || "",
+      createdAt: serverTimestamp(),
+      source: "public_app"
+    });
+    foundId = cref.id;
+  }
+
+  clientId = foundId;
+}
 
     const groups = groupServicesByCategory(selectedServices);
     let rollingStart = new Date(confirmData.start);
@@ -476,7 +516,9 @@ export default function BookingTime(){
         end:   new Date(gEnd),
         date:  dayKey(rollingStart),
 
-        employeeUsername: confirmData.employeeId || null,
+        
+ employeeId: confirmData.employeeId || null,          // ← DODATO (radi Admin Calendar-a)
+ employeeUsername: confirmData.employeeId || null,    
 
         services: g.services.map(s=>({
           serviceId: s.serviceId,
@@ -496,8 +538,7 @@ export default function BookingTime(){
         servicesCategoryName: g.categoryName || null,
         groupIndex: i+1,
         groupCount: groups.length,
-
-        clientId: client.id,
+clientId: clientId,     
         clientName: client.name,
         clientPhone: client.phone,
         clientEmail: client.email,
@@ -512,7 +553,8 @@ export default function BookingTime(){
         status: "booked",
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-        createdBy: client.id || "public"
+        createdBy: clientId || "public"
+
       });
 
       createdIds.push(ref.id);
