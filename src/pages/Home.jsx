@@ -12,11 +12,11 @@ export default function Home() {
   const nav = useNavigate();
   const [authOpen, setAuthOpen] = useState(false);
 
-  // NOVO: modal za usluge i modal za galeriju
+  // modal za usluge i modal za galeriju
   const [servicesOpen, setServicesOpen] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
 
-  /* === AUTO-REDIRECT za admin/salon/radnik ako su već ulogovani === */
+  // auto-redirect za admin/salon/radnik
   useEffect(() => {
     const role = localStorage.getItem("role");
     if (role) {

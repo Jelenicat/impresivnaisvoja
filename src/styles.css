@@ -12,7 +12,7 @@
 html, body, #root { height: 100%; }
 
 html, body {
-  overflow-x: hidden;                  /* << zaključaj horizontalni skrol */
+  overflow-x: hidden;      /* zaključaj horizontalni skrol */
   width: 100%;
 }
 
@@ -38,11 +38,18 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }
 .brand-header {
   position: sticky;
   top: 0;
-  background: var(--bg);
   z-index: 5;
   padding: 0;
   text-align: center;
+  border-bottom: 1px solid transparent;
+  background: transparent;
+  transition: background 0.3s ease, border-color 0.3s ease;
+}
+
+.brand-header.scrolled {
+  background: rgba(255, 255, 255, 0.8);
   border-bottom: 1px solid #eee;
+  backdrop-filter: blur(6px);
 }
 
 .logo-wrap {
@@ -65,7 +72,7 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }
   max-width: 100%;
   width: 100%;
   margin: 0;
-  overflow-x: hidden;                  /* << dodat safety */
+  overflow-x: hidden;  /* dodat safety */
 }
 
 /* ===== Hero ===== */
@@ -76,14 +83,12 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }
   position: relative;
 }
 
-/* okvir slike (picture) da "seče" animaciju unutar hero-a */
 .kb-frame {
   display: block;
   overflow: hidden;
   width: 100%;
 }
 
-/* slika koja animira (samo ona, ne i dugmad) */
 .kb-img {
   width: 100%;
   height: auto;
@@ -92,14 +97,13 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }
   animation: kenburns-top 12s ease-in-out infinite alternate;
 }
 
-/* fallback ako negde koristiš <img> bez klase */
 .hero img {
   width: 100%;
   display: block;
   height: auto;
 }
 
-/* ===== Ken Burns (samo na .kb-img) ===== */
+/* ===== Ken Burns ===== */
 @keyframes kenburns-top {
   0%   { transform: scale(1) translateY(0);        transform-origin: 50% 16%; }
   100% { transform: scale(1.25) translateY(-15px); transform-origin: top; }
@@ -213,24 +217,6 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }
   display: inline-block;
 }
 
-/* header providan */
-.brand-header {
-  position: sticky;
-  top: 0;
-  z-index: 5;
-  padding: 0;
-  text-align: center;
-  border-bottom: 1px solid transparent;
-  background: transparent;
-  transition: background 0.3s ease, border-color 0.3s ease;
-}
-
-.brand-header.scrolled {
-  background: rgba(255, 255, 255, 0.5);
-  border-bottom: 1px solid #eee;
-  backdrop-filter: blur(6px);
-}
-
 /* ===== Mapa ===== */
 .map {
   width: 100%;
@@ -280,9 +266,12 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }
 .splash {
   min-height: 100vh;
   background: url('/pozadina.webp') center/cover no-repeat fixed;
-  display: grid;
-  place-items: end center;
-  padding: 32px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 80px; /* više prostora dole */
+  padding-left: 16px;
+  padding-right: 16px;
 }
 
 .splash .wordmark {
@@ -293,6 +282,7 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }
   background: rgba(255,255,255,0.7);
   padding: 8px 14px;
   border-radius: 12px;
+  margin-bottom: 20px; /* dodat razmak da ne seče tekst */
 }
 
 /* ===== Animacije ===== */
@@ -432,7 +422,6 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }
 
   .section h2 { font-size: 28px; letter-spacing: .5px; }
 
-  /* CENTRIRANJE desktop dugmadi + razmak + prelamanje po potrebi */
   .cta-wrap {
     display: flex;
     justify-content: center;
@@ -460,7 +449,6 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }
   .logo-wrap  { height: 120px; }
   .logo-header{ height: 240px; }
 
-  /* smanjena ostala CTA dugmad (istorija, otkaži, odjavi) */
   .cta-wrap .btn-outline.btn-big {
     font-size: 14px;
     padding: 10px 20px;
@@ -496,9 +484,7 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }
   line-height: 1.5;
   text-align: center;
 }
-.contact-info p {
-  margin: 4px 0;
-}
+.contact-info p { margin: 4px 0; }
 
 /* ===== Footer potpis ===== */
 .app-footer {
