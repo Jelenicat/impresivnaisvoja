@@ -466,10 +466,11 @@ export default function AdminClients() {
             box-shadow: 0 6px 16px rgba(0,0,0,.06);
           }
           .clients-row:hover{ background:#fff; }
-          .col-name{
-            font-size: 16px; font-weight: 800; color:#3f3f46;
-            display:flex; align-items:center; justify-content:space-between; gap:8px;
-          }
+         .col-name{
+  font-size: 16px; font-weight: 800; color:#000;
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+}
+
           .col-phone{ font-size:14px; color:#4b5563; }
           .col-email{ font-size:13px; color:#6b7280; }
           .status-badge{ justify-self: start; font-size:12px; padding: 3px 8px; margin-top: 2px; }

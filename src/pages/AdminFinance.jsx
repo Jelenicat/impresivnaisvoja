@@ -727,6 +727,80 @@ export default function AdminFinance({
   outline: none !important;
   box-shadow: none !important;
 }
+/* Univerzalno: skini iOS/Android plavi akcenat i native appearance */
+.fin-wrap .bar .btn,
+.fin-wrap .bar .inp[type="date"]{
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+  text-decoration: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  color: #1f1f1f !important;
+  -webkit-text-fill-color: #1f1f1f !important;
+  accent-color: #1f1f1f !important;  /* android */
+  caret-color: #1f1f1f !important;
+}
+
+/* Dugmad Danas / Mjesec – bez plavog fokusa/aktivnog stanja */
+.fin-wrap .bar .btn:focus,
+.fin-wrap .bar .btn:focus-visible,
+.fin-wrap .bar .btn:active {
+  outline: none !important;
+  box-shadow: none !important;
+  color: #1f1f1f !important;
+  -webkit-text-fill-color: #1f1f1f !important;
+}
+
+/* iOS date input unutrašnji delovi */
+.fin-wrap .bar .inp[type="date"]::-webkit-datetime-edit,
+.fin-wrap .bar .inp[type="date"]::-webkit-date-and-time-value,
+.fin-wrap .bar .inp[type="date"]::-webkit-datetime-edit-fields-wrapper,
+.fin-wrap .bar .inp[type="date"]::-webkit-datetime-edit-text,
+.fin-wrap .bar .inp[type="date"]::-webkit-datetime-edit-month-field,
+.fin-wrap .bar .inp[type="date"]::-webkit-datetime-edit-day-field,
+.fin-wrap .bar .inp[type="date"]::-webkit-datetime-edit-year-field{
+  color:#1f1f1f !important;
+}
+
+/* Sakrij native picker ikonicu (ostaje naša SVG) */
+.fin-wrap .bar .inp[type="date"]::-webkit-calendar-picker-indicator{
+  opacity:0 !important; display:none !important;
+}
+
+/* Raspored grupa: datumi u jednom redu, kao i dugmad, sa istim razmakom */
+.fin-wrap .bar { --bar-gap: 10px; }
+.fin-wrap .bar .date-group,
+.fin-wrap .bar .btn-group{
+  display: flex; gap: var(--bar-gap);
+  width: 100%;
+}
+
+/* MOBILNI: po 2 u redu, iste širine */
+@media (max-width: 760px){
+  .fin-wrap .bar .date-group .inp,
+  .fin-wrap .bar .btn-group .btn{
+    flex: 1 1 calc(50% - var(--bar-gap)/2);
+    height: 40px;
+    border-radius: 10px;
+  }
+
+  /* izgled date polja kao dugmeta + naša ikona */
+  .fin-wrap .bar .date-group .inp[type="date"]{
+    background: #fff url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='%238a8378'><path d='M7 2v2H5a2 2 0 0 0-2 2v1h18V6a2 2 0 0 0-2-2h-2V2h-2v2H9V2H7zm14 7H3v11a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9zm-2 4H5v7h14v-7z'/></svg>") no-repeat right 10px center !important;
+    background-size: 14px !important;
+    padding-right: 34px !important;
+    font-weight: 600;
+    border: 1px solid #e0d9cf;
+  }
+}
+
+/* DESKTOP: datumi u grupi, normalne širine */
+@media (min-width: 761px){
+  .fin-wrap .bar .date-group .inp{ flex: 0 0 178px; }
+  .fin-wrap .bar .btn-group .btn{ flex: 0 0 120px; }
+}
 
 
       `}</style>
@@ -735,84 +809,75 @@ export default function AdminFinance({
         <div className="fin-title">Finansijski pregled</div>
 
         {/* Kontrole opsega - MOBILNI (NE DIRAJ) */}
-        <div className="bar mobile-only">
-          <input
-            className="inp"
-            type="date"
-            value={asDateInput(from)}
-            onChange={e=>setFrom(startOfDay(new Date(e.target.value)))}
-            disabled={!canPickRange}
-          />
-          <input
-            className="inp"
-            type="date"
-            value={asDateInput(to)}
-            onChange={e=>setTo(endOfDay(new Date(e.target.value)))}
-            disabled={!canPickRange}
-          />
-          {canPickRange && (
-            <>
-          <div className="btn-group">
-  <button
-    className="btn"
-    onClick={()=>{
-      setFrom(startOfDay(new Date()));
-      setTo(endOfDay(new Date()));
-    }}
-  >
-    Danas
-  </button>
+       <div className="bar mobile-only">
+  <div className="date-group">
+    <input
+      className="inp"
+      type="date"
+      value={asDateInput(from)}
+      onChange={e=>setFrom(startOfDay(new Date(e.target.value)))}
+      disabled={!canPickRange}
+    />
+    <input
+      className="inp"
+      type="date"
+      value={asDateInput(to)}
+      onChange={e=>setTo(endOfDay(new Date(e.target.value)))}
+      disabled={!canPickRange}
+    />
+  </div>
 
-  <button
-    className="btn"
-    onClick={()=>{
-      const n=new Date();
-      const s=new Date(n.getFullYear(), n.getMonth(), 1);
-      const e=endOfDay(new Date(n.getFullYear(), n.getMonth()+1, 0));
-      setFrom(s); setTo(e);
-    }}
-  >
-    Mjesec
-  </button>
+  {canPickRange && (
+    <div className="btn-group">
+      <button className="btn" onClick={()=>{ setFrom(startOfDay(new Date())); setTo(endOfDay(new Date())); }}>
+        Danas
+      </button>
+      <button className="btn" onClick={()=>{ const n=new Date(); const s=new Date(n.getFullYear(), n.getMonth(), 1); const e=endOfDay(new Date(n.getFullYear(), n.getMonth()+1, 0)); setFrom(s); setTo(e); }}>
+        Mjesec
+      </button>
+    </div>
+  )}
+
+  {!canPickRange && <span className="chip">Dnevni pazar</span>}
 </div>
 
-            </>
-          )}
-          {!canPickRange && <span className="chip">Dnevni pazar</span>}
-        </div>
 
         {/* Kontrole opsega - DESKTOP */}
         <div className="bar desktop-only">
-          <input
-            className="inp"
-            type="date"
-            value={asDateInput(from)}
-            onChange={e=>setFrom(startOfDay(new Date(e.target.value)))}
-            disabled={!canPickRange}
-          />
-          <input
-            className="inp"
-            type="date"
-            value={asDateInput(to)}
-            onChange={e=>setTo(endOfDay(new Date(e.target.value)))}
-            disabled={!canPickRange}
-          />
-          {canPickRange && (
-            <>
-              <button className="btn" onClick={()=>{ setFrom(startOfDay(new Date())); setTo(endOfDay(new Date())); }}>
-                Danas
-              </button>
-              <button className="btn" onClick={()=>{ 
-                const n=new Date(); const s=new Date(n.getFullYear(), n.getMonth(), 1);
-                const e=endOfDay(new Date(n.getFullYear(), n.getMonth()+1, 0));
-                setFrom(s); setTo(e);
-              }}>
-                Ovaj mesec
-              </button>
-            </>
-          )}
-          {!canPickRange && <span className="chip">Dnevni pazar</span>}
-        </div>
+  <div className="date-group">
+    <input
+      className="inp"
+      type="date"
+      value={asDateInput(from)}
+      onChange={e=>setFrom(startOfDay(new Date(e.target.value)))}
+      disabled={!canPickRange}
+    />
+    <input
+      className="inp"
+      type="date"
+      value={asDateInput(to)}
+      onChange={e=>setTo(endOfDay(new Date(e.target.value)))}
+      disabled={!canPickRange}
+    />
+  </div>
+
+  {canPickRange && (
+    <>
+      <button className="btn" onClick={()=>{ setFrom(startOfDay(new Date())); setTo(endOfDay(new Date())); }}>
+        Danas
+      </button>
+      <button className="btn" onClick={()=>{
+        const n=new Date();
+        const s=new Date(n.getFullYear(), n.getMonth(), 1);
+        const e=endOfDay(new Date(n.getFullYear(), n.getMonth()+1, 0));
+        setFrom(s); setTo(e);
+      }}>
+        Ovaj mesec
+      </button>
+    </>
+  )}
+  {!canPickRange && <span className="chip">Dnevni pazar</span>}
+</div>
 
         {/* MOBILNI – BEZ IZMJENA */}
         <div className="mobile-only">
