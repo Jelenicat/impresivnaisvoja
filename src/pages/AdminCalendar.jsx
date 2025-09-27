@@ -1440,8 +1440,9 @@ const onTouchEndHandler = (ev) => {
                             ) : (
                               <>
                                 <div className="title">
-                                  {client ? formatClient(client, role) : "—"}
-                                </div>
+  {client ? formatClient(client, role) : (a.clientName || a.clientEmail || a.clientPhone || "—")}
+</div>
+
                                 <div className="muted">
                                   {items.map(s=>s.name).join(", ") || a.servicesLabel || "—"} 
                                   {total?` · ${fmtPrice(total)} RSD`:""}
@@ -1542,7 +1543,10 @@ const onTouchEndHandler = (ev) => {
               <div className="stripe" style={{ background: catColor }} />
               <div className="inner">
                 <div className="time">{fmtTime(a.start)} – {fmtTime(a.end)}</div>
-                <div className="title">{client ? formatClient(client, role) : "—"}</div>
+                <div className="title">
+  {client ? formatClient(client, role) : (a.clientName || a.clientEmail || a.clientPhone || "—")}
+</div>
+
                 <div className="sub">
                   {client ? (
                     role==="admin" ? 
