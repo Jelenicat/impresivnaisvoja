@@ -280,7 +280,7 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }
   font-weight: 500;
   text-transform: uppercase;
   background: rgba(255,255,255,0.7);
-  padding: 8px 14px;
+  padding: 8px 8px;
   border-radius: 12px;
   margin-bottom: 20px; /* dodat razmak da ne seče tekst */
 }
