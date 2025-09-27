@@ -148,7 +148,7 @@ export default function Home() {
     { cat: "Trepavice", items: ["One by One", "2D/3D", "Hibrid"] },
   ];
 
-  // ----- GALERIJA slike (prema tvom nazivu fajlova) -----
+  // ----- GALERIJA slike -----
   const gallerySources = useCallback(() => {
     const mk = Array.from({ length: 10 }, (_, i) => `/manikir${i + 1}.webp`);
     const pk = Array.from({ length: 3 },  (_, i) => `/pedikir${i + 1}.webp`);
@@ -169,7 +169,7 @@ export default function Home() {
           <img src="/IMG_4989.webp" alt="impresivnaisvoja" />
         </picture>
 
-        {/* Glavno CTA dugme na hero slici (desktop), centrirano ispod na mobilnom */}
+        {/* Glavno CTA dugme */}
         <div className="cta-wrap hero-cta">
           <button className="btn btn-accent btn-big" onClick={handleBookClick}>
             ZAKAŽI TERMIN
@@ -177,9 +177,9 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Sekundarna dugmad za klijenta (ispod hero-a) */}
+      {/* Sekundarna dugmad za klijenta */}
       {isClientLogged && (
-        <div className="cta-wrap" style={{ flexDirection: "column", gap: 12 }}>
+        <div className="cta-wrap" style={{ flexDirection: "column", gap: 12, alignItems: "center" }}>
           <button
             className="btn btn-outline btn-big"
             onClick={() => nav("/me/history", { state:{ tab:"upcoming", autoCancel:true }})}
@@ -207,7 +207,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* O NAMA */}
+      {/* O nama */}
       <section className="section">
         <h2>O Nama</h2>
         <p>
@@ -224,7 +224,7 @@ export default function Home() {
         <button className="btn btn-outline btn-wide" onClick={() => setGalleryOpen(true)}>GALERIJA</button>
       </div>
 
-      {/* Mapa + adresa + kontakt info */}
+      {/* Mapa + kontakt */}
       <section className="section">
         <h2>Gde se nalazimo?</h2>
         <div style={{ margin: "12px 0 8px" }}>
@@ -237,7 +237,7 @@ export default function Home() {
           />
         </div>
 
-        {/* Centrirana adresa sa emoji 📍 */}
+        {/* Centrirana adresa */}
         <div style={{ textAlign: "center", marginTop: "10px" }}>
           <p style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 500 }}>
             <span role="img" aria-label="Lokacija">📍</span>
@@ -245,7 +245,6 @@ export default function Home() {
           </p>
         </div>
 
-        {/* Radno vreme i telefon */}
         <div className="contact-info">
           <p><b>Radno vreme:</b></p>
           <p>Pon–Pet: 08–21h</p>
@@ -264,7 +263,7 @@ export default function Home() {
         App by Jelena — 060 420 4623
       </footer>
 
-      {/* Modal za klijenta (postojeći) */}
+      {/* Auth modal */}
       <AuthModal
         open={authOpen}
         onClose={() => setAuthOpen(false)}
@@ -274,7 +273,7 @@ export default function Home() {
         }}
       />
 
-      {/* ===== MODAL: USLUGE (bez cena) ===== */}
+      {/* Modal: Usluge */}
       {servicesOpen && (
         <div className="modal-backdrop" onClick={() => setServicesOpen(false)}>
           <div className="modal" onClick={(e)=>e.stopPropagation()}>
@@ -299,12 +298,11 @@ export default function Home() {
         </div>
       )}
 
-      {/* ===== MODAL: GALERIJA ===== */}
+      {/* Modal: Galerija */}
       {galleryOpen && (
         <div className="modal-backdrop" onClick={() => setGalleryOpen(false)}>
           <div className="modal" onClick={(e)=>e.stopPropagation()} style={{ maxWidth: 980, width: "95%" }}>
             <h3>Galerija</h3>
-
             <div style={{ display:"grid", gap:20, maxHeight: "70vh", overflow:"auto" }}>
               {gallerySources().map(section => (
                 <div key={section.title}>
@@ -335,7 +333,6 @@ export default function Home() {
                 </div>
               ))}
             </div>
-
             <div className="actions">
               <button className="btn btn-outline" onClick={()=>setGalleryOpen(false)}>Zatvori</button>
             </div>
