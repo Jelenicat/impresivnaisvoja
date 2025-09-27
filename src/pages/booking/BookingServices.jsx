@@ -4,37 +4,48 @@ import { useNavigate, useParams } from "react-router-dom";
 import { db } from "../../firebase";
 import { collection, doc, onSnapshot, orderBy, query, where, getDoc } from "firebase/firestore";
 
-// --- Cart helpers (isti kao u BookingTime) ---
-function getCartKey() {
-  const cid = localStorage.getItem("clientId");
-  return cid ? `bookingCart:${cid}` : "bookingCart";
+/* ---------- Cart helpers (IDENTIČNO kao u BookingTime.jsx) ---------- */
+function getCartKey(){
+  try{
+    const raw = localStorage.getItem("clientProfile");
+    const p = raw ? JSON.parse(raw) : null;
+    return `bookingCart:${p?.id || "anon"}`;
+  }catch{
+    return "bookingCart:anon";
+  }
 }
-function readCart() {
-  try {
-    return JSON.parse(localStorage.getItem(getCartKey()) || "[]");
-  } catch {
+function readCart(){
+  try{
+    const key = getCartKey();
+
+    // migracija sa starog globalnog ključa (ako postoji i ako per-user još nije postavljen)
+    const legacy = localStorage.getItem("bookingCart");
+    if (legacy && !localStorage.getItem(key)){
+      localStorage.setItem(key, legacy);
+      localStorage.removeItem("bookingCart");
+    }
+
+    return JSON.parse(localStorage.getItem(key) || "[]");
+  }catch{
     return [];
   }
 }
-function writeCart(items) {
-  localStorage.setItem(getCartKey(), JSON.stringify(items));
+function writeCart(items){
+  try{
+    localStorage.setItem(getCartKey(), JSON.stringify(items));
+  }catch{}
 }
 
-// helper: iz naziva kategorije izaberi niz slika
+/* ---------- helper: slike po kategoriji ---------- */
 function imagesForCategory(name = "") {
   const n = name.toLowerCase();
 
-  // TREPAVICE
   if (n.includes("trepav") || n.includes("lash")) {
     return ["/trepavice1.webp", "/trepavice2.webp"];
   }
-
-  // OBRVE
   if (n.includes("obrve") || n.includes("obrva") || n.includes("brow")) {
     return ["/trepavice1.webp", "/trepavice2.webp", "/trepavice3.webp"];
   }
-
-  // MANIKIR
   if (n.includes("manik")) {
     return [
       "/manikir1.webp", "/manikir2.webp", "/manikir4.webp",
@@ -42,27 +53,19 @@ function imagesForCategory(name = "") {
       "/manikir8.webp", "/manikir9.webp", "/manikir10.webp"
     ];
   }
-
-  // PEDIKIR
   if (n.includes("pedik")) {
     return ["/pedikir1.webp", "/pedikir2.webp", "/pedikir3.webp"];
   }
-
-  // DEPILACIJA ŠEĆERNOM PASTOM
   if (n.includes("šećer") || n.includes("secer") || n.includes("pasta")) {
     return ["/depilacijapasta.webp"];
   }
-
-  // KLASIČNA DEPILACIJA
   if (n.includes("depil")) {
     return ["/depilacija1.webp"];
   }
-
-  // fallback
   return ["/usluge1.webp"];
 }
 
-export default function BookingServices() {
+export default function BookingServices(){
   const { catId } = useParams();
   const nav = useNavigate();
   const [services, setServices] = useState([]);
@@ -94,12 +97,10 @@ export default function BookingServices() {
     });
   }, [catId]);
 
-  function inCart(id) {
-    return readCart().some(x => x.serviceId === id);
-  }
-  function toggleAdd(svc) {
+  function inCart(id){ return readCart().some(x => x.serviceId === id); }
+  function toggleAdd(svc){
     let items = readCart();
-    if (items.some(x => x.serviceId === svc.id)) {
+    if (items.some(x => x.serviceId === svc.id)){
       items = items.filter(x => x.serviceId !== svc.id);
     } else {
       items.push({
@@ -107,10 +108,11 @@ export default function BookingServices() {
         name: svc.name,
         durationMin: svc.durationMin,
         priceRsd: svc.priceRsd,
-        categoryId: svc.categoryId
+        categoryId: svc.categoryId,
       });
     }
     writeCart(items);
+    // samo da triggerujemo re-render
     setServices([...services]);
   }
 
@@ -122,41 +124,53 @@ export default function BookingServices() {
 
         .hero { position: relative; height: 220px; background: #111; overflow: hidden; }
         .hero img{ width: 100%; height: 100%; object-fit: cover; display:block; }
-        .hero .arrow{ position:absolute; top:50%; transform: translateY(-50%);
+        .hero .arrow{
+          position:absolute; top:50%; transform: translateY(-50%);
           background: rgba(17,17,17,.7); color:#fff; border:0; width:36px; height:36px;
           border-radius:10px; cursor:pointer; display:flex; align-items:center; justify-content:center;
           font-size:18px; font-weight:800; -webkit-appearance:none; appearance:none;
         }
         .hero .arrow.left{ left:10px; }
         .hero .arrow.right{ right:10px; }
-        .hero .dots{ position:absolute; left:0; right:0; bottom:10px;
-          display:flex; gap:6px; justify-content:center; }
+        .hero .dots{ position:absolute; left:0; right:0; bottom:10px; display:flex; gap:6px; justify-content:center; }
         .hero .dot{ width:8px; height:8px; border-radius:999px; background:rgba(255,255,255,.45); }
         .hero .dot.active{ background:#fff; }
 
-        .sv-sheet{ min-height:100dvh; background:#fff;
-          border-top-left-radius:22px; border-top-right-radius:22px;
-          padding:18px 14px 100px; }
+        .sv-sheet{
+          min-height:100dvh; background:#fff; border-top-left-radius:22px; border-top-right-radius:22px;
+          padding:18px 14px 100px;
+        }
 
         .sv-hdr{ display:flex; align-items:center; justify-content:flex-start; margin: 6px 0 8px; }
-        .sv-back{ -webkit-appearance:none; appearance:none; background: rgba(255,255,255,0.9);
-          color:#0f0f10; border:1px solid #eaeaea; padding:10px 12px; border-radius:12px;
-          font-weight:800; font-size:15px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); cursor:pointer;
-          transition: transform .15s ease, box-shadow .2s ease, opacity .2s ease; }
+        .sv-back{
+          -webkit-appearance:none; appearance:none;
+          background: rgba(255,255,255,0.9);
+          color:#0f0f10; border:1px solid #eaeaea;
+          padding:10px 12px; border-radius:12px;
+          font-weight:800; font-size:15px;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+          cursor:pointer;
+          transition: transform .15s ease, box-shadow .2s ease, opacity .2s ease;
+        }
         .sv-back:hover{ transform: translateX(-1px); box-shadow:0 4px 12px rgba(0,0,0,0.12); }
         .sv-back:active{ transform: translateY(1px); }
 
         .title{ font-size:22px; font-weight:900; text-align:center; margin:12px 0 14px; }
 
-        .item{ display:grid; grid-template-columns: 1fr auto; gap:10px;
-          padding:12px; border-radius:16px; border:1px solid #eee; margin-bottom:10px; background:#fff; }
+        .item{
+          display:grid; grid-template-columns: 1fr auto; gap:10px;
+          padding:12px; border-radius:16px; border:1px solid #eee; margin-bottom:10px; background:#fff;
+        }
         .name{ font-weight:900; font-size:18px; color:#0f0f10; }
         .meta{ font-size:14px; color:#6b7280; margin-top:2px; }
 
         .actions{ display:flex; align-items:center; gap:8px; }
-        .btn{ -webkit-appearance:none; appearance:none;
+        .btn{
+          -webkit-appearance:none; appearance:none;
           padding:10px 14px; border-radius:12px; border:1px solid #e5e5e5;
-          background:#fff; cursor:pointer; font-weight:800; color:#111; text-decoration:none; outline:none; }
+          background:#fff; cursor:pointer; font-weight:800;
+          color:#111; text-decoration:none; outline:none;
+        }
         .btn:focus, .btn:active { outline:none; color:#111; }
         .btn-ghost{ background:#fff; color:#111; }
         .btn-dark{ background:#1f1f1f; color:#fff; border-color:#1f1f1f; }
@@ -184,7 +198,7 @@ export default function BookingServices() {
       </div>
 
       <div className="sv-sheet">
-        {/* Nazad → kategorije */}
+        {/* Gornje dugme Nazad → /booking (kategorije) */}
         <div className="sv-hdr">
           <button className="sv-back" onClick={()=>nav("/booking")}>← Nazad</button>
         </div>
@@ -223,8 +237,7 @@ function DetailsModal({ svc, onClose }){
   return (
     <div className="mdk" onClick={onClose}>
       <style>{`
-        .mdk{ position:fixed; inset:0; background:rgba(0,0,0,.55);
-          display:flex; align-items:center; justify-content:center; z-index:30; }
+        .mdk{ position:fixed; inset:0; background:rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center; z-index:30; }
         .dlg{ background:#fff; width:min(560px,90vw); border-radius:16px; padding:16px; }
         .dlg h3{ margin:0 0 6px; font-size:18px; font-weight:900; }
         .dlg p{ margin:0; color:#4b5563; white-space:pre-wrap; }
