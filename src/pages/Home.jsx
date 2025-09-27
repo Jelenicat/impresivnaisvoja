@@ -1,10 +1,11 @@
 // src/pages/Home.jsx
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { db, getFcmToken } from "../firebase";
 import {
   doc, setDoc, serverTimestamp, getDoc,
-  collection, query, where, getDocs
+  collection, query, orderBy, onSnapshot,
+  where, getDocs
 } from "firebase/firestore";
 import AuthModal from "../components/AuthModal.jsx";
 
@@ -12,29 +13,22 @@ export default function Home() {
   const nav = useNavigate();
   const [authOpen, setAuthOpen] = useState(false);
 
-  // modal za usluge i modal za galeriju
+  // MODAL-i
   const [servicesOpen, setServicesOpen] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
 
-  // auto-redirect za admin/salon/radnik
+  // === AUTO-REDIRECT za admin/salon/radnik ako su već ulogovani ===
   useEffect(() => {
     const role = localStorage.getItem("role");
-    if (role) {
-      nav("/admin", { replace: true });
-    }
+    if (role) nav("/admin", { replace: true });
   }, [nav]);
 
-  function goToServices() {
-    nav("/booking");
-  }
+  function goToServices() { nav("/booking"); }
 
   function handleBookClick() {
     const profile = localStorage.getItem("clientProfile");
-    if (profile) {
-      goToServices();
-    } else {
-      setAuthOpen(true);
-    }
+    if (profile) goToServices();
+    else setAuthOpen(true);
   }
 
   async function saveFcmTokenRecord({ token, ownerId, role, username }) {
@@ -43,10 +37,7 @@ export default function Home() {
       await setDoc(
         doc(db, "fcmTokens", token),
         {
-          token,
-          ownerId,
-          role,
-          username,
+          token, ownerId, role, username,
           userAgent: typeof navigator !== "undefined" ? navigator.userAgent : null,
           lastSeenAt: serverTimestamp(),
           createdAt: serverTimestamp(),
@@ -141,28 +132,54 @@ export default function Home() {
 
   const isClientLogged = !!localStorage.getItem("clientProfile");
 
-  // ----- USLUGE (bez cena) -----
-  const SERVICES = [
-    { cat: "Manikir", items: ["Klasik manikir", "Gel lak", "Nadogradnja gelom", "Korekcija gela", "Skidanje materijala"] },
-    { cat: "Pedikir", items: ["Klasik pedikir", "Estetski pedikir", "Gel lak stopala"] },
-    { cat: "Trepavice", items: ["One by One", "2D/3D", "Hibrid"] },
-  ];
+  /* ===================== Usluge iz Firestore-a (bez cena) ===================== */
+  const [svcGroups, setSvcGroups] = useState([]);   // [{ cat, items: [name, ...] }]
 
-  // ----- GALERIJA slike -----
+  useEffect(() => {
+    // čitamo sve iz "services", sortirano, pa lokalno filtriramo inactive i pravimo grupe
+    // (bez where != false da ne zahteva indeks)
+    const q = query(
+      collection(db, "services"),
+      orderBy("category", "asc"),
+      orderBy("name", "asc")
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      const byCat = new Map();
+      snap.forEach((d) => {
+        const s = d.data() || {};
+        if (s.active === false) return; // preskoči neaktivne
+        const cat  = (s.category || s.cat || "Usluge").toString();
+        const name = (s.name || s.title || s.naziv || "").toString().trim();
+        if (!name) return;
+        if (!byCat.has(cat)) byCat.set(cat, new Set());
+        byCat.get(cat).add(name);
+      });
+      const groups = Array.from(byCat.entries()).map(([cat, set]) => ({
+        cat, items: Array.from(set)
+      }));
+      setSvcGroups(groups);
+    }, (err) => {
+      console.warn("Greška pri čitanju services:", err);
+      setSvcGroups([]); // fallback prazan
+    });
+    return () => unsub();
+  }, []);
+
+  /* ===================== Galerija ===================== */
   const gallerySources = useCallback(() => {
     const mk = Array.from({ length: 10 }, (_, i) => `/manikir${i + 1}.webp`);
-    const pk = Array.from({ length: 3 },  (_, i) => `/pedikir${i + 1}.webp`);
-    const tr = Array.from({ length: 3 },  (_, i) => `/trepavice${i + 1}.webp`);
+    const pk = Array.from({ length: 3  }, (_, i) => `/pedikir${i + 1}.webp`);
+    const tr = Array.from({ length: 3  }, (_, i) => `/trepavice${i + 1}.webp`);
     return [
-      { title: "Manikir", imgs: mk },
-      { title: "Pedikir", imgs: pk },
+      { title: "Manikir",   imgs: mk },
+      { title: "Pedikir",   imgs: pk },
       { title: "Trepavice", imgs: tr },
     ];
   }, []);
 
   return (
     <div className="page">
-      {/* Hero sa CTA preko slike */}
+      {/* Hero sa CTA preko slike (Ken Burns je samo na slici) */}
       <div className="hero">
         <picture className="kb-frame">
           <source srcSet="/IMG_4989-1.webp" media="(min-width: 1024px)" />
@@ -186,14 +203,9 @@ export default function Home() {
           >
             OTKAŽI USLUGU
           </button>
-
-          <button
-            className="btn btn-outline btn-big"
-            onClick={() => nav("/me/history")}
-          >
+          <button className="btn btn-outline btn-big" onClick={() => nav("/me/history")}>
             ISTORIJA
           </button>
-
           <button
             className="btn btn-outline btn-big"
             onClick={() => {
@@ -220,8 +232,12 @@ export default function Home() {
 
       {/* Usluge & Galerija */}
       <div className="usluge-galerija" style={{ display: "grid", gap: 12, padding: "20px" }}>
-        <button className="btn btn-outline btn-wide" onClick={() => setServicesOpen(true)}>USLUGE</button>
-        <button className="btn btn-outline btn-wide" onClick={() => setGalleryOpen(true)}>GALERIJA</button>
+        <button className="btn btn-outline btn-wide" onClick={() => setServicesOpen(true)}>
+          USLUGE
+        </button>
+        <button className="btn btn-outline btn-wide" onClick={() => setGalleryOpen(true)}>
+          GALERIJA
+        </button>
       </div>
 
       {/* Mapa + adresa + kontakt info */}
@@ -237,7 +253,6 @@ export default function Home() {
           />
         </div>
 
-        {/* Centrirana adresa */}
         <div style={{ textAlign: "center", marginTop: "10px" }}>
           <p style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 500 }}>
             <span role="img" aria-label="Lokacija">📍</span>
@@ -253,13 +268,13 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Admin login */}
       <div className="footer-login">
         <Link className="btn btn-dark btn-small" to="/admin-login">ULOGUJ SE</Link>
       </div>
 
-      <footer className="app-footer">
-        App by Jelena — 060 420 4623
-      </footer>
+      {/* Footer potpis */}
+      <footer className="app-footer">App by Jelena — 060 420 4623</footer>
 
       {/* Auth modal */}
       <AuthModal
@@ -271,21 +286,29 @@ export default function Home() {
         }}
       />
 
-      {/* Modal: USLUGE */}
+      {/* ===== MODAL: USLUGE (žive iz Firestore-a, bez cena) ===== */}
       {servicesOpen && (
         <div className="modal-backdrop" onClick={() => setServicesOpen(false)}>
           <div className="modal" onClick={(e)=>e.stopPropagation()}>
             <h3>Usluge salona</h3>
-            <div style={{ display:"grid", gap:12, maxHeight: "70vh", overflow:"auto" }}>
-              {SERVICES.map(group => (
-                <div key={group.cat} style={{ border:"1px solid #eee", borderRadius:12, padding:12, background:"#fff" }}>
-                  <div style={{ fontWeight:800, marginBottom:8 }}>{group.cat}</div>
-                  <ul style={{ margin:0, paddingLeft:18 }}>
-                    {group.items.map(item => <li key={item} style={{ margin:"6px 0" }}>{item}</li>)}
-                  </ul>
-                </div>
-              ))}
-            </div>
+
+            {svcGroups.length === 0 ? (
+              <p style={{ textAlign:"center", margin:"8px 0 0" }}>Učitavam usluge…</p>
+            ) : (
+              <div style={{ display:"grid", gap:12, maxHeight: "70vh", overflow:"auto" }}>
+                {svcGroups.map(group => (
+                  <div key={group.cat} style={{ border:"1px solid #eee", borderRadius:12, padding:12, background:"#fff" }}>
+                    <div style={{ fontWeight:800, marginBottom:8 }}>{group.cat}</div>
+                    <ul style={{ margin:0, paddingLeft:18 }}>
+                      {group.items.map(item => (
+                        <li key={item} style={{ margin:"6px 0" }}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div className="actions">
               <button className="btn btn-outline" onClick={()=>setServicesOpen(false)}>Zatvori</button>
               <button className="btn btn-accent" onClick={()=>{ setServicesOpen(false); handleBookClick(); }}>
@@ -296,7 +319,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* Modal: GALERIJA */}
+      {/* ===== MODAL: GALERIJA ===== */}
       {galleryOpen && (
         <div className="modal-backdrop" onClick={() => setGalleryOpen(false)}>
           <div className="modal" onClick={(e)=>e.stopPropagation()} style={{ maxWidth: 980, width: "95%" }}>
