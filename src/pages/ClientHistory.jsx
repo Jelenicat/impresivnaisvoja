@@ -40,10 +40,15 @@ const fmtDate = (d) => {
 
 export default function ClientHistory(){
   const nav = useNavigate();
-  const { state } = useLocation();
+  const location = useLocation();
   const client = useMemo(()=>getClient(),[]);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Mod ekrana:
+  // - "cancel"  -> samo budući (za otkazivanje), npr. kad dođeš iz "Otkaži uslugu"
+  // - "history" -> samo prošli
+  const mode = location?.state?.autoCancel ? "cancel" : "history";
 
   useEffect(()=>{
     const phoneNorm = normPhone(client?.phone);
@@ -84,24 +89,36 @@ export default function ClientHistory(){
     return ()=> unsubs.forEach(u => u && u());
   }, [client?.id, client?.phone, nav]);
 
-  const now = Date.now();
-  const upcoming = items.filter(a => {
-    const t = toJsDate(a.start)?.getTime();
-    return Number.isFinite(t) && t >= now && a.status !== "canceled";
-  });
-  const past = items.filter(a => {
-    const t = toJsDate(a.start)?.getTime();
-    return Number.isFinite(t) && t < now;
-  });
+  const nowMs = Date.now();
+
+  // Samo budući i ne-otkazani (za ekran "cancel")
+  const upcoming = items
+    .filter(a => {
+      const t = toJsDate(a.start)?.getTime();
+      return Number.isFinite(t) && t >= nowMs && a.status !== "canceled";
+    })
+    .sort((a,b)=>toJsDate(a.start)-toJsDate(b.start));
+
+  // Samo prošli (otkazane NE izbacujemo, prikazujemo sa bedžom)
+  const past = items
+    .filter(a => {
+      const t = toJsDate(a.start)?.getTime();
+      return Number.isFinite(t) && t < nowMs;
+    })
+    .sort((a,b)=>toJsDate(b.start)-toJsDate(a.start));
 
   async function cancel(id){
     if (!window.confirm("Sigurno želiš da otkažeš ovaj termin?")) return;
     try{
+      // optimistički: odmah skloni iz liste budućih
+      setItems(prev => prev.filter(x => x.id !== id));
+
       await updateDoc(doc(db,"appointments", id), {
         status: "canceled",
         canceledAt: serverTimestamp(),
         canceledBy: client?.id || "public"
       });
+      // Ako admin kalendar filtrira status !== "canceled", termin će nestati i tamo.
     }catch(e){
       alert("Greška pri otkazivanju.");
       console.error(e);
@@ -148,56 +165,68 @@ export default function ClientHistory(){
         <div className="hdr">
           <button className="back" onClick={()=>nav("/home")}>← Nazad</button>
         </div>
-        <div className="title">Moji termini</div>
+
+        <div className="title">
+          {mode === "cancel" ? "Otkaži termin" : "Istorija termina"}
+        </div>
 
         {loading ? (
           <div className="loading">Učitavanje…</div>
         ) : (
           <>
-            <div className="sec">
-              <h3>Budući</h3>
-              {upcoming.length === 0 ? (
-                <div className="empty">Nema zakazanih budućih termina.</div>
-              ) : upcoming.map(a=>(
-                <div key={a.id} className="card">
-                  <div className="row">
-                    <div><b>{a.servicesFirstName || a.servicesLabel || "Usluga"}</b></div>
-                    <div className="muted">{fmtDate(a.start)}</div>
-                  </div>
-                  <div className="row">
-                    <div className="muted">{a.employeeUsername || "Zaposleni"}</div>
-                    <div className="muted">{Number(a.totalAmountRsd||0).toLocaleString("sr-RS")} RSD</div>
-                  </div>
-                  <div className="rowbtns">
-                    <button className="btn ghost" onClick={()=>nav("/booking/employee", { state:{ rescheduleId:a.id }})}>Pomeri</button>
-                    <button className="btn primary" onClick={()=>cancel(a.id)}>Otkaži</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="sec">
-              <h3>Prošli</h3>
-              {past.length === 0 ? (
-                <div className="empty">Nema prošlih termina.</div>
-              ) : past.map(a=>(
-                <div key={a.id} className="card">
-                  <div className="row">
-                    <div><b>{a.servicesFirstName || a.servicesLabel || "Usluga"}</b></div>
-                    <div className="muted">{fmtDate(a.start)}</div>
-                  </div>
-                  <div className="row">
-                    <div className="muted">{a.employeeUsername || "Zaposleni"}</div>
-                    <div className="muted">{Number(a.totalAmountRsd||0).toLocaleString("sr-RS")} RSD</div>
-                  </div>
-                  {a.status === "canceled" && (
-                    <div style={{marginTop:6}}>
-                      <span className="badge canceled">Otkazano</span>
+            {mode === "cancel" ? (
+              // SAMO BUDUĆI (za otkazivanje)
+              <div className="sec">
+                <h3>Budući termini</h3>
+                {upcoming.length === 0 ? (
+                  <div className="empty">Nema zakazanih budućih termina.</div>
+                ) : upcoming.map(a=>(
+                  <div key={a.id} className="card">
+                    <div className="row">
+                      <div><b>{a.servicesFirstName || a.servicesLabel || "Usluga"}</b></div>
+                      <div className="muted">{fmtDate(a.start)}</div>
                     </div>
-                  )}
-                </div>
-              ))}
-            </div>
+                    <div className="row">
+                      <div className="muted">{a.employeeUsername || "Zaposleni"}</div>
+                      <div className="muted">{Number(a.totalAmountRsd||0).toLocaleString("sr-RS")} RSD</div>
+                    </div>
+                    <div className="rowbtns">
+                      <button
+                        className="btn ghost"
+                        onClick={()=>nav("/booking/employee", { state:{ rescheduleId:a.id }})}
+                      >
+                        Pomeri
+                      </button>
+                      <button className="btn primary" onClick={()=>cancel(a.id)}>Otkaži</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              // SAMO PROŠLI (istorija)
+              <div className="sec">
+                <h3>Prošli termini</h3>
+                {past.length === 0 ? (
+                  <div className="empty">Nema prošlih termina.</div>
+                ) : past.map(a=>(
+                  <div key={a.id} className="card">
+                    <div className="row">
+                      <div><b>{a.servicesFirstName || a.servicesLabel || "Usluga"}</b></div>
+                      <div className="muted">{fmtDate(a.start)}</div>
+                    </div>
+                    <div className="row">
+                      <div className="muted">{a.employeeUsername || "Zaposleni"}</div>
+                      <div className="muted">{Number(a.totalAmountRsd||0).toLocaleString("sr-RS")} RSD</div>
+                    </div>
+                    {a.status === "canceled" && (
+                      <div style={{marginTop:6}}>
+                        <span className="badge canceled">Otkazano</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </>
         )}
       </div>

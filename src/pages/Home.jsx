@@ -77,7 +77,7 @@ export default function Home() {
   async function saveClientProfile(profile) {
     const phoneNorm = (profile?.phone || "").replace(/\D+/g, "");
     const emailNorm = (profile?.email || "").trim().toLowerCase();
-    const tempId = phoneNorm || emailNorm || crypto.randomUUID();
+    const tempId = phoneNorm || emailNorm || (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
 
     localStorage.setItem("clientProfile", JSON.stringify({
       firstName: profile.firstName || "",
@@ -146,7 +146,7 @@ export default function Home() {
           <img src="/IMG_4989.webp" alt="impresivnaisvoja" />
         </picture>
 
-        {/* Glavno CTA dugme na hero slici (desktop), centrirano ispod na mobilnom */}
+        {/* Glavno CTA dugme */}
         <div className="cta-wrap hero-cta">
           <button className="btn btn-accent btn-big" onClick={handleBookClick}>
             ZAKAŽI TERMIN
@@ -154,7 +154,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Sekundarna dugmad za klijenta (ispod hero-a) */}
+      {/* Sekundarna dugmad za klijenta */}
       {isClientLogged && (
         <div className="cta-wrap" style={{ flexDirection: "column", gap: 12 }}>
           <button
@@ -201,7 +201,7 @@ export default function Home() {
         <button className="btn btn-outline btn-wide">GALERIJA</button>
       </div>
 
-      {/* Mapa i adresa */}
+      {/* Mapa, adresa i radno vreme */}
       <section className="section">
         <h2>Gde se nalazimo?</h2>
         <div style={{ margin: "12px 0 8px" }}>
@@ -219,12 +219,25 @@ export default function Home() {
           </svg>
           MAKENZIJEVA 26, BEOGRAD
         </p>
+<div className="contact-info">
+  <p><b>Radno vreme:</b></p>
+  <p>Pon–Pet: 08–21h</p>
+  <p>Subota: 08–16h</p>
+  <p><b>Telefon:</b> 067 768 8007</p>
+</div>
+
       </section>
 
       {/* Admin login */}
       <div className="footer-login">
         <Link className="btn btn-dark btn-small" to="/admin-login">ULOGUJ SE</Link>
       </div>
+
+      {/* Footer potpis */}
+     <footer className="app-footer">
+  App by Jelena — 060 420 4623
+</footer>
+
 
       {/* Modal za klijenta */}
       <AuthModal
