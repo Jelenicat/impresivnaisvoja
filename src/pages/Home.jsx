@@ -211,31 +211,35 @@ export default function Home() {
       </div>
 
       {/* Mapa, adresa i radno vreme */}
-      <section className="section">
-        <h2>Gde se nalazimo?</h2>
-        <div style={{ margin: "12px 0 8px" }}>
-          <iframe
-            className="map"
-            loading="lazy"
-            allowFullScreen
-            src="https://www.google.com/maps?q=Makenzijeva%2026%2C%20Beograd&output=embed"
-            title="Mapa — Makenzijeva 26, Beograd"
-          />
-        </div>
-        <p style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="#fff" aria-hidden="true">
-            <path d="M12 2C8.686 2 6 4.686 6 8c0 4.5 6 12 6 12s6-7.5 6-12c0-3.314-2.686-6-6-6zm0 8a2 2 0 110-4 2 2 0 010 4z"/>
-          </svg>
-          MAKENZIJEVA 26, BEOGRAD
-        </p>
-<div className="contact-info">
-  <p><b>Radno vreme:</b></p>
-  <p>Pon–Pet: 08–21h</p>
-  <p>Subota: 08–16h</p>
-  <p><b>Telefon:</b> 067 768 8007</p>
-</div>
+<section className="section">
+  <h2>Gde se nalazimo?</h2>
+  <div style={{ margin: "12px 0 8px" }}>
+    <iframe
+      className="map"
+      loading="lazy"
+      allowFullScreen
+      src="https://www.google.com/maps?q=Makenzijeva%2026%2C%20Beograd&output=embed"
+      title="Mapa — Makenzijeva 26, Beograd"
+    />
+  </div>
 
-      </section>
+  {/* Centrirana adresa sa emoji 📍 */}
+  <div style={{ textAlign: "center", marginTop: "10px" }}>
+    <p style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 500 }}>
+      <span role="img" aria-label="Lokacija">📍</span>
+      MAKENZIJEVA 26, BEOGRAD
+    </p>
+  </div>
+
+  {/* Radno vreme i telefon */}
+  <div className="contact-info">
+    <p><b>Radno vreme:</b></p>
+    <p>Pon–Pet: 08–21h</p>
+    <p>Subota: 08–16h</p>
+    <p><b>Telefon:</b> 067 768 8007</p>
+  </div>
+</section>
+
 
       {/* Admin login */}
       <div className="footer-login">
