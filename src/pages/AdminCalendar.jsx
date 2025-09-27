@@ -776,7 +776,7 @@ const onTouchEndHandler = (ev) => {
 
   return (
     <div className="admin-cal">
-    <style>{`
+ <style>{`
   /* ===== BASE STYLES ===== */
   .admin-cal{ padding:20px 16px 80px; }
   .cal-bar{ 
@@ -825,26 +825,25 @@ const onTouchEndHandler = (ev) => {
   /* ===== Columns ===== */
   .columns-outer{ 
     border:1px solid #e6e0d7; border-radius:12px; 
-    background:#fff; overflow:auto; 
-  }
-  .columns{ 
-    display:grid; grid-auto-flow:column; 
-    grid-auto-columns:minmax(240px,1fr); position:relative; 
+    background:#fff; overflow:auto;
+    overflow-x:hidden !important;  /* nikad horizontalni skrol */
   }
 
-  /* === Layout varijante (JSX dodaje klase) === */
-  .columns--fit{
+  /* Sve kolone se uvek uklope u ekran (dele širinu) */
+  .columns{ 
     display:grid;
+    grid-auto-flow:initial;              /* bez auto-kolona */
+    grid-auto-columns:initial;
+    grid-template-columns: repeat(var(--cols, 1), minmax(140px, 1fr));
+    position:relative; 
+  }
+
+  /* Opciono: ako JSX dodaje columns--fit, isto ponašanje */
+  .columns--fit{
     grid-auto-flow: initial;
-    grid-template-columns: repeat(var(--cols, 1), 1fr); /* n jednakih kolona */
+    grid-template-columns: repeat(var(--cols, 1), minmax(140px, 1fr));
     gap: 0;
     min-width: 100%;
-  }
-  .columns--scroll{
-    display:grid;
-    grid-auto-flow: column;
-    grid-auto-columns: minmax(220px, 1fr);
-    gap: 0;
   }
 
   .col{ position:relative; }
@@ -860,7 +859,7 @@ const onTouchEndHandler = (ev) => {
     border-bottom:1px solid #e6e0d7; 
     font-size:14px; padding:0 8px; text-align:center;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-    z-index:30; /* UVEK iznad termina */
+    z-index:30; /* uvek iznad termina */
   }
   .col-body{ 
     position:relative; height:${CONTENT_H}px; 
@@ -978,16 +977,9 @@ const onTouchEndHandler = (ev) => {
     .timeline { order: 2; grid-row: 2; display: none; }
     .timeline-header { display: none; }
 
-    /* ≤4 radnika: sve staje, bez horiz. skrola */
-    .columns.columns--fit{ grid-template-columns: repeat(var(--cols, 1), 1fr); min-width: 100%; }
-    .columns-outer{ order:1; grid-row:1; overflow-x: hidden; }
-
-    /* >4 radnika: horizont. skrol po koloni */
-    .columns.columns--scroll{ grid-auto-columns: minmax(180px, 1fr); }
-    .columns-outer.scrollable{
-      overflow-x:auto; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain;
-    }
-    .columns.columns--scroll .col{ scroll-snap-align: start; }
+    /* Sve kolone i na mobilnom staju na ekran, bez horiz. skrola */
+    .columns{ grid-template-columns: repeat(var(--cols, 1), minmax(100px, 1fr)); }
+    .columns-outer{ order:1; grid-row:1; overflow-x:hidden !important; }
 
     .col-header { height: 48px; font-size: 13px; padding: 0 8px; justify-content: center; text-align: center; }
 
@@ -1001,7 +993,7 @@ const onTouchEndHandler = (ev) => {
     .resize-handle:before { width: 24px; height: 3px; }
     .corner-icons { font-size:14px; right:4px; top:4px; }
 
-    /* Sve pomoćne linije idu ispod kartica i preko cele širine */
+    /* Sve pomoćne linije ispod kartica i preko cele širine */
     .col-body .hour{ display:block; position:absolute; left:4px; font-size:10px; color:#6b7280; transform:translateY(-50%); z-index:0; width:28px; text-align:right; overflow:hidden; pointer-events:none; }
     .grid-hour       { left: 0; right: 0; z-index: 1; }
     .hover-line      { left: 0; right: 0; }
@@ -1084,6 +1076,7 @@ const onTouchEndHandler = (ev) => {
   }
 `}</style>
 
+
       <div className="admin-cal">
         <div className="cal-bar">
   {/* ← Nazad */}
@@ -1153,16 +1146,17 @@ const onTouchEndHandler = (ev) => {
 
           {/* kolone desno */}
           <div
-  className={`columns-outer ${visibleEmployees.length > 4 ? "scrollable" : ""}`}
+  className="columns-outer"
   ref={columnsOuterRef}
   onScroll={handleColumnsScroll}
   style={{ height: paneH }}
 >
 
-            <div
-  className={`columns ${visibleEmployees.length <= 4 ? "columns--fit" : "columns--scroll"}`}
+<div
+  className="columns columns--fit"
   style={{ "--cols": visibleEmployees.length }}
 >
+
 
               {visibleEmployees.map(emp=>{
                 const list=apptsByEmployee.get(emp.username)||[];
