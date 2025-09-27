@@ -1,11 +1,12 @@
-// api/sendNotifications.js
+// api/sendNotification.js
 import admin from "firebase-admin";
 
+/* ------------ init firebase-admin iz ENV varijabli ------------ */
 function initAdmin() {
   if (admin.apps.length) return admin.app();
-  const projectId  = process.env.FIREBASE_PROJECT_ID;
+  const projectId   = process.env.FIREBASE_PROJECT_ID;
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-  let privateKey   = process.env.FIREBASE_PRIVATE_KEY;
+  let privateKey    = process.env.FIREBASE_PRIVATE_KEY;
   if (!projectId || !clientEmail || !privateKey) {
     throw new Error("Missing Firebase Admin env vars.");
   }
@@ -21,28 +22,33 @@ function chunk(arr, n = 500) {
   return out;
 }
 
+/* ------------ target lookup: fcmTokens by role / owner ------------ */
 async function collectTokensForTargets(db, { toRoles = [], toEmployeeId = null }) {
   const tokenSet = new Set();
+
   for (const role of Array.isArray(toRoles) ? toRoles : []) {
     const snap = await db.collection("fcmTokens").where("role", "==", role).get();
     snap.forEach((t) => t.get("token") && tokenSet.add(String(t.get("token"))));
   }
+
   if (toEmployeeId) {
     const snap = await db.collection("fcmTokens").where("ownerId", "==", toEmployeeId).get();
     snap.forEach((t) => t.get("token") && tokenSet.add(String(t.get("token"))));
   }
+
   return Array.from(tokenSet);
 }
 
-async function sendOne(db, messaging, notifSnap) {
-  const notif = notifSnap.data() || {};
+/* ------------ slanje jedne notifikacije (data-only) ------------ */
+async function sendNow(db, messaging, notifDocRef, notifData) {
   const tokens = await collectTokensForTargets(db, {
-    toRoles: notif.toRoles,
-    toEmployeeId: notif.toEmployeeId,
+    toRoles: notifData.toRoles,
+    toEmployeeId: notifData.toEmployeeId,
   });
 
+  // ništa za slanje
   if (!tokens.length) {
-    await notifSnap.ref.set({
+    await notifDocRef.set({
       sent: true,
       sentAt: admin.firestore.FieldValue.serverTimestamp(),
       targetCount: 0,
@@ -51,44 +57,42 @@ async function sendOne(db, messaging, notifSnap) {
     return { successCount: 0, failureCount: 0, targetCount: 0, invalidTokens: [] };
   }
 
-  // ⬇️ DORADA: prosledi i url i oba identifikatora zaposlenog
+  // data-only payload (nema notification sekcije — sprečava duple)
   const payload = {
-  // notification: { ... }  // <- izbaci
-  data: {
-    title: notif.title || "Obaveštenje",
-    body:  notif.body  || "",
-    url:   notif.data?.url || "",
-    screen: notif.data?.screen || "/admin",
-    appointmentId: String(notif.data?.appointmentIds?.[0] || ""),
-    employeeId: String(notif.data?.employeeId || notif.toEmployeeId || ""),
-    employeeUsername: String(notif.data?.employeeUsername || ""),
-    click_action: "FLUTTER_NOTIFICATION_CLICK",
-  },
-};
+    data: {
+      title:  notifData.title || "Obaveštenje",
+      body:   notifData.body  || "",
+      url:    notifData.data?.url || "",
+      screen: notifData.data?.screen || "/admin",
+      appointmentId: String(notifData.data?.appointmentIds?.[0] || ""),
+      employeeId: String(notifData.data?.employeeId || notifData.toEmployeeId || ""),
+      employeeUsername: String(notifData.data?.employeeUsername || ""),
+      click_action: "FLUTTER_NOTIFICATION_CLICK",
+      // možeš dodati još polja po potrebi…
+    },
+  };
 
-
-  const batches = chunk(tokens, 500);
+  const groups = chunk(tokens, 500);
   let successCount = 0;
   let failureCount = 0;
   const invalidTokens = [];
 
-  for (const group of batches) {
-    const resp = await messaging.sendEachForMulticast({ tokens: group, ...payload });
+  for (const g of groups) {
+    const resp = await messaging.sendEachForMulticast({ tokens: g, ...payload });
     successCount += resp.successCount;
     failureCount += resp.failureCount;
 
     resp.responses.forEach((r, idx) => {
       if (!r.success) {
         const code = r?.error?.errorInfo?.code || r?.error?.code || r?.error?.message || "";
-        // ⬇️ DORADA: tolerantniji detektor "not registered"
         if (String(code).includes("registration-token-not-registered")) {
-          invalidTokens.push(group[idx]);
+          invalidTokens.push(g[idx]);
         }
       }
     });
   }
 
-  await notifSnap.ref.set({
+  await notifDocRef.set({
     sent: true,
     sentAt: admin.firestore.FieldValue.serverTimestamp(),
     targetCount: tokens.length,
@@ -96,79 +100,66 @@ async function sendOne(db, messaging, notifSnap) {
     failCount: failureCount,
   }, { merge: true });
 
-  return { successCount, failureCount, targetCount: tokens.length, invalidTokens };
+  // očisti nevažeće tokene (docId = token)
+  if (invalidTokens.length) {
+    const uniq = Array.from(new Set(invalidTokens));
+    const batch = db.batch();
+    uniq.forEach((tk) => batch.delete(db.collection("fcmTokens").doc(tk)));
+    await batch.commit();
+  }
+
+  return { successCount, failureCount, targetCount: tokens.length };
 }
 
-async function cleanupInvalidTokens(db, invalidTokens) {
-  const uniq = Array.from(new Set(invalidTokens));
-  if (!uniq.length) return 0;
-  const batch = db.batch();
-  uniq.forEach((tk) => batch.delete(db.collection("fcmTokens").doc(tk))); // docId = token
-  await batch.commit();
-  return uniq.length;
-}
-
+/* ----------------------------- API handler ----------------------------- */
 export default async function handler(req, res) {
   try {
-    // ⬇️ (opciono) dozvoli preflight ako zoveš sa drugog origin-a
+    // (opciono) CORS za preflight
     if (req.method === "OPTIONS") {
       res.setHeader("Access-Control-Allow-Origin", "*");
-      res.setHeader("Access-Control-Allow-Methods", "POST,GET,OPTIONS");
+      res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
       res.setHeader("Access-Control-Allow-Headers", "Content-Type");
       return res.status(200).end();
+    }
+
+    if (req.method !== "POST") {
+      return res.status(405).json({ ok: false, error: "Method not allowed" });
     }
 
     initAdmin();
     const db = admin.firestore();
     const messaging = admin.messaging();
 
-    if (req.method === "POST") {
-      const { notifId } = req.body || {};
-      if (!notifId) return res.status(400).json({ ok: false, error: "Missing notifId" });
+    // Očekujemo oblik:
+    // { title, body, toRoles, toEmployeeId, data: { screen, url, appointmentIds, employeeId, employeeUsername, ... }, kind? }
+    const body = req.body || {};
+    const notif = {
+      kind: body?.kind || "generic",
+      title: body?.title || "Obaveštenje",
+      body: body?.body || "",
+      toRoles: Array.isArray(body?.toRoles) ? body.toRoles : ["admin", "salon"],
+      toEmployeeId: body?.toEmployeeId || null,
+      data: {
+        screen: "/admin",
+        ...(body?.data || {}),
+      },
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      sent: false,
+    };
 
-      const snap = await db.collection("notifications").doc(String(notifId)).get();
-      if (!snap.exists) return res.status(404).json({ ok: false, error: "Notification not found" });
+    // kreiraj dokument u "notifications" (da postoji trag/istorija)
+    const ref = await db.collection("notifications").add(notif);
 
-      const r = await sendOne(db, messaging, snap);
-      const deleted = await cleanupInvalidTokens(db, r.invalidTokens);
-      return res.status(200).json({
-        ok: true,
-        mode: "single",
-        processed: 1,
-        totalTargets: r.targetCount,
-        successCount: r.successCount,
-        failCount: r.failureCount,
-        invalidTokensDeleted: deleted,
-      });
-    }
+    // odmah pošalji
+    const result = await sendNow(db, messaging, ref, notif);
 
-    // GET = batch slanje
-    const lim = Math.max(1, Math.min(Number(req.query.limit || 20), 100));
-    const q = await db
-      .collection("notifications")
-      .where("sent", "==", false)
-      .orderBy("createdAt", "asc")
-      .limit(lim)
-      .get();
-
-    if (q.empty) {
-      return res.status(200).json({ ok: true, mode: "batch", processed: 0, message: "Nema novih notifikacija." });
-    }
-
-    let processed = 0;
-    let totalTargets = 0;
-    let allInvalid = [];
-    for (const docSnap of q.docs) {
-      const r = await sendOne(db, messaging, docSnap);
-      processed += 1;
-      totalTargets += r.targetCount;
-      allInvalid = allInvalid.concat(r.invalidTokens);
-    }
-    const deleted = await cleanupInvalidTokens(db, allInvalid);
-
-    return res.status(200).json({ ok: true, mode: "batch", processed, totalTargets, invalidTokensDeleted: deleted });
+    return res.status(200).json({
+      ok: true,
+      notifId: ref.id,
+      ...result,
+    });
   } catch (e) {
-    console.error("sendNotifications error:", e);
+    console.error("sendNotification error:", e);
     return res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
 }

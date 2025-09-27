@@ -438,157 +438,157 @@ export default function BookingTime(){
   }
 
   async function confirmBooking(){
-    if (!confirmData) return;
+  if (!confirmData) return;
 
-    // još jedna zaštita — ne upisuj prošlost
-    if (confirmData.start < new Date()){
-      pushToast("Vreme je isteklo, izaberi novi termin.");
-      setConfirmOpen(false);
-      return;
+  // zaštita — ne upisuj prošlost
+  if (confirmData.start < new Date()){
+    pushToast("Vreme je isteklo, izaberi novi termin.");
+    setConfirmOpen(false);
+    return;
+  }
+
+  try{
+    setSaving(true);
+
+    const groups = groupServicesByCategory(selectedServices);
+    let rollingStart = new Date(confirmData.start);
+    const createdIds = [];
+
+    for (let i=0;i<groups.length;i++){
+      const g = groups[i];
+      const gDuration = g.services.reduce((a,b)=>a+(Number(b.durationMin)||0),0);
+      const gAmount   = g.services.reduce((a,b)=>a+(Number(b.priceRsd)||0),0);
+      const gEnd      = addMin(rollingStart, gDuration);
+
+      // FINALNA PROVERA BEZ PREKLAPANJA
+      if (await hasConflict(confirmData.employeeId, rollingStart, gEnd)){
+        setSaving(false);
+        pushToast("Ups, termin je upravo zauzet. Izaberi drugi slobodan.");
+        return;
+      }
+
+      const names = g.services.map(s => s.name).filter(Boolean);
+      const servicesLabel = names.join(", ");
+      const servicesFirstName = names[0] || null;
+
+      const ref = await addDoc(collection(db, "appointments"), {
+        start: new Date(rollingStart),
+        end:   new Date(gEnd),
+        date:  dayKey(rollingStart),
+
+        employeeUsername: confirmData.employeeId || null,
+
+        services: g.services.map(s=>({
+          serviceId: s.serviceId,
+          name: s.name,
+          durationMin: Number(s.durationMin)||0,
+          priceRsd: Number(s.priceRsd)||0,
+          categoryId: s.categoryId || null,
+          categoryName: s.categoryName || null,
+        })),
+        totalDurationMin: gDuration,
+        totalAmountRsd:   gAmount,
+        priceRsd:         gAmount, // da se cena vidi i na kartici
+
+        servicesLabel,
+        servicesFirstName,
+        servicesCategoryId: g.categoryId,
+        servicesCategoryName: g.categoryName || null,
+        groupIndex: i+1,
+        groupCount: groups.length,
+
+        clientId: client.id,
+        clientName: client.name,
+        clientPhone: client.phone,
+        clientEmail: client.email,
+
+        isOnline: true,
+        bookedVia: "public_app",
+        pickedMode: (chosenEmployeeId==="firstFree") ? "firstFree" : "specific",
+        isPaid: false,
+        paymentStatus: "unpaid",
+        paymentMethod: null,
+
+        status: "booked",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        createdBy: client.id || "public"
+      });
+
+      createdIds.push(ref.id);
+      rollingStart = gEnd;
     }
 
-    try{
-      setSaving(true);
+    // === ENQUEUE PUSH NOTIFIKACIJE + ODMAH POŠALJI ===
+    try {
+      const notifRef = await addDoc(collection(db, "notifications"), {
+        kind: "appointment_created",
+        title: "📅 Novi zakazani termin",
+        body:
+          `${client?.name || "Klijent"} je zakazao ` +
+          `${(selectedServices[0]?.name || "uslugu")}` +
+          `${selectedServices.length > 1 ? ` (+${selectedServices.length - 1})` : ""} — ` +
+          `${niceDate(confirmData.start)} u ${hhmm(confirmData.start)}`,
 
-      const groups = groupServicesByCategory(selectedServices);
+        // kome šaljemo:
+        toRoles: ["admin", "salon"],
+        toEmployeeId: confirmData.employeeId || null,
 
-      let rollingStart = new Date(confirmData.start);
-      const createdIds = [];
+        // dodatni podaci (deep-link)
+        data: {
+          appointmentIds: createdIds,
+          employeeId: confirmData.employeeId || "",
+          employeeUsername: confirmData.employeeId || "",
+          clientName: client?.name || "",
+          startTs: confirmData.start?.getTime?.() ?? null,
+          screen: "/admin/calendar",
+          url: `/admin/calendar?appointmentId=${createdIds?.[0] || ""}${
+            confirmData?.employeeId ? `&employeeId=${confirmData.employeeId}` : ""
+          }`
+        },
 
-      for (let i=0;i<groups.length;i++){
-        const g = groups[i];
-        const gDuration = g.services.reduce((a,b)=>a+(Number(b.durationMin)||0),0);
-        const gAmount   = g.services.reduce((a,b)=>a+(Number(b.priceRsd)||0),0);
-        const gEnd      = addMin(rollingStart, gDuration);
+        createdAt: serverTimestamp(),
+        sent: false
+      });
 
-        // FINALNA PROVERA BEZ PREKLAPANJA
-        if (await hasConflict(confirmData.employeeId, rollingStart, gEnd)){
-          setSaving(false);
-          pushToast("Ups, termin je upravo zauzet. Izaberi drugi slobodan.");
-          return;
-        }
+      // ping backenda
+      fetch("/api/sendNotifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notifId: notifRef.id })
+      }).catch((e) => console.warn("sendNotifications POST error:", e));
 
-        const names = g.services.map(s => s.name).filter(Boolean);
-        const servicesLabel = names.join(", ");
-        const servicesFirstName = names[0] || null;
+    } catch (e) {
+      console.warn("enqueue notifikacije nije uspeo:", e);
+    }
 
-        const ref = await addDoc(collection(db, "appointments"), {
-          start: new Date(rollingStart),
-          end:   new Date(gEnd),
-          date:  dayKey(rollingStart),
+    pushToast(`✅ Rezervacija sačuvana (${createdIds.length} kartica)`);
+    setConfirmOpen(false);
 
-          employeeUsername: confirmData.employeeId || null,
+    // očisti korpu (po korisniku)
+    const remaining = cart.filter(s=>!selectedIds.includes(s.serviceId));
+    localStorage.setItem(getCartKey(), JSON.stringify(remaining));
+    setCart(remaining);
+    setSelectedIds([]);
 
-          services: g.services.map(s=>({
-            serviceId: s.serviceId,
-            name: s.name,
-            durationMin: Number(s.durationMin)||0,
-            priceRsd: Number(s.priceRsd)||0,
-            categoryId: s.categoryId || null,
-            categoryName: s.categoryName || null,
-          })),
-          totalDurationMin: gDuration,
-          totalAmountRsd:   gAmount,
+    if (remaining.length > 0){
+      const left = remaining.length;
+      pushToast(`Ostala je još ${left} usluga`);
+      setTimeout(()=>{
+        nav("/booking/employee", { state:{ info:`Ostalo za zakazivanje: ${left} usluga` } });
+      }, 400);
+    } else {
+      setTimeout(()=>nav("/home"), 400);
+    }
 
-          servicesLabel,
-          servicesFirstName,
-          servicesCategoryId: g.categoryId,
-          servicesCategoryName: g.categoryName || null,
-          groupIndex: i+1,
-          groupCount: groups.length,
-
-          clientId: client.id,
-          clientName: client.name,
-          clientPhone: client.phone,
-          clientEmail: client.email,
-
-          isOnline: true,
-          bookedVia: "public_app",
-          pickedMode: (chosenEmployeeId==="firstFree") ? "firstFree" : "specific",
-          isPaid: false,
-          paymentStatus: "unpaid",
-          paymentMethod: null,
-
-          status: "booked",
-          createdAt: serverTimestamp(),
-          createdBy: client.id || "public"
-        });
-
-        createdIds.push(ref.id);
-        rollingStart = gEnd;
-      }
-// === ENQUEUE PUSH NOTIFIKACIJE ===
-// === ENQUEUE PUSH NOTIFIKACIJE + ODMAH POŠALJI ===
-try {
-  const notifRef = await addDoc(collection(db, "notifications"), {
-    kind: "appointment_created",
-    title: "📅 Novi zakazani termin",
-    body:
-      `${client?.name || "Klijent"} je zakazao ` +
-      `${(selectedServices[0]?.name || "uslugu")}` +
-      `${selectedServices.length > 1 ? ` (+${selectedServices.length - 1})` : ""} — ` +
-      `${niceDate(confirmData.start)} u ${hhmm(confirmData.start)}`,
-
-    // kome šaljemo:
-    toRoles: ["admin", "salon"],                   // uvek admin + salon
-    toEmployeeId: confirmData.employeeId || null,  // i konkretni zaposleni (ako je dodeljen)
-
-    // dodatni podaci (služe za deep-link i prikaz)
-    data: {
-      appointmentIds: createdIds,                  // sve napravljene kartice
-      employeeId: confirmData.employeeId || "",
-      employeeUsername: confirmData.employeeId || "",
-      clientName: client?.name || "",
-      startTs: confirmData.start?.getTime?.() ?? null,
-      screen: "/admin/calendar",
-      // direktan URL koji će SW otvoriti na klik:
-      url: `/admin/calendar?appointmentId=${createdIds?.[0] || ""}${
-        confirmData?.employeeId ? `&employeeId=${confirmData.employeeId}` : ""
-      }`
-    },
-
-    createdAt: serverTimestamp(),
-    sent: false
-  });
-
-  // Odmah pingujemo backend da pošalje ovu notifikaciju
-  fetch("/api/sendNotifications", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ notifId: notifRef.id })
-  }).catch((e) => console.warn("sendNotifications POST error:", e));
-
-} catch (e) {
-  console.warn("enqueue notifikacije nije uspeo:", e);
+  } catch (err){
+    console.error(err);
+    pushToast("Greška pri čuvanju rezervacije.");
+  } finally {
+    setSaving(false);
+  }
 }
 
-
-
-      pushToast(`✅ Rezervacija sačuvana (${createdIds.length} kartica)`);
-
-      setSaving(false);
-      setConfirmOpen(false);
-
-      const remaining = cart.filter(s=>!selectedIds.includes(s.serviceId));
-      localStorage.setItem(getCartKey(), JSON.stringify(remaining)); // per-user korpa
-      setCart(remaining);
-      setSelectedIds([]);
-
-      if (remaining.length > 0){
-        const left = remaining.length;
-        pushToast(`Ostala je još ${left} usluga`);
-        setTimeout(()=>{
-          nav("/booking/employee", { state:{ info:`Ostalo za zakazivanje: ${left} usluga` } });
-        }, 400);
-      }else{
-        setTimeout(()=>nav("/home"), 400);
-      }
-    }catch(err){
-      console.error(err);
-      setSaving(false);
-      pushToast("Greška pri čuvanju rezervacije.");
-    }
-  }
 
   // header ime radnice
   const headerName = useMemo(()=>{

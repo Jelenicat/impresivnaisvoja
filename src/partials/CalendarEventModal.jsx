@@ -132,6 +132,7 @@ export default function CalendarEventModal({
   const isMobile = typeof window !== "undefined" ? window.innerWidth <= 480 : false;
 
   const normalized = (s="") => s.toString().toLowerCase().trim();
+
   const filteredClients = useMemo(() => {
     const q = normalized(clientQuery);
     const base = (clients || []);
