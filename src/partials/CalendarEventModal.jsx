@@ -273,15 +273,6 @@ export default function CalendarEventModal({
       }
 
       const clientId = await ensureNewClientIfNeeded();
-       // ---- DENORMALIZACIJA KLIJENTA U TERMIN (da ClientHistory lako nađe) ----
-      const firstName = (pickedClient?.firstName ?? newClient.firstName ?? value?.clientName ?? "").toString().trim();
-     const lastName  = (pickedClient?.lastName  ?? newClient.lastName  ?? "").toString().trim();
-      const clientName = `${firstName} ${lastName}`.trim();
-      const clientPhoneRaw =
-        (getPhone(pickedClient) || newClient.phone || value?.clientPhone || "").toString();
-      const clientPhoneNorm = clientPhoneRaw.replace(/\D+/g, "");
-      const clientEmail = (pickedClient?.email || newClient.email || value?.clientEmail || "").toString();
-
 
       // mapiranje plaćanja
       const _canSetPayment = (role === "admin" || role === "salon");
@@ -299,41 +290,18 @@ export default function CalendarEventModal({
       const isOnline = !!(form.isOnline || value?.isOnline || form.bookedVia === "public_app" || value?.bookedVia === "public_app");
       const status = isOnline ? "booked" : (form.status || "booked");
 
-      const servicesLabel = servicesExpanded.map(s => s.name).filter(Boolean).join(", ");
+      const servicesLabel = makeServicesLabel(services, form.services);
 
       const totalDurationMin =
         (form.services || [])
           .map(id => (services.find(s=>s.id===id)?.durationMin)||0)
           .reduce((a,b)=>a+b,0) || 15;
-     // pomoćno: ISO "date" ključ (yyyy-mm-dd) kao što radi public booking
-       const dateKey = (() => {
-   const d = new Date(form.start);
-   const y = d.getFullYear();
-   const m = String(d.getMonth()+1).padStart(2,"0");
-   const day = String(d.getDate()).padStart(2,"0");
-   return `${y}-${m}-${day}`; // lokalni yyyy-mm-dd
- })();
-            // map (id -> definicija iz kataloga)
-      const svcById = new Map((services || []).map(s => [s.id, s]));
-      // prosiri ID-jeve u objekte (kao u public app-u)
-      const servicesExpanded = (Array.isArray(form.services) ? form.services : []).map(id => {
-        const s = svcById.get(id) || {};
-        return {
-          serviceId: id,
-          name: s.name || "",
-          durationMin: Number(s.durationMin) || 0,
-          priceRsd: Number(s.priceRsd) || 0,
-          categoryId: s.categoryId || null,
-          categoryName: (categoriesMap?.get?.(s.categoryId)?.name) || s.categoryName || null,
-        };
-      });
 
       const payload = {
         type: "appointment",
         employeeUsername: form.employeeUsername || (employees[0]?.username || ""),
         clientId: clientId || null,
-                services: servicesExpanded,
-        servicesIds: servicesExpanded.map(s => s.serviceId),
+        services: Array.isArray(form.services) ? form.services : [],
         start: form.start,
         end: form.end,
         priceRsd: Number(form.priceRsd)||0,
@@ -358,11 +326,6 @@ export default function CalendarEventModal({
         paymentStatus,
         paymentMethod,
         isPaid,
-              clientName,
- clientPhone: clientPhoneRaw,
-        clientPhoneNorm,
-        clientEmail,
-        date: dateKey,
       };
 
       if(form.id){ await setDoc(doc(db,"appointments", form.id), payload, { merge:true }); }
