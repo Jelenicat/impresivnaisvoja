@@ -1110,21 +1110,6 @@ const onTouchEndHandler = (ev) => {
     .cal-bar .bell { order: 2; }
   }
 
-  /* MOBILNI GRID: zvono ide uz 'Nazad' iznad */
-  @media (max-width: 900px){
-    .cal-bar{
-      display: grid;
-      grid-template-columns: 1fr 44px;
-      grid-template-areas:
-        "back bell"
-        "date date"
-        "nav  input"
-        "emp  emp";
-    }
-    .cal-bar .btn-back{ grid-area: back; justify-self: start; }
-    .cal-bar .bell{ grid-area: bell; justify-self: end; }
-  }
-
   /* ===== Appointments ===== */
   .appt {
     position: absolute; left: 8px; right: 8px;
@@ -1172,6 +1157,13 @@ const onTouchEndHandler = (ev) => {
   .chooser-actions{ display:flex; gap:10px; }
   .btn-ghost{ color:#e6e0d7;padding:10px 12px; border-radius:12px; border:1px solid #ddd6cc; background:#fff; cursor:pointer; flex:1; font-size:14px; }
   .btn-dark{ padding:10px 12px; border-radius:12px;  border:1px solid #1f1f1f; cursor:pointer; flex:1; font-size:14px; }
+  /* kontrast za tamno dugme */
+  .chooser-card .btn-dark{
+    background:#1f1f1f;
+    border-color:#1f1f1f;
+    color:#fff !important;
+    -webkit-text-fill-color:#fff !important;
+  }
 
   /* ===== Hover kartica ===== */
   .hover-appt{ position: fixed; z-index: 200; pointer-events: none; width: 320px; background: #ffffff; border: 1px solid #e6e0d7; border-radius: 14px; box-shadow: 0 14px 34px rgba(0,0,0,.20); overflow: hidden; background: var(--col,#fff); color:#1f1f1f; }
@@ -1197,97 +1189,87 @@ const onTouchEndHandler = (ev) => {
   /* Podrazumevano (desktop): nazad stoji u istom redu kao ostali */
   .cal-bar .btn-back{ order: 0; }
 
-  /* ===== MOBILE (<=900px) ===== */
+  /* ===== MOBILE (<=900px) =====
+     Zvono u istom redu sa Back + datum; drugi red: nav; treći: input; četvrti: filteri */
   @media (max-width: 900px){
-    .admin-cal { padding: 12px 8px 80px; }
+    .admin-cal { padding: 52px 8px 80px; margin-top:20px; }
+
     .cal-bar{
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      /* Danas + datum u ISTOM redu */
+      grid-template-columns: auto 1fr auto;          /* back | date | bell */
       grid-template-areas:
-        "back back"
-        "date date"
-        "nav  input"
-        "emp  emp";
+        "back date bell"
+        "nav  input input"
+        "emp  emp   emp";
+      align-items: center;
       gap: 8px;
-      margin-top: 12px;
-      margin-bottom: 12px;
-      padding: 0 4px;
+      margin: 12px 0;
+      padding: 50px 4px;
+
     }
-    .cal-bar .btn-back{
-      grid-area: back; justify-self: center; flex-basis: 100%; align-self: center; margin-top:10px;
-    }
+    .cal-bar .btn-back{ grid-area: back; justify-self: start; }
     .cal-bar .date-chip{
-      grid-area: date; justify-self: center; background: #faf6f0; border: 1px solid #e6e0d7;
-      border-radius: 999px; padding: 8px 14px; font-weight: 600; font-size: 12px; letter-spacing: .2px;
+      grid-area: date; justify-self: center;
+      background:#faf6f0; border:1px solid #e6e0d7;
+      border-radius:999px; padding:8px 14px; font-weight:600; font-size:12px; letter-spacing:.2px;
     }
-    /* Leva strana reda: strelice + Danas */
+    .cal-bar .bell{ grid-area: bell; justify-self: end; }
+
     .cal-bar .nav-group{
-      grid-area: nav; display: grid; grid-template-columns: 44px 1fr 44px; gap: 8px; align-items: center;
+      grid-area: nav; display:grid; grid-template-columns:44px 1fr 44px; gap:8px; align-items:center;
     }
     .cal-bar .icon-btn{
-      display: inline-flex; align-items: center; justify-content: center; height: 40px;
-      border: 1px solid #ddd6cc; background: #fff; border-radius: 10px; font-size: 18px; padding: 0 8px; line-height: 1;
+      display:inline-flex; align-items:center; justify-content:center; height:40px;
+      border:1px solid #ddd6cc; background:#fff; border-radius:10px; font-size:18px; padding:0 8px; line-height:1;
     }
-    .cal-bar .today-btn{ min-height: 40px; font-weight: 700; }
+    .cal-bar .today-btn{ min-height:40px; font-weight:700; }
 
-    /* Desna strana reda: input za datum */
     .cal-bar .date-input{
-      grid-area: input; width: 100%;
-      min-height: 40px;
-      align-self: stretch;
+      grid-area: input; width:100%;
+      min-height:40px; align-self:stretch;
     }
-
     .cal-bar .top-actions{ grid-area: emp; justify-self: stretch; }
     .cal-bar .emp-select{ width: 100%; }
     .title{ flex: unset; text-align: center; }
 
     .grid-wrap { grid-template-columns: 1fr; grid-template-rows: auto 1fr; gap: 8px; height: calc(100vh - 140px); }
-    .timeline { order: 2; grid-row: 2; display: none; }
-    .timeline-header { display: none; }
+    .timeline { order: 2; grid-row: 2; display:none; }
+    .timeline-header { display:none; }
 
-    /* Sve kolone i na mobilnom staju na ekran, bez horiz. skrola */
     .columns{ grid-template-columns: repeat(var(--cols, 1), minmax(100px, 1fr)); }
     .columns-outer{ order:1; grid-row:1; overflow-x:hidden !important; }
 
-    .col-header { height: 48px; font-size: 13px; padding: 0 8px; justify-content: center; text-align: center; }
+    .col-header { height: 48px; font-size: 13px; padding: 0 8px; justify-content:center; text-align:center; }
 
-    /* Kartice prelaze preko vremenskih oznaka i linija, ali NE preko header-a */
-    .appt{ left: 6px; right: 6px; padding: 10px 8px; min-height: 44px; font-size: 13px; border-radius: 14px; z-index: 10; }
-    .appt .time { font-size: 11px; line-height: 1.2; }
-    .appt .title { font-size: 12px; margin-top: 10px; -webkit-line-clamp: 2; -webkit-box-orient: vertical; display:-webkit-box; overflow:hidden; }
-    .appt .muted { font-size: 11px; margin-top: 2px; -webkit-line-clamp: 1; -webkit-box-orient: vertical; display:-webkit-box; overflow:hidden; }
-    .appt .tag { font-size: 8px; padding: 2px 4px; margin-top: 2px; }
-    .resize-handle { height: 12px; }
-    .resize-handle:before { width: 24px; height: 3px; }
+    .appt{ left:6px; right:6px; padding:10px 8px; min-height:44px; font-size:13px; border-radius:14px; z-index:10; }
+    .appt .time { font-size:11px; line-height:1.2; }
+    .appt .title { font-size:12px; margin-top:10px; -webkit-line-clamp:2; -webkit-box-orient:vertical; display:-webkit-box; overflow:hidden; }
+    .appt .muted { font-size:11px; margin-top:2px; -webkit-line-clamp:1; -webkit-box-orient:vertical; display:-webkit-box; overflow:hidden; }
+    .appt .tag { font-size:8px; padding:2px 4px; margin-top:2px; }
+    .resize-handle { height:12px; }
+    .resize-handle:before { width:24px; height:3px; }
     .corner-icons { font-size:14px; right:4px; top:4px; }
 
-    /* Sve pomoćne linije ispod kartica i preko cele širine */
     .col-body .hour{ display:block; position:absolute; left:4px; font-size:10px; color:#6b7280; transform:translateY(-50%); z-index:0; width:28px; text-align:right; overflow:hidden; pointer-events:none; }
-    .grid-hour       { left: 0; right: 0; z-index: 1; }
-    .hover-line      { left: 0; right: 0; }
-    .now-line-global { left: 0; right: 0; }
-    .off-mask        { left: 0; right: 0; }
-    .drag-ghost      { left: 0; right: 0; }
+    .grid-hour       { left:0; right:0; z-index:1; }
+    .hover-line      { left:0; right:0; }
+    .now-line-global { left:0; right:0; }
+    .off-mask        { left:0; right:0; }
+    .drag-ghost      { left:0; right:0; }
 
-    .hover-line, .hover-badge { display: none; }
+    .hover-line, .hover-badge { display:none; }
 
-    .chooser-card { min-width: auto; max-width: 280px; margin: 20px; padding: 20px; }
-    .chooser-title { font-size: 16px; margin-bottom: 16px; }
-    .chooser-actions { flex-direction: column; gap: 8px; }
-    .btn-ghost, .btn-dark { padding: 14px 16px; font-size: 16px; min-height: 48px;color:#e6e0d7; }
-    .hover-appt { width: 90vw; max-width: 340px; left: 5vw !important; top: auto !important; bottom: 20px !important; }
-    .hover-appt .inner { padding: 16px; }
-    .hover-appt .title { font-size: 16px; }
-    .hover-appt .sub { font-size: 14px; }
-    .hover-appt .chips { gap: 4px; }
-    .hover-appt .chip { font-size: 12px; padding: 4px 6px; }
-    .drag-ghost { min-height: 44px; }
-  }
-
-  /* Telefon/tablet: 'Nazad' u poseban red iznad navigacije dana */
-  @media (max-width: 900px){
-    .cal-bar .btn-back{ flex-basis: 100%; align-self: flex-start; margin-bottom: 6px; }
+    .chooser-card { min-width:auto; max-width:280px; margin:20px; padding:20px; }
+    .chooser-title { font-size:16px; margin-bottom:16px; }
+    .chooser-actions { flex-direction:column; gap:8px; }
+    .btn-ghost, .btn-dark { padding:14px 16px; font-size:16px; min-height:48px; }
+    .hover-appt { width:90vw; max-width:340px; left:5vw !important; top:auto !important; bottom:20px !important; }
+    .hover-appt .inner { padding:16px; }
+    .hover-appt .title { font-size:16px; }
+    .hover-appt .sub { font-size:14px; }
+    .hover-appt .chips { gap:4px; }
+    .hover-appt .chip { font-size:12px; padding:4px 6px; }
+    .drag-ghost { min-height:44px; }
   }
 
   @media (min-width: 901px) { .col-body .hour { display: none; } }
@@ -1337,12 +1319,11 @@ const onTouchEndHandler = (ev) => {
     .col-body { -webkit-overflow-scrolling: touch; }
   }
 
-  /* iOS/Android "plavi akcenat" neutralizacija */
+  /* iOS/Android neutralizacija bez lomljenja svih dugmadi */
   .cal-bar .today-btn,
   .cal-bar .date-chip,
   .cal-bar .date-input,
   .cal-bar .btn,
-  button,
   input[type="date"]{
     color:#1f1f1f !important;
     -webkit-text-fill-color:#1f1f1f !important;
