@@ -18,13 +18,13 @@ function getClient(){
         id: p.id || null,
         name: fullName || (p.displayName||""),
         phone: p.phone || "",
-        email: p.email || ""
+        email: (p.email || "").toLowerCase()
       };
     }
     const id    = localStorage.getItem("clientId")   || localStorage.getItem("userId") || null;
     const name  = localStorage.getItem("clientName") || localStorage.getItem("displayName") || "";
     const phone = localStorage.getItem("clientPhone")|| localStorage.getItem("phone") || "";
-    const email = localStorage.getItem("clientEmail")|| localStorage.getItem("email") || "";
+    const email = (localStorage.getItem("clientEmail")|| localStorage.getItem("email") || "").toLowerCase();
     return { id, name, phone, email };
   }catch{
     return { id:null, name:"", phone:"", email:"" };
@@ -77,17 +77,26 @@ export default function ClientHistory(){
 
   useEffect(()=>{
     const phoneNorm = normPhone(client?.phone);
-    if (!client?.id && !phoneNorm){
+    const rawPhone  = String(client?.phone||"").trim();
+    const email     = String(client?.email||"").trim().toLowerCase();
+
+    if (!client?.id && !phoneNorm && !rawPhone && !email){
       nav("/onboarding", { replace:true, state:{ reason:"history-needs-login" }});
       return;
     }
 
     const unsubs = [];
     const seen = new Map();
+
     const pushDocs = (snap, source) => {
       snap.forEach(d => {
+        // deduplikacija po ID-u bez obzira na izvor
+        const existing = seen.get(d.id);
         const val = { id: d.id, ...d.data(), __src: source };
-        seen.set(`${source}:${d.id}`, val);
+        // preferiraj active nad history ako oba stignu
+        if (!existing || existing.__src === "history") {
+          seen.set(d.id, val);
+        }
       });
       const all = Array.from(seen.values()).sort((a,b)=>(
         (toJsDate(b.start)?.getTime()||0) - (toJsDate(a.start)?.getTime()||0)
@@ -96,42 +105,52 @@ export default function ClientHistory(){
       setLoading(false);
     };
 
+    // helper za dodavanje upita (i fallback za composite index)
+    const addQ = (col, field, value, tag) => {
+      if (!value) return;
+      try{
+        const qx = query(
+          collection(db, col),
+          where(field, "==", value),
+          orderBy("start","desc")
+        );
+        unsubs.push(onSnapshot(qx,(snap)=>pushDocs(snap, tag)));
+      }catch(e){
+        console.warn(`Query index needed for ${col}.${field}`, e);
+      }
+    };
+
+    // ACTIVE kolekcija
     if (mode==="cancel" || mode==="history"){
-      if (client?.id){
-        const q1 = query(collection(db,"appointments"), where("clientId","==",client.id), orderBy("start","desc"));
-        unsubs.push(onSnapshot(q1,(snap)=>pushDocs(snap,"active")));
-      }
-      if (phoneNorm){
-        const q2 = query(collection(db,"appointments"), where("clientPhoneNorm","==",phoneNorm), orderBy("start","desc"));
-        unsubs.push(onSnapshot(q2,(snap)=>pushDocs(snap,"active")));
-      }
+      addQ("appointments", "clientId",        client?.id,     "active");
+      addQ("appointments", "clientPhoneNorm", phoneNorm,      "active");
+      addQ("appointments", "clientPhone",     rawPhone,       "active");
+      addQ("appointments", "clientEmail",     email,          "active");
     }
+
+    // HISTORY kolekcija
     if (mode==="history"){
-      if (client?.id){
-        const h1 = query(collection(db,"appointments_history"), where("clientId","==",client.id), orderBy("start","desc"));
-        unsubs.push(onSnapshot(h1,(snap)=>pushDocs(snap,"history")));
-      }
-      if (phoneNorm){
-        const h2 = query(collection(db,"appointments_history"), where("clientPhoneNorm","==",phoneNorm), orderBy("start","desc"));
-        unsubs.push(onSnapshot(h2,(snap)=>pushDocs(snap,"history")));
-      }
+      addQ("appointments_history", "clientId",        client?.id, "history");
+      addQ("appointments_history", "clientPhoneNorm", phoneNorm,  "history");
+      addQ("appointments_history", "clientPhone",     rawPhone,   "history");
+      addQ("appointments_history", "clientEmail",     email,      "history");
     }
+
     return ()=>unsubs.forEach(u=>u&&u());
-  }, [client?.id, client?.phone, nav, mode]);
+  }, [client?.id, client?.phone, client?.email, nav, mode]);
 
   const nowMs = Date.now();
   const upcoming = items
     .filter(a =>
-      a.__src==="active" &&
+      // iz active skupa, budućnost, i nije otkazano
       toJsDate(a.start)?.getTime()>=nowMs &&
       a.status!=="cancelled"
     )
     .sort((a,b)=>toJsDate(a.start)-toJsDate(b.start));
 
-  const past = [
-    ...items.filter(a=>a.__src==="active" && toJsDate(a.start)?.getTime()<nowMs),
-    ...items.filter(a=>a.__src==="history")
-  ].sort((a,b)=>toJsDate(b.start)-toJsDate(a.start));
+  const past = items
+    .filter(a => toJsDate(a.start)?.getTime() < nowMs || a.status==="cancelled")
+    .sort((a,b)=>toJsDate(b.start)-toJsDate(a.start));
 
   async function cancel(id){
     if (!window.confirm("Sigurno želiš da otkažeš ovaj termin?")) return;
@@ -139,14 +158,14 @@ export default function ClientHistory(){
       const ref  = doc(db,"appointments", id);
       const snap = await getDoc(ref);
       if (!snap.exists()){
-        setItems(prev=>prev.filter(x=>!(x.__src==="active"&&x.id===id)));
+        setItems(prev=>prev.filter(x=>x.id!==id));
         alert("Termin više ne postoji.");
         return;
       }
       const a = snap.data()||{};
       const when = toJsDate(a.start);
 
-      // 1) upiši u istoriju sa pravopisom koji ostatak sistema očekuje
+      // 1) upiši u istoriju
       await setDoc(doc(db,"appointments_history",id),{
         ...a,
         originalId:id,
@@ -158,16 +177,15 @@ export default function ClientHistory(){
 
       // 2) ukloni iz aktivnih
       await deleteDoc(ref);
-      setItems(prev=>prev.filter(x=>!(x.__src==="active"&&x.id===id)));
+      setItems(prev=>prev.filter(x=>x.id!==id));
 
-      // 3) pošalji PUSH preko backend API-ja (ovo zaista šalje FCM)
+      // 3) pošalji PUSH
       const employeeId = await getEmployeeIdByUsername(a?.employeeUsername);
 
       const title = "❌ Termin otkazan";
       const prettyWhen = when ? `— ${niceDate(when)} u ${hhmm(when)}` : "";
       const body = `${a?.clientName || getClient()?.name || "Klijent"} je otkazao ${a?.servicesLabel || "uslugu"} ${prettyWhen}`;
 
-      // ekran/URL koji će se otvoriti na klik notifikacije
       const screen = "/admin";
       const url = `/admin?appointmentId=${id}${employeeId?`&employeeId=${employeeId}`:""}`;
 
@@ -187,7 +205,6 @@ export default function ClientHistory(){
               appointmentIds: [id],
               employeeId: employeeId || "",
               employeeUsername: a?.employeeUsername || ""
-              // po želji: clientName, servicesLabel, startISO…
             }
           })
         });
@@ -242,7 +259,6 @@ export default function ClientHistory(){
                         </div>
                         <div className="total">{fmtPrice(a.totalAmountRsd||0)} RSD</div>
                         <div className="rowbtns">
-                          <button className="btn ghost" onClick={()=>nav("/booking/employee",{state:{rescheduleId:a.id}})}>Pomeri</button>
                           <button className="btn primary" onClick={()=>cancel(a.id)}>Otkaži</button>
                         </div>
                       </div>
@@ -256,9 +272,9 @@ export default function ClientHistory(){
                 {past.length===0? <div>Nema stavki u istoriji.</div> :
                   past.map(a=>{
                     const svcs=normalizeServices(a);
-                    const canceled=(a.status==="cancelled"||a.__src==="history");
+                    const canceled=(a.status==="cancelled" || a.__src==="history");
                     return(
-                      <div key={`${a.__src}:${a.id}`} className="card">
+                      <div key={a.id} className="card">
                         <div className="head">
                           <span className={`badge ${canceled?"canceled":"done"}`}>
                             {canceled?"Otkazano":"Završen"}
