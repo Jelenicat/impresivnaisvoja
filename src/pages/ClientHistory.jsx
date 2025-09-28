@@ -172,7 +172,7 @@ export default function ClientHistory(){
       const url = `/admin?appointmentId=${id}${employeeId?`&employeeId=${employeeId}`:""}`;
 
       try{
-        await fetch("/api/sendNotification", {
+        await fetch("/api/sendNotifications", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

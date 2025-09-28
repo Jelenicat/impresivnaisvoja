@@ -566,7 +566,7 @@ try {
     employeeDocId ? `&employeeId=${emp.username}` : "" // za UI fokus koristi username u URL-u
   }`;
 
-  await fetch("/api/sendNotification", {
+  await fetch("/api/sendNotifications", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
