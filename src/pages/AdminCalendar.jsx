@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useLocation } from "react-router-dom";
+import { createPortal } from "react-dom";
+
 import {
   collection, query, where, orderBy, onSnapshot,
   deleteDoc, doc, updateDoc, serverTimestamp
@@ -27,6 +29,22 @@ function formatClient(c, role="admin"){
   const last3 = phone.replace(/\D/g,"").slice(-3);
   const initial = c.lastName ? `${c.lastName[0].toUpperCase()}.` : "";
   return `${c.firstName || ""} ${initial}${last3 ? ` · ***${last3}` : ""}`.trim();
+}
+
+function isOnlineAppt(a){
+  return a?.isOnline === true
+    || a?.bookedVia === "public_app"
+    || a?.source === "online"
+    || a?.createdBy === "public";
+}
+function isCanceledAppt(a){
+  return a?.status === "cancelled"
+    || a?.canceled === true
+    || !!a?.cancelledAt;
+}
+function getApptTs(a){
+  // univerzalno vreme poslednje izmene ili kreiranja
+  return toJsDate(a?.updatedAt) || toJsDate(a?.createdAt) || toJsDate(a?.start) || new Date(0);
 }
 
 /* ---- normalize services from appointment ----
@@ -178,6 +196,19 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
 
   // mapa kolona
   const colBodyRefs = useRef(new Map()); // empUsername -> HTMLElement
+// ---- Notifications (bell) ----
+const [notifOpen, setNotifOpen] = useState(false);
+const [notifItems, setNotifItems] = useState([]);  // [{id, type:'booked'|'canceled', ts, appt}]
+const [hasUnread, setHasUnread] = useState(false);
+
+const lastSeenKey = useMemo(
+  () => `notif:lastSeen:${role}:${currentUsername || "all"}`,
+  [role, currentUsername]
+);
+const getLastSeen = () => {
+  const v = localStorage.getItem(lastSeenKey);
+  return v ? new Date(v) : new Date(0);
+};
 
   // sada linija
   const [nowMinAbs, setNowMinAbs] = useState(0);
@@ -363,6 +394,57 @@ const focusEmpFromUrl = qs.get("employeeId"); // opcionalno
     }, 0);
     return () => clearTimeout(t);
   }, [focusApptId, appointments]);
+// === Notifikacije: slušamo poslednje izmene za period oko "sada" ===
+useEffect(() => {
+  // vremenski prozor (npr. 30 dana napred, 7 dana unazad)
+  const now = new Date();
+  const past = new Date(now.getTime() - 7*24*3600*1000);
+  const future = new Date(now.getTime() + 30*24*3600*1000);
+
+  // Base query
+  let qBase = query(
+    collection(db, "appointments"),
+    where("start", ">=", past),
+    where("start", "<=", future),
+    orderBy("start", "desc")
+  );
+
+  // Filtriranje po ulozi (radnik vidi samo svoje)
+  const unsub = onSnapshot(qBase, (snap) => {
+    const all = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(Boolean);
+
+    const scoped = (role === "worker" && currentUsername)
+      ? all.filter(a => a?.employeeUsername === currentUsername)
+      : all;
+
+    const items = [];
+    for (const a of scoped) {
+      const createdAt = toJsDate(a?.createdAt);
+      const cancelledAt = toJsDate(a?.cancelledAt);
+      const upAt = getApptTs(a);
+
+      // ONLINE BOOKED
+      if (isOnlineAppt(a) && createdAt) {
+        items.push({ id: a.id + ":booked", type: "booked", ts: createdAt, appt: a });
+      }
+      // ONLINE CANCELED
+      if (isCanceledAppt(a) && (cancelledAt || upAt)) {
+        items.push({ id: a.id + ":canceled", type: "canceled", ts: cancelledAt || upAt, appt: a });
+      }
+    }
+
+    // sortiraj novije prvo
+    items.sort((x,y) => (y.ts?.getTime?.()||0) - (x.ts?.getTime?.()||0));
+    setNotifItems(items);
+
+    // badge logika
+    const lastSeen = getLastSeen().getTime();
+    const hasNew = items.some(it => (it.ts?.getTime?.() || 0) > lastSeen);
+    setHasUnread(hasNew);
+  });
+
+  return () => unsub && unsub();
+}, [role, currentUsername]);
 
   /* ---------- actions ---------- */
   function openCreateAt(date,employeeUsername){
@@ -396,6 +478,15 @@ const focusEmpFromUrl = qs.get("employeeId"); // opcionalno
   function prevDay(){ const d=new Date(dayStart); d.setDate(d.getDate()-1); setDay(d); }
   function nextDay(){ const d=new Date(dayStart); d.setDate(d.getDate()+1); setDay(d); }
   function today(){ setDay(startOfDay(new Date())); }
+function openNotifModal(){
+  setNotifOpen(true);
+  // čim otvori, beležimo "viđeno"
+  try {
+    const nowIso = new Date().toISOString();
+    localStorage.setItem(lastSeenKey, nowIso);
+    setHasUnread(false);
+  } catch {}
+}
 
   // SWIPE: levo/desno za promenu dana (samo telefon/tablet)
   useEffect(() => {
@@ -952,6 +1043,41 @@ const onTouchEndHandler = (ev) => {
 
   .now-line-global{ position:absolute; left:0; right:0; height:0; border-top:3px solid #ef4444; z-index:4; pointer-events:none; }
 
+  /* ---- Bell (notifications) ---- */
+  .cal-bar .bell {
+    position: relative;
+    display: inline-flex; align-items: center; justify-content: center;
+    height: 40px; min-width: 44px;
+    border: 1px solid #ddd6cc; background: #fff; border-radius: 10px;
+    font-size: 18px; padding: 0 10px; line-height: 1; cursor: pointer;
+  }
+  .cal-bar .bell .dot{
+    position:absolute; top:6px; right:6px; width:10px; height:10px;
+    background:#ef4444; border-radius:999px; box-shadow: 0 0 0 2px #fff;
+  }
+
+  /* DESKTOP: pored datuma */
+  @media (min-width: 901px){
+    .cal-bar { display:flex; align-items:center; gap:10px; }
+    .cal-bar .date-chip { order: 1; }
+    .cal-bar .bell { order: 2; }
+  }
+
+  /* MOBILNI GRID: zvono ide uz 'Nazad' iznad */
+  @media (max-width: 900px){
+    .cal-bar{
+      display: grid;
+      grid-template-columns: 1fr 44px;
+      grid-template-areas:
+        "back bell"
+        "date date"
+        "nav  input"
+        "emp  emp";
+    }
+    .cal-bar .btn-back{ grid-area: back; justify-self: start; }
+    .cal-bar .bell{ grid-area: bell; justify-self: end; }
+  }
+
   /* ===== Appointments ===== */
   .appt {
     position: absolute; left: 8px; right: 8px;
@@ -963,7 +1089,6 @@ const onTouchEndHandler = (ev) => {
     z-index: 10; /* iznad linija i brojeva, ispod headera */
     touch-action: manipulation;
   }
-      /* kratki highlight kada stignemo deep-linkom */
   .appt.appt--highlight {
     outline: 3px solid #2563eb;
     outline-offset: 0;
@@ -993,13 +1118,13 @@ const onTouchEndHandler = (ev) => {
     user-select:none;
   }
 
-  /* ===== Chooser ===== */
+  /* ===== Chooser (modal) ===== */
   .chooser-backdrop{ position:fixed; inset:0; background:rgba(0,0,0,.25); display:flex; align-items:center; justify-content:center; z-index:50; }
   .chooser-card{ background:#fff; border-radius:16px; padding:16px; border:1px solid #e6e0d7; box-shadow:0 12px 30px rgba(0,0,0,.18); min-width:260px; max-width:90vw; }
   .chooser-title{ font-weight:800; margin-bottom:10px; text-align:center; font-size:16px; }
   .chooser-actions{ display:flex; gap:10px; }
   .btn-ghost{ color:#e6e0d7;padding:10px 12px; border-radius:12px; border:1px solid #ddd6cc; background:#fff; cursor:pointer; flex:1; font-size:14px; }
-  .btn-dark{ padding:10px 12px; border-radius:12px; background:#1f1f1f; color:#ddd6cc; border:1px solid #1f1f1f; cursor:pointer; flex:1; font-size:14px; }
+  .btn-dark{ padding:10px 12px; border-radius:12px;  border:1px solid #1f1f1f; cursor:pointer; flex:1; font-size:14px; }
 
   /* ===== Hover kartica ===== */
   .hover-appt{ position: fixed; z-index: 200; pointer-events: none; width: 320px; background: #ffffff; border: 1px solid #e6e0d7; border-radius: 14px; box-shadow: 0 14px 34px rgba(0,0,0,.20); overflow: hidden; background: var(--col,#fff); color:#1f1f1f; }
@@ -1195,18 +1320,164 @@ const onTouchEndHandler = (ev) => {
     outline:2px solid rgba(0,0,0,.15);
     outline-offset:2px;
   }
+
+  /* ==== Notif modal – kartice ==== */
+  .notif-list{ max-height:60vh; overflow:auto; padding-right:4px; }
+  .notif-card{
+    position: relative;
+    border: 1px solid #e6e0d7;
+    border-radius: 14px;
+    padding: 12px 12px 10px 14px;
+    margin-bottom: 10px;
+    background: #fff;
+    box-shadow: 0 6px 14px rgba(0,0,0,.06);
+  }
+  .notif-card::before{
+    content:"";
+    position:absolute; left:0; top:0; bottom:0; width:6px;
+    border-top-left-radius:14px; border-bottom-left-radius:14px;
+    background: linear-gradient(to bottom, #f4dfe8, #e6e0d7);
+  }
+  .notif-card.booked::before{ background: linear-gradient(to bottom, #d6f6df, #cdebd6); }
+  .notif-card.canceled::before{ background: linear-gradient(to bottom, #fde0e0, #f7cccc); }
+
+  .notif-head{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .notif-badge{
+    display:inline-flex; align-items:center; gap:6px;
+    font-weight:800; font-size:12px; letter-spacing:.2px;
+    background:#faf6f0; border:1px solid #e6e0d7;
+    padding:4px 10px; border-radius:999px;
+  }
+  .notif-when{ opacity:.7; font-size:12px; white-space:nowrap; }
+
+  .notif-body{ margin-top:10px; line-height:1.5; font-size:14px; }
+  .notif-row b{ font-weight:700; color:#1f1f1f; }
+  .notif-row + .notif-row{ margin-top:2px; }
+
+  .notif-services{ display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+  .notif-chip{
+    font-size:12px; font-weight:700; line-height:1;
+    padding:6px 8px; border-radius:999px;
+    border:1px solid #e6e0d7; background:#faf6f0;
+  }
+
+  .notif-price{
+    margin-top:8px; font-weight:800; font-size:14px;
+    display:inline-block; padding:4px 10px; border-radius:8px;
+    border:1px solid #e6e0d7; background:#fff;
+  }
+
+  .notif-cancel{
+    margin-top:8px; padding:8px; border-radius:10px;
+    background:#fff4f4; border:1px dashed #f2b8b8; color:#7f1d1d; font-size:13px;
+  }
+
+  @media (max-width: 480px){
+    .notif-chip{ font-size:11px; padding:5px 7px; }
+    .notif-price{ font-size:13px; }
+  }
 `}</style>
 
+
+{notifOpen && createPortal(
+  <div className="chooser-backdrop" onClick={() => setNotifOpen(false)}>
+    <div className="chooser-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520 }}>
+      <div className="chooser-title">Online obaveštenja</div>
+
+      {/* LISTA */}
+      <div className="notif-list">
+        {notifItems.length === 0 ? (
+          <div className="empty">Nema novijih online događaja.</div>
+        ) : notifItems.map((it) => {
+          const a = it.appt;
+          const client = (clients || []).find(c => c?.id === a?.clientId);
+          const items = normalizeServices(a, services);
+          const total = (a?.totalAmountRsd ?? a?.priceRsd ?? 0) || items.reduce((s, x) => s + (+x.priceRsd || 0), 0);
+          const emp = (employees || []).find(e => e.username === a?.employeeUsername);
+          const when = it.ts
+            ? it.ts.toLocaleString("sr-RS", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit", year: "numeric" })
+            : "—";
+          const isCanceled = isCanceledAppt(a);
+          const title = it.type === "booked" ? "Zakazano online" : "Otkazano online";
+          const ico = isCanceled ? "✖" : "✓";
+
+          return (
+            <div
+              key={it.id}
+              className={`notif-card ${isCanceled ? "canceled" : "booked"}`}
+            >
+              {/* Naslov + vreme događaja */}
+              <div className="notif-head">
+                <span className="notif-badge" title={title}>
+                  <span aria-hidden="true">{ico}</span> {title}
+                </span>
+                <span className="notif-when">{when}</span>
+              </div>
+
+              {/* Detalji termina */}
+              <div className="notif-body">
+                <div className="notif-row"><b>Klijent:</b> {formatClient(client, role)}</div>
+                <div className="notif-row">
+                  <b>Radnik:</b>{" "}
+                  {emp ? `${emp.firstName} ${emp.lastName || ""}`.trim() : (a?.employeeUsername || "—")}
+                </div>
+                <div className="notif-row">
+                  <b>Termin:</b> {fmtTime(a?.start)}–{fmtTime(a?.end)}
+                </div>
+
+                {Array.isArray(items) && items.length > 0 && (
+                  <div className="notif-services" aria-label="Usluge">
+                    {items.map((s, i) => (
+                      <span key={s.id || i} className="notif-chip">{s.name || "—"}</span>
+                    ))}
+                  </div>
+                )}
+
+                <div className="notif-price">Ukupno: {fmtPrice(total)} RSD</div>
+
+                {isCanceled && a?.cancelReason && (
+                  <div className="notif-cancel">
+                    <b>Razlog otkazivanja:</b> {a.cancelReason}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="chooser-actions" style={{ marginTop: 12 }}>
+        <button className="btn-dark" onClick={() => setNotifOpen(false)}>Zatvori</button>
+      </div>
+    </div>
+  </div>,
+  document.body
+)}
 
 
       <div className="admin-cal">
         <div className="cal-bar">
   {/* ← Nazad */}
-  <button
+    <button
+    type="button"
     className="btn btn-back"
     onClick={() => (window.history.length > 1 ? window.history.back() : null)}
+    aria-label="Nazad"
+    title="Nazad"
   >
     ← Nazad
+  </button>
+
+  {/* ZVONO (notifikacije) */}
+  <button
+    type="button"
+    className="bell"
+    onClick={openNotifModal}
+    title="Online obaveštenja"
+    aria-label="Online obaveštenja"
+  >
+    <span role="img" aria-hidden="true">🔔</span>
+    {hasUnread && <span className="dot" />}
   </button>
 
   {/* Datum (lepa “pilula” na mobilnom) */}

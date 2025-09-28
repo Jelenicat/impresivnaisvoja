@@ -514,6 +514,7 @@ export default function BookingTime(){
             categoryId: s.categoryId || null,
             categoryName: s.categoryName || null,
           })),
+            servicesIds: g.services.map(s => s.serviceId),
           totalDurationMin: gDuration,
           totalAmountRsd:   gAmount,
           priceRsd:         gAmount,
@@ -529,7 +530,7 @@ export default function BookingTime(){
           clientName: client.name || "",
           clientPhone: client.phone || "",
           clientEmail: client.email || "",
-
+    clientPhoneNorm: (client.phone || "").replace(/\D+/g, ""),
           isOnline: true,
           bookedVia: "public_app",
           pickedMode: (chosenEmployeeId==="firstFree") ? "firstFree" : "specific",
@@ -551,12 +552,14 @@ export default function BookingTime(){
       try {
         const notifRef = await addDoc(collection(db, "notifications"), {
           kind: "appointment_created",
-          title: "📅 Novi zakazani termin",
-          body:
-            `${client?.name || "Klijent"} je zakazao ` +
-            `${(selectedServices[0]?.name || "uslugu")}` +
-            `${selectedServices.length > 1 ? ` (+${selectedServices.length - 1})` : ""} — ` +
-            `${niceDate(confirmData.start)} u ${hhmm(confirmData.start)}`,
+            title: "📅 Zakazan termin",
+         body: `${client?.name || "Klijent"} – ${
+                 (selectedServices[0]?.name || "usluga")
+               }${selectedServices.length>1 ? ` (+${selectedServices.length-1})` : ""} · ${
+                 niceDate(confirmData.start)
+               } ${hhmm(confirmData.start)} · ${
+                 totalAmountRsd.toLocaleString("sr-RS")
+               } RSD`,
 
           toRoles: ["admin", "salon"],
           toEmployeeId: confirmData.employeeId || null,
@@ -567,10 +570,9 @@ export default function BookingTime(){
             employeeUsername: confirmData.employeeId || "",
             clientName: client?.name || "",
             startTs: confirmData.start?.getTime?.() ?? null,
-            screen: "/admin/calendar",
-            url: `/admin/calendar?appointmentId=${createdIds?.[0] || ""}${
-              confirmData?.employeeId ? `&employeeId=${confirmData.employeeId}` : ""
-            }`
+           screen: "/admin/kalendar",
+           url: `/admin/kalendar?appointmentId=${createdIds?.[0] || ""}${
+             confirmData?.employeeId ? `&employeeId=${confirmData.employeeId}` : ""   }`
           },
 
           createdAt: serverTimestamp(),

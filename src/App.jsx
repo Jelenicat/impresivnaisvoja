@@ -75,13 +75,54 @@ export default function App() {
       try {
         if (!(await isSupported())) return;
         const messaging = getMessaging(app);
+
+        const toNice = (iso) => {
+          if (!iso) return "";
+          const d = new Date(iso);
+          if (isNaN(d)) return "";
+          return d.toLocaleString("sr-RS", { dateStyle: "medium", timeStyle: "short" });
+        };
+
         unsub = onMessage(messaging, (payload) => {
-          // backend šalje data-only → koristimo payload.data
+          const d = payload?.data || {};
+          // Auto title/body na osnovu tipa i dodatnih polja
+          let autoTitle = "Impresivna i svoja";
+          let autoBody = "";
+
+          if (d.kind === "booked") {
+            autoTitle = "Zakazan termin";
+            autoBody = [
+              d.clientName ? `Klijent: ${d.clientName}` : null,
+              d.servicesLabel || null,
+              d.startISO ? `Početak: ${toNice(d.startISO)}` : null,
+            ].filter(Boolean).join(" · ");
+          } else if (d.kind === "canceled") {
+            autoTitle = "Otkazan termin";
+            autoBody = [
+              d.clientName ? `Klijent: ${d.clientName}` : null,
+              d.servicesLabel || null,
+              d.startISO ? `Vreme: ${toNice(d.startISO)}` : null,
+            ].filter(Boolean).join(" · ");
+          } else if (d.kind === "reminder") {
+            autoTitle = "Podsetnik na termin";
+            autoBody = [
+              d.servicesLabel || null,
+              d.startISO ? `Početak: ${toNice(d.startISO)}` : null,
+            ].filter(Boolean).join(" · ");
+          }
+
+          // Ako backend ipak pošalje gotove title/body – koristi njih ako nisu prazni
           const title =
-            payload?.data?.title || payload?.notification?.title || "Impresivna i svoja";
+            (d.title || "").trim() ||
+            payload?.notification?.title ||
+            autoTitle;
+
           const body =
-            payload?.data?.body || payload?.notification?.body || "";
-          const url = payload?.data?.url || payload?.data?.screen || "/";
+            (d.body || "").trim() ||
+            payload?.notification?.body ||
+            autoBody;
+
+          const url = d.url || d.screen || "/";
 
           showToast(title, body, () => {
             // klik na toast → navigacija
@@ -95,7 +136,7 @@ export default function App() {
             }
           });
 
-          // (opciono) ako želiš i sistemsku notifikaciju u foreground-u:
+          // (opciono) sistemska notifikacija i u foregroundu:
           // if (Notification.permission === "granted") {
           //   new Notification(title, { body, icon: "/icons/icon-192.png" });
           // }

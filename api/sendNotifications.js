@@ -68,7 +68,8 @@ async function sendNow(db, messaging, notifDocRef, notifData) {
       employeeId: String(notifData.data?.employeeId || notifData.toEmployeeId || ""),
       employeeUsername: String(notifData.data?.employeeUsername || ""),
       click_action: "FLUTTER_NOTIFICATION_CLICK",
-      // možeš dodati još polja po potrebi…
+      // po želji: kind, clientName, servicesLabel, startISO, ...
+      ...(notifData?.data || {}),
     },
   };
 
@@ -114,7 +115,7 @@ async function sendNow(db, messaging, notifDocRef, notifData) {
 /* ----------------------------- API handler ----------------------------- */
 export default async function handler(req, res) {
   try {
-    // (opciono) CORS za preflight
+    // CORS preflight
     if (req.method === "OPTIONS") {
       res.setHeader("Access-Control-Allow-Origin", "*");
       res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
@@ -130,7 +131,7 @@ export default async function handler(req, res) {
     const db = admin.firestore();
     const messaging = admin.messaging();
 
-    // Očekujemo oblik:
+    // Očekujemo:
     // { title, body, toRoles, toEmployeeId, data: { screen, url, appointmentIds, employeeId, employeeUsername, ... }, kind? }
     const body = req.body || {};
     const notif = {
@@ -147,7 +148,7 @@ export default async function handler(req, res) {
       sent: false,
     };
 
-    // kreiraj dokument u "notifications" (da postoji trag/istorija)
+    // upiši u "notifications" (trag)
     const ref = await db.collection("notifications").add(notif);
 
     // odmah pošalji
