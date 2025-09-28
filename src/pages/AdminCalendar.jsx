@@ -999,7 +999,7 @@ const onTouchEndHandler = (ev) => {
   .chooser-title{ font-weight:800; margin-bottom:10px; text-align:center; font-size:16px; }
   .chooser-actions{ display:flex; gap:10px; }
   .btn-ghost{ color:#e6e0d7;padding:10px 12px; border-radius:12px; border:1px solid #ddd6cc; background:#fff; cursor:pointer; flex:1; font-size:14px; }
-  .btn-dark{ padding:10px 12px; border-radius:12px; background:#1f1f1f; color:#fff; border:1px solid #1f1f1f; cursor:pointer; flex:1; font-size:14px; }
+  .btn-dark{ padding:10px 12px; border-radius:12px; background:#1f1f1f; color:#ddd6cc; border:1px solid #1f1f1f; cursor:pointer; flex:1; font-size:14px; }
 
   /* ===== Hover kartica ===== */
   .hover-appt{ position: fixed; z-index: 200; pointer-events: none; width: 320px; background: #ffffff; border: 1px solid #e6e0d7; border-radius: 14px; box-shadow: 0 14px 34px rgba(0,0,0,.20); overflow: hidden; background: var(--col,#fff); color:#1f1f1f; }
