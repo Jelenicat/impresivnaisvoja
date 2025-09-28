@@ -998,7 +998,7 @@ const onTouchEndHandler = (ev) => {
   .chooser-card{ background:#fff; border-radius:16px; padding:16px; border:1px solid #e6e0d7; box-shadow:0 12px 30px rgba(0,0,0,.18); min-width:260px; max-width:90vw; }
   .chooser-title{ font-weight:800; margin-bottom:10px; text-align:center; font-size:16px; }
   .chooser-actions{ display:flex; gap:10px; }
-  .btn-ghost{ padding:10px 12px; border-radius:12px; border:1px solid #ddd6cc; background:#fff; cursor:pointer; flex:1; font-size:14px; }
+  .btn-ghost{ color:#e6e0d7;padding:10px 12px; border-radius:12px; border:1px solid #ddd6cc; background:#fff; cursor:pointer; flex:1; font-size:14px; }
   .btn-dark{ padding:10px 12px; border-radius:12px; background:#1f1f1f; color:#fff; border:1px solid #1f1f1f; cursor:pointer; flex:1; font-size:14px; }
 
   /* ===== Hover kartica ===== */
@@ -1103,7 +1103,7 @@ const onTouchEndHandler = (ev) => {
     .chooser-card { min-width: auto; max-width: 280px; margin: 20px; padding: 20px; }
     .chooser-title { font-size: 16px; margin-bottom: 16px; }
     .chooser-actions { flex-direction: column; gap: 8px; }
-    .btn-ghost, .btn-dark { padding: 14px 16px; font-size: 16px; min-height: 48px; }
+    .btn-ghost, .btn-dark { padding: 14px 16px; font-size: 16px; min-height: 48px;color:#e6e0d7; }
     .hover-appt { width: 90vw; max-width: 340px; left: 5vw !important; top: auto !important; bottom: 20px !important; }
     .hover-appt .inner { padding: 16px; }
     .hover-appt .title { font-size: 16px; }
