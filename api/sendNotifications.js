@@ -34,13 +34,13 @@ async function collectTokensForTargets(
 ) {
   const tokenSet = new Set();
 
-  // gađaj uloge
+  // po roli
   for (const role of Array.isArray(toRoles) ? toRoles : []) {
     const snap = await db.collection("fcmTokens").where("role", "==", role).get();
     snap.forEach((t) => t.get("token") && tokenSet.add(String(t.get("token"))));
   }
 
-  // gađaj vlasnika po id/username
+  // po id/username
   const wantsOwner = toEmployeeId || toEmployeeUsername;
   if (wantsOwner) {
     const val = String(toEmployeeId || toEmployeeUsername);
@@ -64,7 +64,6 @@ async function sendNow(db, messaging, notifDocRef, notifData) {
     toEmployeeUsername: notifData.data?.employeeUsername || null,
   });
 
-  // ništa za slanje
   if (!tokens.length) {
     await notifDocRef.set(
       {
@@ -75,11 +74,10 @@ async function sendNow(db, messaging, notifDocRef, notifData) {
       },
       { merge: true }
     );
+    console.log("NOTIF DEBUG → nema tokena za slanje", notifData);
     return { successCount: 0, failureCount: 0, targetCount: 0, invalidTokens: [] };
   }
 
-  // data-only payload (nema notification sekcije — izbegava duple banere)
-  // SVA polja moraju biti STRING.
   const stringifiedExtras = Object.fromEntries(
     Object.entries(notifData?.data || {}).map(([k, v]) => [k, String(v ?? "")])
   );
@@ -130,7 +128,7 @@ async function sendNow(db, messaging, notifDocRef, notifData) {
     { merge: true }
   );
 
-  // očisti nevažeće tokene (PO POLJU "token", ne po docId)
+  // očisti nevažeće tokene
   if (invalidTokens.length) {
     const uniq = Array.from(new Set(invalidTokens));
     const batch = db.batch();
@@ -141,13 +139,20 @@ async function sendNow(db, messaging, notifDocRef, notifData) {
     await batch.commit();
   }
 
+  console.log("NOTIF DEBUG → poslato", {
+    targetCount: tokens.length,
+    successCount,
+    failureCount,
+    title: notifData.title,
+    body: notifData.body,
+  });
+
   return { successCount, failureCount, targetCount: tokens.length };
 }
 
 /* ----------------------------- API handler ----------------------------- */
 export default async function handler(req, res) {
   try {
-    // CORS preflight
     if (req.method === "OPTIONS") {
       res.setHeader("Access-Control-Allow-Origin", "*");
       res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
@@ -164,8 +169,6 @@ export default async function handler(req, res) {
     const db = admin.firestore();
     const messaging = admin.messaging();
 
-    // Očekujemo:
-    // { title, body, toRoles, toEmployeeId, toEmployeeUsername, data: { ... }, kind? }
     const body = req.body || {};
     const notif = {
       kind: body?.kind || "generic",
@@ -175,7 +178,6 @@ export default async function handler(req, res) {
       toEmployeeId: body?.toEmployeeId || null,
       data: {
         screen: "/admin",
-        // omogućavamo targeting i po username-u
         employeeUsername: body?.toEmployeeUsername || body?.data?.employeeUsername || "",
         ...(body?.data || {}),
       },
@@ -183,10 +185,7 @@ export default async function handler(req, res) {
       sent: false,
     };
 
-    // upiši u "notifications" (trag)
     const ref = await db.collection("notifications").add(notif);
-
-    // odmah pošalji
     const result = await sendNow(db, messaging, ref, notif);
 
     res.setHeader("Access-Control-Allow-Origin", "*");
