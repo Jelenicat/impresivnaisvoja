@@ -611,11 +611,12 @@ useEffect(()=>{
       </span>
     )}
 
-    {form.note?.trim() && (
-      <div className="muted" style={{ marginTop: 6, fontSize: "13px" }}>
-        📝 {form.note}
-      </div>
-    )}
+    {clientForUI?.note?.trim() && (
+  <div className="muted" style={{ marginTop: 6, fontSize: "13px" }}>
+    📝 {clientForUI.note}
+  </div>
+)}
+
   </div>
 )}
 
@@ -643,11 +644,12 @@ useEffect(()=>{
       </span>
     )}
 
-    {form.note?.trim() && (
-      <div className="muted" style={{ marginTop: 6, fontSize: "13px" }}>
-        📝 {form.note}
-      </div>
-    )}
+    {clientForUI?.note?.trim() && (
+  <div className="muted" style={{ marginTop: 6, fontSize: "13px" }}>
+    📝 {clientForUI.note}
+  </div>
+)}
+
   </div>
 )}
 

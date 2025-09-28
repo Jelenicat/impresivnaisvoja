@@ -4,7 +4,12 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App.jsx";
 import "./styles.css";
 
-// 🔹 Registracija service workera (Firebase + PWA)
+// Force scroll to top on load to prevent white space
+window.addEventListener("load", () => {
+  window.scrollTo(0, 0);
+});
+
+// Service worker registration
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker
