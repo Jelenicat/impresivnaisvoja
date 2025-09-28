@@ -1,11 +1,11 @@
-// /api/sendReminders24h.js
-export const config = { runtime: "nodejs" };
+// api/sendReminders24h.js
+import { initializeApp, getApps, applicationDefault, cert } from "firebase-admin/app";
+import { getFirestore, Timestamp, FieldValue } from "firebase-admin/firestore";
+import { getMessaging } from "firebase-admin/messaging";
 
-import admin from "firebase-admin";
-
+/* --- init firebase-admin iz ENV --- */
 function initAdmin() {
-  if (admin.apps.length) return admin.app();
-
+  if (getApps().length) return;
   const projectId   = process.env.FIREBASE_PROJECT_ID;
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
   let privateKey    = process.env.FIREBASE_PRIVATE_KEY;
@@ -15,101 +15,105 @@ function initAdmin() {
   }
   privateKey = privateKey.replace(/\\n/g, "\n");
 
-  return admin.initializeApp({
-    credential: admin.credential.cert({ projectId, clientEmail, privateKey }),
+  initializeApp({
+    credential: cert({ projectId, clientEmail, privateKey }),
   });
 }
 
-const adm = initAdmin();
-const db = adm.firestore();
-
-const ts = (d) => adm.firestore.Timestamp.fromDate(d);
-const toDate = (v) => (typeof v?.toDate === "function" ? v.toDate() : new Date(v));
+/* --- helper za CORS i debug --- */
+function ok(res, data) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  return res.status(200).json({ ok: true, ...data });
+}
+function err(res, e) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  return res.status(500).json({ ok: false, error: String(e?.message || e) });
+}
 
 export default async function handler(req, res) {
   try {
-    if (req.method !== "GET") return res.status(405).json({ ok:false, error:"Method not allowed" });
+    if (req.method === "OPTIONS") {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+      return res.status(200).end();
+    }
 
-    if (req.query.debug === "1") {
-      return res.status(200).json({
-        ok:true,
+    initAdmin();
+    const db = getFirestore();
+    const messaging = getMessaging();
+
+    // light health check
+    if ("debug" in (req.query || {})) {
+      return ok(res, {
         hasProjectId: !!process.env.FIREBASE_PROJECT_ID,
         hasClientEmail: !!process.env.FIREBASE_CLIENT_EMAIL,
         hasPrivateKey: !!process.env.FIREBASE_PRIVATE_KEY,
-        runtime:"nodejs",
+        runtime: "nodejs",
       });
     }
 
-    const force = req.query.force === "1";
+    // prozor: sada + 24h do +24h + 5min
     const now = new Date();
-    const from = new Date(now.getTime() + 24*60*60*1000);
-    const to   = new Date(from.getTime() + 10*60*1000); // prozor 10 min
+    const from = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    const to   = new Date(from.getTime() + 5 * 60 * 1000);
 
     const snap = await db.collection("appointments")
       .where("type", "==", "appointment")
       .where("status", "==", "booked")
-      .where("start", ">=", ts(from))
-      .where("start", "<", ts(to))
+      .where("start", ">=", Timestamp.fromDate(from))
+      .where("start", "<",  Timestamp.fromDate(to))
       .get();
 
+    const force = String(req.query?.force || "") === "1";
     let sent = 0;
     const inspected = [];
 
     for (const d of snap.docs) {
       const appt = { id: d.id, ...d.data() };
 
-      if (!appt.clientId) {
-        inspected.push({ id: appt.id, skipped: true, reason: "no clientId" });
-        continue;
-      }
-      if (!force && appt.remind24hSent) {
-        inspected.push({ id: appt.id, skipped: true, reason: "already sent" });
-        continue;
-      }
+      if (!appt.clientId) { inspected.push({ id: d.id, reason: "no client" }); continue; }
+      if (!force && appt.remind24hSent) { inspected.push({ id: d.id, reason: "already sent" }); continue; }
 
-      const start = toDate(appt.start);
-      if (!start || Number.isNaN(+start)) {
-        inspected.push({ id: appt.id, skipped: true, reason: "invalid start" });
-        continue;
-      }
+      // client
+      const clientDoc = await db.collection("clients").doc(appt.clientId).get();
+      if (!clientDoc.exists) { inspected.push({ id: d.id, reason: "client missing" }); continue; }
 
-      const tokensSnap = await db.collection("fcmTokens")
-        .where("ownerId", "==", appt.clientId).get();
-      const tokens = tokensSnap.docs.map(t => t.get("token")).filter(Boolean);
+      // tokens
+      const tokensSnap = await db.collection("fcmTokens").where("ownerId", "==", appt.clientId).get();
+      const tokens = tokensSnap.docs.map(x => x.get("token")).filter(Boolean);
+      if (!tokens.length) { inspected.push({ id: d.id, reason: "no tokens" }); continue; }
 
-      if (!tokens.length) {
-        inspected.push({ id: appt.id, skipped: true, reason: "no tokens" });
-        continue;
-      }
-
-      const timeTxt = start.toLocaleTimeString("sr-RS", { hour: "2-digit", minute: "2-digit" });
-      const notification = {
-        title: "Podsetnik 24h ranije",
-        body: `Sutra u ${timeTxt} imate zakazan termin.`,
+      const start = (appt.start?.toDate?.() || new Date(appt.start));
+      const payload = {
+        notification: {
+          title: "Podsetnik za termin",
+          body: `Sutra u ${start.toLocaleTimeString("sr-RS", { hour: "2-digit", minute: "2-digit" })} imate zakazan termin.`,
+        },
+        data: {
+          click_action: "FLUTTER_NOTIFICATION_CLICK",
+          appointmentId: String(appt.id),
+        },
       };
 
-      const resp = await adm.messaging().sendEachForMulticast({
-        tokens,
-        notification,
-        data: {
-          appointmentId: String(appt.id),
-          startISO: start.toISOString(),
-          click_action: "FLUTTER_NOTIFICATION_CLICK",
-        },
-      });
-
+      const resp = await messaging.sendEachForMulticast({ tokens, ...payload });
       await d.ref.set({
         remind24hSent: true,
-        remind24hAt: admin.firestore.FieldValue.serverTimestamp(),
+        remind24hAt: FieldValue.serverTimestamp()
       }, { merge: true });
 
       sent += resp.successCount;
-      inspected.push({ id: appt.id, sent: true, tokens: tokens.length, success: resp.successCount, fail: resp.failureCount });
+      inspected.push({ id: d.id, tokens: tokens.length, success: resp.successCount, fail: resp.failureCount });
     }
 
-    return res.status(200).json({ ok:true, sent, window:{from:from.toISOString(), to:to.toISOString()}, inspected });
+    return ok(res, {
+      sent,
+      window: { from: from.toISOString(), to: to.toISOString() },
+      count: snap.size,
+      inspected,
+    });
   } catch (e) {
     console.error("sendReminders24h error:", e);
-    return res.status(500).json({ ok:false, error:String(e?.message||e) });
+    return err(res, e);
   }
 }

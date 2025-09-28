@@ -1,119 +1,95 @@
-// /api/sendReminders2h.js
-export const config = { runtime: "nodejs" };
+// api/sendReminders2h.js
+import { initializeApp, getApps, cert } from "firebase-admin/app";
+import { getFirestore, Timestamp, FieldValue } from "firebase-admin/firestore";
+import { getMessaging } from "firebase-admin/messaging";
 
-import admin from "firebase-admin";
-
-/* ---- init firebase-admin (isti stil kao tvoj sendNotification.js) ---- */
 function initAdmin() {
-  if (admin.apps.length) return admin.app();
-
+  if (getApps().length) return;
   const projectId   = process.env.FIREBASE_PROJECT_ID;
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
   let privateKey    = process.env.FIREBASE_PRIVATE_KEY;
-
-  if (!projectId || !clientEmail || !privateKey) {
-    throw new Error("Missing Firebase Admin env vars.");
-  }
+  if (!projectId || !clientEmail || !privateKey) throw new Error("Missing Firebase Admin env vars.");
   privateKey = privateKey.replace(/\\n/g, "\n");
-
-  return admin.initializeApp({
-    credential: admin.credential.cert({ projectId, clientEmail, privateKey }),
-  });
+  initializeApp({ credential: cert({ projectId, clientEmail, privateKey }) });
 }
 
-const adm = initAdmin();
-const db = adm.firestore();
-
-/* ---- helper ---- */
-const ts = (d) => adm.firestore.Timestamp.fromDate(d);
-const toDate = (v) => (typeof v?.toDate === "function" ? v.toDate() : new Date(v));
+function ok(res, data)  { res.setHeader("Access-Control-Allow-Origin","*"); return res.status(200).json({ ok:true, ...data }); }
+function err(res, e)    { res.setHeader("Access-Control-Allow-Origin","*"); return res.status(500).json({ ok:false, error:String(e?.message||e) }); }
 
 export default async function handler(req, res) {
   try {
-    if (req.method !== "GET") return res.status(405).json({ ok:false, error:"Method not allowed" });
+    if (req.method === "OPTIONS") {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+      return res.status(200).end();
+    }
 
-    if (req.query.debug === "1") {
-      return res.status(200).json({
-        ok:true,
+    initAdmin();
+    const db = getFirestore();
+    const messaging = getMessaging();
+
+    if ("debug" in (req.query || {})) {
+      return ok(res, {
         hasProjectId: !!process.env.FIREBASE_PROJECT_ID,
         hasClientEmail: !!process.env.FIREBASE_CLIENT_EMAIL,
         hasPrivateKey: !!process.env.FIREBASE_PRIVATE_KEY,
-        runtime:"nodejs",
       });
     }
 
-    const force = req.query.force === "1";          // ?force=1 za ručni test
+    // prozor: sada + 2h do +2h + 5min
     const now = new Date();
-    const from = new Date(now.getTime() + 2*60*60*1000);
-    const to   = new Date(from.getTime() + 5*60*1000); // prozor 5 min
+    const from = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+    const to   = new Date(from.getTime() + 5 * 60 * 1000);
 
-    // termini koji kreću za ~2h
     const snap = await db.collection("appointments")
       .where("type", "==", "appointment")
       .where("status", "==", "booked")
-      .where("start", ">=", ts(from))
-      .where("start", "<", ts(to))
+      .where("start", ">=", Timestamp.fromDate(from))
+      .where("start", "<",  Timestamp.fromDate(to))
       .get();
 
+    const force = String(req.query?.force || "") === "1";
     let sent = 0;
     const inspected = [];
 
     for (const d of snap.docs) {
       const appt = { id: d.id, ...d.data() };
 
-      if (!appt.clientId) {
-        inspected.push({ id: appt.id, skipped: true, reason: "no clientId" });
-        continue;
-      }
-      if (!force && appt.remind2hSent) {
-        inspected.push({ id: appt.id, skipped: true, reason: "already sent" });
-        continue;
-      }
+      if (!appt.clientId) { inspected.push({ id: d.id, reason: "no client" }); continue; }
+      if (!force && appt.remind2hSent) { inspected.push({ id: d.id, reason: "already sent" }); continue; }
 
-      const start = toDate(appt.start);
-      if (!start || Number.isNaN(+start)) {
-        inspected.push({ id: appt.id, skipped: true, reason: "invalid start" });
-        continue;
-      }
+      const tokensSnap = await db.collection("fcmTokens").where("ownerId","==", appt.clientId).get();
+      const tokens = tokensSnap.docs.map(x => x.get("token")).filter(Boolean);
+      if (!tokens.length) { inspected.push({ id: d.id, reason: "no tokens" }); continue; }
 
-      // FCM tokeni za klijenta
-      const tokensSnap = await db.collection("fcmTokens")
-        .where("ownerId", "==", appt.clientId).get();
-      const tokens = tokensSnap.docs.map(t => t.get("token")).filter(Boolean);
-
-      if (!tokens.length) {
-        inspected.push({ id: appt.id, skipped: true, reason: "no tokens" });
-        continue;
-      }
-
-      const notification = {
-        title: "Podsetnik za termin",
-        body: `Za oko 2 sata (${start.toLocaleString("sr-RS")}) imate zakazan termin.`,
+      const start = (appt.start?.toDate?.() || new Date(appt.start));
+      const payload = {
+        notification: {
+          title: "Podsetnik za termin",
+          body: `Uskoro (${start.toLocaleString("sr-RS")}) imate zakazan termin.`,
+        },
+        data: {
+          click_action: "FLUTTER_NOTIFICATION_CLICK",
+          appointmentId: String(appt.id),
+        },
       };
 
-      const resp = await adm.messaging().sendEachForMulticast({
-        tokens,
-        notification,
-        data: {
-          appointmentId: String(appt.id),
-          startISO: start.toISOString(),
-          click_action: "FLUTTER_NOTIFICATION_CLICK",
-        },
-      });
-
-      // markiraj
-      await d.ref.set({
-        remind2hSent: true,
-        remind2hAt: admin.firestore.FieldValue.serverTimestamp(),
-      }, { merge: true });
+      const resp = await messaging.sendEachForMulticast({ tokens, ...payload });
+      await d.ref.set({ remind2hSent: true, remind2hAt: FieldValue.serverTimestamp() }, { merge: true });
 
       sent += resp.successCount;
-      inspected.push({ id: appt.id, sent: true, tokens: tokens.length, success: resp.successCount, fail: resp.failureCount });
+      inspected.push({ id: d.id, tokens: tokens.length, success: resp.successCount, fail: resp.failureCount });
     }
 
-    return res.status(200).json({ ok:true, sent, window:{from:from.toISOString(), to:to.toISOString()}, inspected });
+    return ok(res, {
+      sent,
+      window: { from: from.toISOString(), to: to.toISOString() },
+      count: snap.size,
+      inspected,
+    });
   } catch (e) {
     console.error("sendReminders2h error:", e);
-    return res.status(500).json({ ok:false, error:String(e?.message||e) });
+    return err(res, e);
   }
 }
