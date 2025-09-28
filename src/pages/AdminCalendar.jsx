@@ -42,6 +42,7 @@ function isCanceledAppt(a){
     || a?.canceled === true
     || !!a?.cancelledAt;
 }
+
 function getApptTs(a){
   // univerzalno vreme poslednje izmene ili kreiranja
   return toJsDate(a?.updatedAt) || toJsDate(a?.createdAt) || toJsDate(a?.start) || new Date(0);
@@ -395,56 +396,91 @@ const focusEmpFromUrl = qs.get("employeeId"); // opcionalno
     return () => clearTimeout(t);
   }, [focusApptId, appointments]);
 // === Notifikacije: slušamo poslednje izmene za period oko "sada" ===
+// === Notifikacije (BOOKED iz appointments + CANCELED iz appointments_history) ===
 useEffect(() => {
-  // vremenski prozor (npr. 30 dana napred, 7 dana unazad)
+  // prozor oko danas (po želji koriguj)
   const now = new Date();
   const past = new Date(now.getTime() - 7*24*3600*1000);
   const future = new Date(now.getTime() + 30*24*3600*1000);
 
-  // Base query
-  let qBase = query(
-    collection(db, "appointments"),
-    where("start", ">=", past),
-    where("start", "<=", future),
-    orderBy("start", "desc")
-  );
+  const unsubs = [];
 
-  // Filtriranje po ulozi (radnik vidi samo svoje)
-  const unsub = onSnapshot(qBase, (snap) => {
-    const all = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(Boolean);
+  // 1) BOOKED (appointments by createdAt)
+  const qBooked = query(
+    collection(db, "appointments"),
+    where("createdAt", ">=", past),
+    where("createdAt", "<=", future),
+    orderBy("createdAt", "desc")
+  );
+  const unsubBooked = onSnapshot(qBooked, (snap) => {
+    const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
     const scoped = (role === "worker" && currentUsername)
       ? all.filter(a => a?.employeeUsername === currentUsername)
       : all;
 
-    const items = [];
-    for (const a of scoped) {
-      const createdAt = toJsDate(a?.createdAt);
-      const cancelledAt = toJsDate(a?.cancelledAt);
-      const upAt = getApptTs(a);
+    const bookedItems = scoped
+      .map(a => {
+        const ts = toJsDate(a?.createdAt) || toJsDate(a?.upAt) || getApptTs(a);
+        if (!ts) return null;
+        return isOnlineAppt(a) ? { id: a.id + ":booked", type: "booked", ts, appt: a } : null;
+      })
+      .filter(Boolean);
 
-      // ONLINE BOOKED
-      if (isOnlineAppt(a) && createdAt) {
-        items.push({ id: a.id + ":booked", type: "booked", ts: createdAt, appt: a });
-      }
-      // ONLINE CANCELED
-      if (isCanceledAppt(a) && (cancelledAt || upAt)) {
-        items.push({ id: a.id + ":canceled", type: "canceled", ts: cancelledAt || upAt, appt: a });
-      }
-    }
+    setNotifItems(prev => {
+      // skini stare booked i ubaci sveže, pa sortiraj
+      const keep = prev.filter(x => !String(x.id).endsWith(":booked"));
+      const merged = [...keep, ...bookedItems].sort((x,y)=>(y.ts?.getTime?.()||0)-(x.ts?.getTime?.()||0));
+      return merged;
+    });
 
-    // sortiraj novije prvo
-    items.sort((x,y) => (y.ts?.getTime?.()||0) - (x.ts?.getTime?.()||0));
-    setNotifItems(items);
-
-    // badge logika
+    // Badge (unread)
     const lastSeen = getLastSeen().getTime();
-    const hasNew = items.some(it => (it.ts?.getTime?.() || 0) > lastSeen);
-    setHasUnread(hasNew);
+    const anyNew = bookedItems.some(it => (it.ts?.getTime?.() || 0) > lastSeen);
+    if (anyNew) setHasUnread(true);
   });
+  unsubs.push(unsubBooked);
 
-  return () => unsub && unsub();
-}, [role, currentUsername]);
+  // 2) CANCELED (appointments_history by archivedAt)
+  const qHist = query(
+    collection(db, "appointments_history"),
+    where("archivedAt", ">=", past),
+    where("archivedAt", "<=", future),
+    orderBy("archivedAt", "desc")
+  );
+  const unsubHist = onSnapshot(qHist, (snap) => {
+    const hist = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    const scoped = (role === "worker" && currentUsername)
+      ? hist.filter(a => a?.employeeUsername === currentUsername)
+      : hist;
+
+    const canceledItems = scoped
+      .map(a => {
+        if (!isCanceledAppt(a)) return null;
+        const ts = apptCanceledAt(a);
+        if (!ts) return null;
+        return { id: a.id + ":canceled", type: "canceled", ts, appt: a };
+      })
+      .filter(Boolean);
+
+    setNotifItems(prev => {
+      // skini stare canceled i ubaci sveže, pa sortiraj
+      const keep = prev.filter(x => !String(x.id).endsWith(":canceled"));
+      const merged = [...keep, ...canceledItems].sort((x,y)=>(y.ts?.getTime?.()||0)-(x.ts?.getTime?.()||0));
+      return merged;
+    });
+
+    // Badge (unread)
+    const lastSeen = getLastSeen().getTime();
+    const anyNew = canceledItems.some(it => (it.ts?.getTime?.() || 0) > lastSeen);
+    if (anyNew) setHasUnread(true);
+  });
+  unsubs.push(unsubHist);
+
+  return () => unsubs.forEach(u => u && u());
+}, [role, currentUsername, dayStart]);
+
 
   /* ---------- actions ---------- */
   function openCreateAt(date,employeeUsername){
