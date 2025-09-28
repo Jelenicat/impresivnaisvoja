@@ -76,38 +76,43 @@ export default function App() {
         if (!(await isSupported())) return;
         const messaging = getMessaging(app);
 
-        const toNice = (iso) => {
-          if (!iso) return "";
-          const d = new Date(iso);
+        const toNice = (tsOrIso) => {
+          if (!tsOrIso) return "";
+          const d =
+            typeof tsOrIso === "string" ? new Date(tsOrIso) : new Date(Number(tsOrIso));
           if (isNaN(d)) return "";
           return d.toLocaleString("sr-RS", { dateStyle: "medium", timeStyle: "short" });
         };
 
         unsub = onMessage(messaging, (payload) => {
           const d = payload?.data || {};
+
           // Auto title/body na osnovu tipa i dodatnih polja
           let autoTitle = "Impresivna i svoja";
           let autoBody = "";
 
-          if (d.kind === "booked") {
+          const kind = d.kind || d.type; // tolerancija na nazive
+          const whenTxt = d.startISO ? toNice(d.startISO) : (d.startTs ? toNice(d.startTs) : "");
+
+          if (kind === "booked" || kind === "appointment_created") {
             autoTitle = "Zakazan termin";
             autoBody = [
               d.clientName ? `Klijent: ${d.clientName}` : null,
               d.servicesLabel || null,
-              d.startISO ? `Početak: ${toNice(d.startISO)}` : null,
+              whenTxt ? `Početak: ${whenTxt}` : null,
             ].filter(Boolean).join(" · ");
-          } else if (d.kind === "canceled") {
+          } else if (kind === "canceled" || kind === "appointment_canceled") {
             autoTitle = "Otkazan termin";
             autoBody = [
               d.clientName ? `Klijent: ${d.clientName}` : null,
               d.servicesLabel || null,
-              d.startISO ? `Vreme: ${toNice(d.startISO)}` : null,
+              whenTxt ? `Vreme: ${whenTxt}` : null,
             ].filter(Boolean).join(" · ");
-          } else if (d.kind === "reminder") {
+          } else if (kind === "reminder") {
             autoTitle = "Podsetnik na termin";
             autoBody = [
               d.servicesLabel || null,
-              d.startISO ? `Početak: ${toNice(d.startISO)}` : null,
+              whenTxt ? `Početak: ${whenTxt}` : null,
             ].filter(Boolean).join(" · ");
           }
 
@@ -122,17 +127,25 @@ export default function App() {
             payload?.notification?.body ||
             autoBody;
 
-          const url = d.url || d.screen || "/";
+          // Fallback URL: ako nema eksplicitnog d.url, probaj da složiš kalendar sa query parametrima
+          const primaryApptId =
+            d.appointmentId || (Array.isArray(d.appointmentIds) ? d.appointmentIds[0] : "");
+          let url = d.url || d.screen || "";
+          if (!url) {
+            const u = new URL("/admin/kalendar", window.location.origin);
+            if (primaryApptId) u.searchParams.set("appointmentId", primaryApptId);
+            if (d.employeeUsername) u.searchParams.set("employeeId", d.employeeUsername);
+            url = u.toString();
+          }
 
           showToast(title, body, () => {
-            // klik na toast → navigacija
             try {
               const dest = /^https?:\/\//i.test(url)
                 ? url
                 : new URL(url, window.location.origin).toString();
               window.location.assign(dest);
             } catch {
-              window.location.assign("/");
+              window.location.assign("/admin/kalendar");
             }
           });
 
@@ -150,7 +163,11 @@ export default function App() {
 
   // vrednosti iz localStorage za prosleđivanje u AdminCalendar/Finance
   const role = localStorage.getItem("role") || "";
-  const currentUsername = localStorage.getItem("employeeId") || null;
+  // Kalendar očekuje username – čuvamo ga kao employeeUsername (fallback na "username")
+  const currentUsername =
+    localStorage.getItem("employeeUsername") ||
+    localStorage.getItem("username") ||
+    null;
 
   return (
     <div className="app-shell">

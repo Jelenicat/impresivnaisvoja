@@ -549,45 +549,47 @@ export default function BookingTime(){
       }
 
       // === ENQUEUE PUSH NOTIFIKACIJE + ODMAH POŠALJI ===
-      try {
-        const notifRef = await addDoc(collection(db, "notifications"), {
-          kind: "appointment_created",
-            title: "📅 Zakazan termin",
-         body: `${client?.name || "Klijent"} – ${
-                 (selectedServices[0]?.name || "usluga")
-               }${selectedServices.length>1 ? ` (+${selectedServices.length-1})` : ""} · ${
-                 niceDate(confirmData.start)
-               } ${hhmm(confirmData.start)} · ${
-                 totalAmountRsd.toLocaleString("sr-RS")
-               } RSD`,
+     // === POŠALJI PUSH NOTIFIKACIJU DIREKTNO PREKO API-JA (bez addDoc na frontu) ===
+try {
+  const emp = employees.find(e => e.username === (confirmData.employeeId || ""));
+  const employeeDocId = emp?.id || null;
 
-          toRoles: ["admin", "salon"],
-          toEmployeeId: confirmData.employeeId || null,
+  const title = "📅 Zakazan termin";
+  const body =
+    `${client?.name || "Klijent"} – ` +
+    `${(selectedServices[0]?.name || "usluga")}` +
+    `${selectedServices.length > 1 ? ` (+${selectedServices.length - 1})` : ""} · ` +
+    `${niceDate(confirmData.start)} ${hhmm(confirmData.start)} · ` +
+    `${totalAmountRsd.toLocaleString("sr-RS")} RSD`;
 
-          data: {
-            appointmentIds: createdIds,
-            employeeId: confirmData.employeeId || "",
-            employeeUsername: confirmData.employeeId || "",
-            clientName: client?.name || "",
-            startTs: confirmData.start?.getTime?.() ?? null,
-           screen: "/admin/kalendar",
-           url: `/admin/kalendar?appointmentId=${createdIds?.[0] || ""}${
-             confirmData?.employeeId ? `&employeeId=${confirmData.employeeId}` : ""   }`
-          },
+  const url = `/admin/kalendar?appointmentId=${createdIds?.[0] || ""}${
+    employeeDocId ? `&employeeId=${emp.username}` : "" // za UI fokus koristi username u URL-u
+  }`;
 
-          createdAt: serverTimestamp(),
-          sent: false
-        });
-
-        fetch("/api/sendNotifications", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ notifId: notifRef.id })
-        }).catch((e) => console.warn("sendNotifications POST error:", e));
-
-      } catch (e) {
-        console.warn("enqueue notifikacije nije uspeo:", e);
+  await fetch("/api/sendNotification", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      kind: "appointment_created",
+      title,
+      body,
+      toRoles: ["admin", "salon"],
+      toEmployeeId: employeeDocId,            // <<— VAŽNO: ID dokumenta employee-a
+      data: {
+        screen: "/admin/kalendar",
+        url,                                  // eksplicitni deep-link za SW
+        appointmentIds: createdIds,
+        employeeId: employeeDocId || "",      // ID dokumenta
+        employeeUsername: emp?.username || "",// za svaki slučaj
+        clientName: client?.name || "",
+        startTs: confirmData.start?.getTime?.() ?? null
       }
+    })
+  });
+} catch (e) {
+  console.warn("Slanje notifikacije nije uspelo:", e);
+}
+
 
       pushToast(`✅ Rezervacija sačuvana (${createdIds.length} kartica)`);
       setConfirmOpen(false);

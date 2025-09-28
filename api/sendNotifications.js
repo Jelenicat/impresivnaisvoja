@@ -4,13 +4,18 @@ import admin from "firebase-admin";
 /* ------------ init firebase-admin iz ENV varijabli ------------ */
 function initAdmin() {
   if (admin.apps.length) return admin.app();
+
   const projectId   = process.env.FIREBASE_PROJECT_ID;
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
   let privateKey    = process.env.FIREBASE_PRIVATE_KEY;
+
   if (!projectId || !clientEmail || !privateKey) {
     throw new Error("Missing Firebase Admin env vars.");
   }
+
+  // Vercel/Node multiline key fix
   privateKey = privateKey.replace(/\\n/g, "\n");
+
   return admin.initializeApp({
     credential: admin.credential.cert({ projectId, clientEmail, privateKey }),
   });
@@ -23,17 +28,29 @@ function chunk(arr, n = 500) {
 }
 
 /* ------------ target lookup: fcmTokens by role / owner ------------ */
-async function collectTokensForTargets(db, { toRoles = [], toEmployeeId = null }) {
+async function collectTokensForTargets(
+  db,
+  { toRoles = [], toEmployeeId = null, toEmployeeUsername = null }
+) {
   const tokenSet = new Set();
 
+  // gađaj uloge
   for (const role of Array.isArray(toRoles) ? toRoles : []) {
     const snap = await db.collection("fcmTokens").where("role", "==", role).get();
     snap.forEach((t) => t.get("token") && tokenSet.add(String(t.get("token"))));
   }
 
-  if (toEmployeeId) {
-    const snap = await db.collection("fcmTokens").where("ownerId", "==", toEmployeeId).get();
-    snap.forEach((t) => t.get("token") && tokenSet.add(String(t.get("token"))));
+  // gađaj vlasnika po id/username
+  const wantsOwner = toEmployeeId || toEmployeeUsername;
+  if (wantsOwner) {
+    const val = String(toEmployeeId || toEmployeeUsername);
+    const [q1, q2] = await Promise.all([
+      db.collection("fcmTokens").where("ownerId", "==", val).get(),
+      db.collection("fcmTokens").where("ownerUsername", "==", val).get(),
+    ]);
+    [q1, q2].forEach((snap) => {
+      snap.forEach((t) => t.get("token") && tokenSet.add(String(t.get("token"))));
+    });
   }
 
   return Array.from(tokenSet);
@@ -44,32 +61,40 @@ async function sendNow(db, messaging, notifDocRef, notifData) {
   const tokens = await collectTokensForTargets(db, {
     toRoles: notifData.toRoles,
     toEmployeeId: notifData.toEmployeeId,
+    toEmployeeUsername: notifData.data?.employeeUsername || null,
   });
 
   // ništa za slanje
   if (!tokens.length) {
-    await notifDocRef.set({
-      sent: true,
-      sentAt: admin.firestore.FieldValue.serverTimestamp(),
-      targetCount: 0,
-      info: "No recipients",
-    }, { merge: true });
+    await notifDocRef.set(
+      {
+        sent: true,
+        sentAt: admin.firestore.FieldValue.serverTimestamp(),
+        targetCount: 0,
+        info: "No recipients",
+      },
+      { merge: true }
+    );
     return { successCount: 0, failureCount: 0, targetCount: 0, invalidTokens: [] };
   }
 
-  // data-only payload (nema notification sekcije — sprečava duple)
+  // data-only payload (nema notification sekcije — izbegava duple banere)
+  // SVA polja moraju biti STRING.
+  const stringifiedExtras = Object.fromEntries(
+    Object.entries(notifData?.data || {}).map(([k, v]) => [k, String(v ?? "")])
+  );
+
   const payload = {
     data: {
-      title:  notifData.title || "Obaveštenje",
-      body:   notifData.body  || "",
-      url:    notifData.data?.url || "",
-      screen: notifData.data?.screen || "/admin",
+      title: String(notifData.title || "Obaveštenje"),
+      body: String(notifData.body || ""),
+      url: String(notifData.data?.url || ""),
+      screen: String(notifData.data?.screen || "/admin"),
       appointmentId: String(notifData.data?.appointmentIds?.[0] || ""),
       employeeId: String(notifData.data?.employeeId || notifData.toEmployeeId || ""),
       employeeUsername: String(notifData.data?.employeeUsername || ""),
       click_action: "FLUTTER_NOTIFICATION_CLICK",
-      // po želji: kind, clientName, servicesLabel, startISO, ...
-      ...(notifData?.data || {}),
+      ...stringifiedExtras,
     },
   };
 
@@ -85,7 +110,8 @@ async function sendNow(db, messaging, notifDocRef, notifData) {
 
     resp.responses.forEach((r, idx) => {
       if (!r.success) {
-        const code = r?.error?.errorInfo?.code || r?.error?.code || r?.error?.message || "";
+        const code =
+          r?.error?.errorInfo?.code || r?.error?.code || r?.error?.message || "";
         if (String(code).includes("registration-token-not-registered")) {
           invalidTokens.push(g[idx]);
         }
@@ -93,19 +119,25 @@ async function sendNow(db, messaging, notifDocRef, notifData) {
     });
   }
 
-  await notifDocRef.set({
-    sent: true,
-    sentAt: admin.firestore.FieldValue.serverTimestamp(),
-    targetCount: tokens.length,
-    successCount,
-    failCount: failureCount,
-  }, { merge: true });
+  await notifDocRef.set(
+    {
+      sent: true,
+      sentAt: admin.firestore.FieldValue.serverTimestamp(),
+      targetCount: tokens.length,
+      successCount,
+      failCount: failureCount,
+    },
+    { merge: true }
+  );
 
-  // očisti nevažeće tokene (docId = token)
+  // očisti nevažeće tokene (PO POLJU "token", ne po docId)
   if (invalidTokens.length) {
     const uniq = Array.from(new Set(invalidTokens));
     const batch = db.batch();
-    uniq.forEach((tk) => batch.delete(db.collection("fcmTokens").doc(tk)));
+    for (const tk of uniq) {
+      const qs = await db.collection("fcmTokens").where("token", "==", tk).get();
+      qs.forEach((doc) => batch.delete(doc.ref));
+    }
     await batch.commit();
   }
 
@@ -124,6 +156,7 @@ export default async function handler(req, res) {
     }
 
     if (req.method !== "POST") {
+      res.setHeader("Access-Control-Allow-Origin", "*");
       return res.status(405).json({ ok: false, error: "Method not allowed" });
     }
 
@@ -132,7 +165,7 @@ export default async function handler(req, res) {
     const messaging = admin.messaging();
 
     // Očekujemo:
-    // { title, body, toRoles, toEmployeeId, data: { screen, url, appointmentIds, employeeId, employeeUsername, ... }, kind? }
+    // { title, body, toRoles, toEmployeeId, toEmployeeUsername, data: { ... }, kind? }
     const body = req.body || {};
     const notif = {
       kind: body?.kind || "generic",
@@ -142,6 +175,8 @@ export default async function handler(req, res) {
       toEmployeeId: body?.toEmployeeId || null,
       data: {
         screen: "/admin",
+        // omogućavamo targeting i po username-u
+        employeeUsername: body?.toEmployeeUsername || body?.data?.employeeUsername || "",
         ...(body?.data || {}),
       },
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -154,6 +189,7 @@ export default async function handler(req, res) {
     // odmah pošalji
     const result = await sendNow(db, messaging, ref, notif);
 
+    res.setHeader("Access-Control-Allow-Origin", "*");
     return res.status(200).json({
       ok: true,
       notifId: ref.id,
@@ -161,6 +197,7 @@ export default async function handler(req, res) {
     });
   } catch (e) {
     console.error("sendNotification error:", e);
+    res.setHeader("Access-Control-Allow-Origin", "*");
     return res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
 }

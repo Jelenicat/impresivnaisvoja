@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   collection, query, where, orderBy, onSnapshot,
-  doc, getDoc, setDoc, deleteDoc, addDoc, serverTimestamp
+  doc, getDoc, setDoc, deleteDoc, serverTimestamp, getDocs
 } from "firebase/firestore";
 import { db } from "../firebase";
 
@@ -54,6 +54,15 @@ function normalizeServices(a){
   }
   if (typeof raw==="object") return [{id:raw.id||raw.serviceId, name:raw.name||"Usluga", priceRsd:raw.priceRsd||0}];
   return [];
+}
+
+/* ---------- lookup helper: nadji employee docId po username ---------- */
+async function getEmployeeIdByUsername(username){
+  if (!username) return null;
+  const q = query(collection(db, "employees"), where("username", "==", username));
+  const snap = await getDocs(q);
+  const first = snap.docs[0];
+  return first ? first.id : null;
 }
 
 /* ---------- component ---------- */
@@ -115,7 +124,7 @@ export default function ClientHistory(){
     .filter(a =>
       a.__src==="active" &&
       toJsDate(a.start)?.getTime()>=nowMs &&
-      a.status!=="cancelled" // <-- uskladjeno
+      a.status!=="cancelled"
     )
     .sort((a,b)=>toJsDate(a.start)-toJsDate(b.start));
 
@@ -137,7 +146,7 @@ export default function ClientHistory(){
       const a = snap.data()||{};
       const when = toJsDate(a.start);
 
-      // upiši u istoriju sa pravopisom koji ostatak sistema očekuje
+      // 1) upiši u istoriju sa pravopisom koji ostatak sistema očekuje
       await setDoc(doc(db,"appointments_history",id),{
         ...a,
         originalId:id,
@@ -147,20 +156,44 @@ export default function ClientHistory(){
         archivedAt:serverTimestamp()
       },{merge:true});
 
-      // ukloni iz aktivnih
+      // 2) ukloni iz aktivnih
       await deleteDoc(ref);
       setItems(prev=>prev.filter(x=>!(x.__src==="active"&&x.id===id)));
 
-      // notifikacija (ostaje kind sa jednim L, ako tako koristiš u drugim delovima)
-      await addDoc(collection(db,"notifications"),{
-        kind:"appointment_canceled",
-        title:"❌ Termin otkazan",
-        body:`${a?.clientName||getClient()?.name||"Klijent"} je otkazao ${a?.servicesLabel||"uslugu"} ${when?`— ${niceDate(when)} u ${hhmm(when)}`:""}`,
-        toRoles:["admin","salon"],
-        toEmployeeId:a?.employeeUsername||null,
-        createdAt:serverTimestamp(),
-        sent:false
-      });
+      // 3) pošalji PUSH preko backend API-ja (ovo zaista šalje FCM)
+      const employeeId = await getEmployeeIdByUsername(a?.employeeUsername);
+
+      const title = "❌ Termin otkazan";
+      const prettyWhen = when ? `— ${niceDate(when)} u ${hhmm(when)}` : "";
+      const body = `${a?.clientName || getClient()?.name || "Klijent"} je otkazao ${a?.servicesLabel || "uslugu"} ${prettyWhen}`;
+
+      // ekran/URL koji će se otvoriti na klik notifikacije
+      const screen = "/admin";
+      const url = `/admin?appointmentId=${id}${employeeId?`&employeeId=${employeeId}`:""}`;
+
+      try{
+        await fetch("/api/sendNotification", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            kind: "appointment_canceled",
+            title,
+            body,
+            toRoles: ["admin","salon"],
+            toEmployeeId: employeeId || null,
+            data: {
+              screen,
+              url,
+              appointmentIds: [id],
+              employeeId: employeeId || "",
+              employeeUsername: a?.employeeUsername || ""
+              // po želji: clientName, servicesLabel, startISO…
+            }
+          })
+        });
+      }catch(e){
+        console.warn("Slanje notifikacije nije uspelo:", e);
+      }
 
       alert("Termin je otkazan.");
     }catch(e){ console.error(e); alert("Greška pri otkazivanju."); }
@@ -170,7 +203,7 @@ export default function ClientHistory(){
     <div className="wrap">
       <style>{`
         .wrap{min-height:100dvh;background:#f5f5f5;}
-        .sheet{background:#fff;min-height:100dvh;padding:20px;}
+        .sheet{background:#fff;min-height:100dvh;padding:50px 20px;}
         @media(min-width:768px){.sheet{max-width:800px;margin:0 auto;border-radius:22px;box-shadow:0 4px 14px rgba(0,0,0,.08);}}
         .title{text-align:center;font-size:24px;font-weight:900;margin-bottom:20px;pedigng-top:40px;}
         .card{border:1px solid #e5e5e5;border-radius:16px;padding:16px 18px;margin-bottom:18px;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.05);}

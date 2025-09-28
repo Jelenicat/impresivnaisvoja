@@ -11,10 +11,15 @@ firebase.initializeApp({
   projectId: "impresivnaisvoja-7da43",
   storageBucket: "impresivnaisvoja-7da43.appspot.com",
   messagingSenderId: "184235668413",
-  appId: "1:184235668413:web:bb7a87ba08411ca67418d4"
+  appId: "1:184235668413:web:bb7a87ba08411ca67418d4",
 });
 
-const messaging = firebase.messaging();
+let messaging;
+try {
+  messaging = firebase.messaging();
+} catch (_) {
+  // no-op (npr. browser bez FCM-a)
+}
 
 /* --------------- PWA: jednostavan offline cache --------------- */
 const CACHE_NAME = "impresivna-v1";
@@ -23,7 +28,7 @@ const APP_SHELL = [
   "/index.html",
   "/manifest.webmanifest",
   "/icons/icon-192.png",
-  "/icons/icon-512.png"
+  "/icons/icon-512.png",
 ];
 
 self.addEventListener("install", (event) => {
@@ -33,9 +38,9 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.map((k) => (k !== CACHE_NAME ? caches.delete(k) : null)))
-    )
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.map((k) => (k !== CACHE_NAME ? caches.delete(k) : null))))
   );
   self.clients.claim();
 });
@@ -46,9 +51,13 @@ self.addEventListener("fetch", (event) => {
   const isHTML = req.headers.get("accept")?.includes("text/html");
 
   if (isHTML) {
-    event.respondWith(fetch(req).catch(() => caches.match("/index.html")));
+    event.respondWith(
+      fetch(req).catch(() => caches.match("/index.html"))
+    );
   } else {
-    event.respondWith(caches.match(req).then((res) => res || fetch(req)));
+    event.respondWith(
+      caches.match(req).then((res) => res || fetch(req))
+    );
   }
 });
 
@@ -59,32 +68,40 @@ self.addEventListener("fetch", (event) => {
    - Ovdje sami prikazujemo notifikaciju (tačno jedna)
    - Ako stigne i `notification`, fallback-ujemo na njega (kompatibilnost)
 */
-messaging.onBackgroundMessage((payload) => {
-  const title =
-    payload?.data?.title ||
-    payload?.notification?.title ||
-    "Impresivna i svoja";
+if (messaging && messaging.onBackgroundMessage) {
+  messaging.onBackgroundMessage((payload) => {
+    try {
+      const title =
+        payload?.data?.title ||
+        payload?.notification?.title ||
+        "Impresivna i svoja";
 
-  const body =
-    payload?.data?.body ||
-    payload?.notification?.body ||
-    "";
+      const body =
+        payload?.data?.body ||
+        payload?.notification?.body ||
+        "";
 
-  // Sačuvaj kompletan data objekat (za klik handler)
-  const data = {
-    ...(payload?.data || {}),
-    // Normalize: ako je backend slučajno poslao employeeUsername umesto employeeId,
-    // zadrži oba ključa (klik handler koristi employeeId)
-    employeeId: payload?.data?.employeeId || payload?.data?.employeeUsername || ""
-  };
+      // Stringifikuj sva data polja (robustno)
+      const rawData = payload?.data || {};
+      const data = Object.fromEntries(
+        Object.entries(rawData).map(([k, v]) => [k, String(v ?? "")])
+      );
 
-  self.registration.showNotification(title, {
-    body,
-    icon: "/icons/icon-192.png",
-    badge: "/icons/icon-192.png",
-    data
+      // Normalize: ako je backend poslao employeeUsername, setuj i employeeId radi URL-a
+      data.employeeId = data.employeeId || data.employeeUsername || "";
+
+      // Prikaži notifikaciju
+      self.registration.showNotification(title, {
+        body,
+        icon: "/icons/icon-192.png",
+        badge: "/icons/icon-192.png",
+        data,
+      });
+    } catch (_) {
+      // swallow
+    }
   });
-});
+}
 
 /* --------------- Klik na notifikaciju -> deep-link --------------- */
 self.addEventListener("notificationclick", (event) => {
@@ -101,7 +118,7 @@ self.addEventListener("notificationclick", (event) => {
     // Ako nismo dobili eksplicitni d.url, dopuni query parametrima
     if (!d.url) {
       if (d.appointmentId) u.searchParams.set("appointmentId", d.appointmentId);
-      if (d.employeeId)    u.searchParams.set("employeeId", d.employeeId);
+      if (d.employeeId) u.searchParams.set("employeeId", d.employeeId);
     }
     url = u.toString();
   }
@@ -115,8 +132,7 @@ self.addEventListener("notificationclick", (event) => {
         for (const client of list) {
           try {
             await client.focus();
-            // navigate radi samo za isti origin – ovdje jeste
-            await client.navigate(url);
+            await client.navigate(url); // isto porijeklo → dozvoljeno
             return;
           } catch (_) {
             // ako ne uspe, probaj sledeći ili padni na openWindow
