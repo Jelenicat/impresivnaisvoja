@@ -38,9 +38,20 @@ function isOnlineAppt(a){
     || a?.createdBy === "public";
 }
 function isCanceledAppt(a){
-  return a?.status === "cancelled"
-    || a?.canceled === true
-    || !!a?.cancelledAt;
+  if (!a) return false;
+  return a.status === "cancelled"
+      || a.status === "canceled"     // US varijanta
+      || a.canceled === true
+      || !!a.cancelledAt
+      || !!a.canceledAt;
+}
+
+// univerzalni timestamp otkazivanja
+function apptCanceledAt(a){
+  return toJsDate(a?.cancelledAt) 
+      || toJsDate(a?.canceledAt) 
+      || toJsDate(a?.archivedAt) 
+      || null;
 }
 
 function getApptTs(a){
