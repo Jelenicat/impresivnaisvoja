@@ -367,17 +367,33 @@ export default function CalendarEventModal({
   }
 
   const selectedClient = (clients || []).find(c => c.id === form.clientId);
-  const clientForUI = clientLive || selectedClient || null;
 
-  useEffect(()=>{
-    if (!clientForUI) return;
-    const cnt = clientForUI.noShowCount || 0;
-    if (cnt >= 5 && !clientForUI.blocked) {
-      updateDoc(doc(db,"clients", clientForUI.id), {
-        blocked: true, updatedAt: serverTimestamp()
-      }).catch(console.error);
-    }
-  }, [clientForUI?.id, clientForUI?.noShowCount, clientForUI?.blocked]);
+const fallbackFromAppointment = useMemo(() => {
+  const full = String(value?.clientName || "").trim();
+  const [first, ...rest] = full.split(/\s+/);
+  if (!form.clientId && !full && !value?.clientPhone && !value?.clientEmail) return null;
+  return {
+    id: form.clientId || null,
+    firstName: first || "",
+    lastName: (rest.join(" ") || ""),
+    phone: value?.clientPhone || "",
+    email: value?.clientEmail || "",
+  };
+}, [form.clientId, value?.clientName, value?.clientPhone, value?.clientEmail]);
+
+const clientForUI = clientLive || selectedClient || fallbackFromAppointment;
+
+
+useEffect(()=>{
+  if (!clientForUI || !clientForUI.id) return; // guard
+  const cnt = clientForUI.noShowCount || 0;
+  if (cnt >= 5 && !clientForUI.blocked) {
+    updateDoc(doc(db,"clients", clientForUI.id), {
+      blocked: true, updatedAt: serverTimestamp()
+    }).catch(console.error);
+  }
+}, [clientForUI?.id, clientForUI?.noShowCount, clientForUI?.blocked]);
+
 
   async function handleToggleBlock(){
     if(!clientForUI) return;
@@ -527,6 +543,8 @@ export default function CalendarEventModal({
 
   /* ako koristiš čip sa imenom klijenta – dodaj razmak posle njega */
   .cal-modal .client-chip{ margin-right:8px; }
+  .cal-modal .client-chip{ cursor: pointer; }
+
 }.cal-modal .h-actions .icon-btn{
   flex:0 0 auto;
 }
@@ -574,24 +592,34 @@ export default function CalendarEventModal({
                     <button className="pill danger" onClick={()=>onDelete?.(form.id)} title="Obriši">Obriši</button>
                   )}
                 </div>
+{!isBlock && clientForUI && (
+  <div
+    className="client-info-row"
+    style={{ marginTop: 6, flexDirection: "column", alignItems: "flex-start" }}
+  >
+    {form.clientId ? (
+      <button
+        className="client-chip"
+        onClick={openClientProfile}
+        title="Otvori profil klijenta"
+      >
+        👤 {formatClient(clientForUI || {}, role)}
+      </button>
+    ) : (
+      <span className="client-chip" title="Klijent">
+        👤 {formatClient(clientForUI || {}, role)}
+      </span>
+    )}
 
-                {!isBlock && form.clientId && (
-  <div className="client-info-row" style={{ marginTop: 6 }}>
-    <button
-      className="client-chip"
-      onClick={openClientProfile}
-      title="Otvori profil klijenta"
-    >
-      👤 {formatClient(clientForUI || {}, role)}
-    </button>
+    {form.note?.trim() && (
+      <div className="muted" style={{ marginTop: 6, fontSize: "13px" }}>
+        📝 {form.note}
+      </div>
+    )}
   </div>
 )}
 
-                {form.note?.trim() && (
-  <div className="muted" style={{marginTop:4, fontSize:"13px"}}>
-    📝 {form.note}
-  </div>
-)}
+
 
               </>
             ) : (
@@ -599,22 +627,31 @@ export default function CalendarEventModal({
               /* === DESKTOP: klijent (levo) + akcije (desno) === */
 <div className="h-actions">
   {/* KLijent chip (ako postoji) */}
- {!isBlock && form.clientId && (
-  <button
-    className="client-chip"
-    onClick={openClientProfile}
-    title="Otvori profil klijenta"
-    style={{ marginRight: 6 }}
-  >
-    👤 {formatClient(clientForUI || {}, role)}
-  </button>
-)}
- 
-  {form.note?.trim() && (
-  <div className="muted" style={{marginTop:4, fontSize:"13px"}}>
-    📝 {form.note}
+{!isBlock && clientForUI && (
+  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", marginRight: 6 }}>
+    {form.clientId ? (
+      <button
+        className="client-chip"
+        onClick={openClientProfile}
+        title="Otvori profil klijenta"
+      >
+        👤 {formatClient(clientForUI || {}, role)}
+      </button>
+    ) : (
+      <span className="client-chip" title="Klijent">
+        👤 {formatClient(clientForUI || {}, role)}
+      </span>
+    )}
+
+    {form.note?.trim() && (
+      <div className="muted" style={{ marginTop: 6, fontSize: "13px" }}>
+        📝 {form.note}
+      </div>
+    )}
   </div>
 )}
+
+
 
   
 
@@ -674,9 +711,10 @@ export default function CalendarEventModal({
                   <button className="expander" onClick={()=>setOpenClient(v=>!v)}>
                     <span>
                       Klijent
-                      <span className="expander-sub">
-                        {form.clientId ? formatClient(clientForUI || {}, role) : "Pronađi/izaberi klijenta"}
-                      </span>
+<span className="expander-sub">
+  {clientForUI ? formatClient(clientForUI || {}, role) : "Pronađi/izaberi klijenta"}
+</span>
+
                     </span>
                     <span>{openClient ? "▴" : "▾"}</span>
                   </button>
