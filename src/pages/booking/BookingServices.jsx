@@ -122,7 +122,7 @@ export default function BookingServices(){
         .sv-wrap{ min-height:100dvh; background:#0f0f10; color:#111; }
         .sv-wrap *{ -webkit-tap-highlight-color: transparent; }
 
-        .hero { position: relative; height: 220px; background: #111; overflow: hidden; }
+        .hero { position: relative; height: 300px; background: #111; overflow: hidden; }
         .hero img{ width: 100%; height: 100%; object-fit: cover; display:block; }
         .hero .arrow{
           position:absolute; top:50%; transform: translateY(-50%);

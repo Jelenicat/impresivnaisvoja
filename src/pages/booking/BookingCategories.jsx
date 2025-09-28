@@ -29,7 +29,7 @@ export default function BookingCategories(){
     <div className="bk-wrap">
       <style>{`
         .bk-wrap{ min-height:100dvh; background:#0f0f10; color:#fff; }
-        .bk-hero{ height:200px; background:url('/usluge1.webp') center/cover no-repeat; }
+        .bk-hero{ height:250px; background:url('/usluge1.webp') center/cover no-repeat; }
         .bk-sheet{
           margin-top:-24px; background:rgba(255,255,255,.9);
           color:#111; backdrop-filter:saturate(140%) blur(10px);
@@ -40,7 +40,7 @@ export default function BookingCategories(){
         /* Header sa “Nazad” */
         .bk-hdr{
           display:flex; align-items:center; justify-content:flex-start;
-          margin-bottom:12px;
+          margin-bottom:12px margin-top:12px;
         }
         .bk-back{
           appearance:none; border:0; background:transparent; cursor:pointer;

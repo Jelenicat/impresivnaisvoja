@@ -122,14 +122,26 @@ export default function EmployeeSelect(){
         }
 
         .hdr{display:flex;align-items:center;gap:10px;margin-bottom:14px;}
-        .back{
-          appearance:none; -webkit-appearance:none;
-          border:0;background:transparent;font-weight:800;color:#0f0f10;
+       .bk-hdr{
+          display:flex; align-items:center; justify-content:flex-start;
+          margin-bottom:12px margin-top:12px;
         }
+        .back{
+          appearance:none; border:0; background:transparent; cursor:pointer;
+          font-weight:800; font-size:16px; padding:10px 6px;
+          border-radius:12px; color:#0f0f10;
+          box-shadow:0 2px 8px rgba(0,0,0,0.06);
+          background:rgba(255,255,255,0.8);
+          transition:transform .15s ease, box-shadow .2s ease, opacity .2s ease;
+        }
+        .back:hover{ transform:translateX(-1px); box-shadow:0 4px 12px rgba(0,0,0,0.12); }
+        .back:active{ transform:translateY(1px); }
+
+        .bk-title{ font-size:22px; font-weight:900; text-align:center; margin:6px 0 14px; }
 
         .title{font-size:24px;font-weight:900;margin:10px 0;text-align:center;color:#0f0f10;}
 
-        .hero{width:100%;height:160px;border-radius:20px;overflow:hidden;margin-bottom:20px;}
+        .hero{width:100%;height:160px;border-radius:20px;overflow:hidden;margin-bottom:20px;margin-top:10px;}
         .hero img{width:100%;height:100%;object-fit:cover}
 
         .list{display:flex;flex-direction:column;gap:12px;}
@@ -156,15 +168,15 @@ export default function EmployeeSelect(){
       `}</style>
 
       <div className="sheet">
-        <div className="hdr">
-          <button className="back" onClick={()=>nav(-1)}>← Nazad</button>
-        </div>
+      
 
         {/* Hero slika iznad liste */}
         <div className="hero">
           <img src="/usluge1.webp" alt="Usluga" />
         </div>
-
+  <div className="hdr">
+          <button className="back" onClick={()=>nav(-1)}>← Nazad</button>
+        </div>
         <div className="title">Odaberite radnicu</div>
 
         <div className="list">

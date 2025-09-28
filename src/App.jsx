@@ -171,11 +171,30 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      {/* MEDIA QUERY STIL ZA TELEFON */}
+      {/* GLOBAL + MOBILNI STILOVI */}
       <style>{`
+        /* Global height reset da nema belog prostora ispod */
+        html, body, #root { height: 100%; margin: 0; }
+
+        /* Shell zauzima pun ekran i pravi kolonu */
+        .app-shell { min-height: 100svh; display: flex; flex-direction: column; }
+
+        /* Main se širi da popuni prazan prostor, gura futer na dno */
+        .app-main { flex: 1; display: block; }
+
+        /* Futer – ako ga prikazuješ */
+        .app-footer {
+          border-top: 1px solid #eee;
+          background: rgba(255,255,255,0.7);
+          backdrop-filter: blur(6px);
+          padding: 12px;
+          text-align: center;
+        }
+
+        /* Telefon prilagođavanja headera */
         @media (max-width: 768px) {
           .brand-header {
-            padding-top: 50px; /* spusti ceo header */
+            padding-top: 50px;
             padding-bottom: 8px;
           }
           .brand-header .logo-wrap {
@@ -183,10 +202,9 @@ export default function App() {
             justify-content: center;
           }
           .brand-header .logo-header {
-            height: 150px; /* smanji/sredi visinu po želji */
+            height: 150px;
           }
         }
- 
       `}</style>
 
       {showTopBrand && (
@@ -199,75 +217,77 @@ export default function App() {
         </header>
       )}
 
-      <Routes>
-        {/* javni deo */}
-        <Route path="/" element={<Splash />} />
-        <Route path="/home" element={<Home />} />
-        <Route path="/admin-login" element={<AdminLogin />} />
+      <main className="app-main">
+        <Routes>
+          {/* javni deo */}
+          <Route path="/" element={<Splash />} />
+          <Route path="/home" element={<Home />} />
+          <Route path="/admin-login" element={<AdminLogin />} />
 
-        {/* booking flow */}
-        <Route path="/booking" element={<BookingCategories />} />
-        <Route path="/booking/:catId" element={<BookingServices />} />
-        <Route path="/booking/employee" element={<EmployeeSelect />} />
-        <Route path="/booking/time" element={<BookingTime />} />
+          {/* booking flow */}
+          <Route path="/booking" element={<BookingCategories />} />
+          <Route path="/booking/:catId" element={<BookingServices />} />
+          <Route path="/booking/employee" element={<EmployeeSelect />} />
+          <Route path="/booking/time" element={<BookingTime />} />
 
-        {/* klijent — istorija/otkazivanje */}
-        <Route path="/me/history" element={<ClientHistory />} />
+          {/* klijent — istorija/otkazivanje */}
+          <Route path="/me/history" element={<ClientHistory />} />
 
-        {/* admin/salon početna – zaštićeno: bilo koja rola */}
-        <Route
-          path="/admin"
-          element={
-            <RequireFinance>
-              <AdminHome />
-            </RequireFinance>
-          }
-        />
+          {/* admin/salon početna – zaštićeno: bilo koja rola */}
+          <Route
+            path="/admin"
+            element={
+              <RequireFinance>
+                <AdminHome />
+              </RequireFinance>
+            }
+          />
 
-        {/* FINANSIJE — admin, salon i worker */}
-        <Route
-          path="/admin/finansije"
-          element={
-            <RequireFinance>
-              <AdminFinance role={role} currentUsername={currentUsername} />
-            </RequireFinance>
-          }
-        />
+          {/* FINANSIJE — admin, salon i worker */}
+          <Route
+            path="/admin/finansije"
+            element={
+              <RequireFinance>
+                <AdminFinance role={role} currentUsername={currentUsername} />
+              </RequireFinance>
+            }
+          />
 
-        {/* Kalendar — svi vide svoj deo */}
-        <Route
-          path="/admin/kalendar"
-          element={<AdminCalendar role={role} currentUsername={currentUsername} />}
-        />
+          {/* Kalendar — svi vide svoj deo */}
+          <Route
+            path="/admin/kalendar"
+            element={<AdminCalendar role={role} currentUsername={currentUsername} />}
+          />
 
-        {/* Smene — samo admin */}
-        <Route
-          path="/admin/smene"
-          element={
-            <RequireAdmin>
-              <AdminShifts />
-            </RequireAdmin>
-          }
-        />
+          {/* Smene — samo admin */}
+          <Route
+            path="/admin/smene"
+            element={
+              <RequireAdmin>
+                <AdminShifts />
+              </RequireAdmin>
+            }
+          />
 
-        {/* Klijenti */}
-        <Route path="/admin/klijenti" element={<AdminClients />} />
+          {/* Klijenti */}
+          <Route path="/admin/klijenti" element={<AdminClients />} />
 
-        {/* Usluge (editor usluga/kategorija) */}
-        <Route path="/admin/usluge" element={<Services />} />
+          {/* Usluge (editor usluga/kategorija) */}
+          <Route path="/admin/usluge" element={<Services />} />
 
-        {/* Zaposleni */}
-        <Route path="/admin/zaposleni" element={<AdminEmployees />} />
+          {/* Zaposleni */}
+          <Route path="/admin/zaposleni" element={<AdminEmployees />} />
 
-        {/* fallback */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+          {/* fallback */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </main>
+
       {pathname === "/home" && (
-  <footer className="app-footer">
-    App by Jelena — 060 420 4623
-  </footer>
-)}
-
+        <footer className="app-footer">
+          App by Jelena — 060 420 4623
+        </footer>
+      )}
     </div>
   );
 }

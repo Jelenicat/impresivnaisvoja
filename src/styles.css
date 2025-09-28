@@ -41,6 +41,13 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }
   padding: 0;
 }
 
+/* Glavni kontejner koji se širi – gura futer na dno */
+.app-main {
+  flex: 1 1 auto;
+  display: block;
+  min-height: 0; /* spreči phantom gap u nekim browserima */
+}
+
 /* ===== Header ===== */
 .brand-header {
   position: sticky;
@@ -519,6 +526,6 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }
   font-style: italic;
   color: #777;
   border-top: 1px solid #eee;
-  margin: 0;
+  margin: 10px 0;
   width: 100%;
 }

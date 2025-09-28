@@ -655,7 +655,7 @@ try {
         .back{appearance:none;border:1px solid #eee;background:#fafafa;padding:8px 10px;border-radius:10px;font-weight:700;}
         .title{font-size:26px;font-weight:900;margin:6px 0 4px;}
         .sub{opacity:.7;font-weight:700;margin-bottom:10px;}
-        .hero{width:100%;height:140px;border-radius:18px;overflow:hidden;margin:10px 0 12px;}
+        .hero{width:100%;height:140px;border-radius:18px;overflow:hidden;margin:20px 0 10px;}
         .hero img{width:100%;height:100%;object-fit:cover}
         .cal{margin-top:6px;border:1px solid #eee;border-radius:16px;padding:12px;}
         .cal .mbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
@@ -709,11 +709,11 @@ try {
       `}</style>
 
       <div className="sheet">
-        <button className="back" onClick={()=>nav(-1)}>Nazad</button>
+        
 
         {/* Hero slika */}
         <div className="hero"><img src="/usluge1.webp" alt="Usluga" /></div>
-
+<button className="back" onClick={()=>nav(-1)}>Nazad</button>
         <div className="title">{anchor.toLocaleString("sr-RS",{month:"long", year:"numeric"})}</div>
         <div className="sub">{headerName}</div>
 
