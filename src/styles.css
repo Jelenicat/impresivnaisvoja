@@ -12,14 +12,13 @@
 html, body, #root { height: 100%; }
 
 html, body {
-  overflow-x: hidden;      /* zaključaj horizontalni skrol */
+  overflow-x: hidden;              /* zaključaj horizontalni skrol */
   width: 100%;
-  overscroll-behavior-y: none; /* ne “bouncuje” i ne dodaje dno */
+  overscroll-behavior-y: none;     /* ne “bouncuje” i ne dodaje dno */
 }
 
 body {
   margin: 0;
-  
   font-family: 'Montserrat', sans-serif;
   font-weight: 300;
   color: var(--ink);
@@ -71,13 +70,10 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }
 
 /* ===== Stranica ===== */
 .page {
-  padding: 0;
-  max-width: 100%;
-  width: 100%;
-  margin: 0;
-  overflow-x: hidden;  /* dodat safety */
-  /* FIX: nema donjeg “jastuka” */
-  padding-bottom: 0 !important;
+  min-height: 100%;
+  flex: 1;                  /* raste unutar app-shell-a */
+  display: flex;
+  flex-direction: column;
 }
 
 /* ukloni donju marginu poslednjeg elementa na stranici */
@@ -497,7 +493,7 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }
 }
 .contact-info p { margin: 4px 0; }
 
-/* ===== Footer potpis (ako ga koristiš na /home) ===== */
+/* ===== Footer potpis (na /home) ===== */
 .app-footer {
   text-align: center;
   padding: 20px 12px;
@@ -505,5 +501,6 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }
   font-style: italic;
   color: #777;
   border-top: 1px solid #eee;
-  margin-top: 30px;
+  /* FIX: lepi se za dno, nema belog prostora ispod */
+  margin-top: auto;
 }

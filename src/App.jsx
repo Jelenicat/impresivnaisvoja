@@ -186,16 +186,7 @@ export default function App() {
             height: 150px; /* smanji/sredi visinu po želji */
           }
         }
-          /* ===== Footer potpis ===== */
-.app-footer {
-  text-align: center;
-  padding: 20px 12px;
-  font-size: 13px;
-  font-style: italic;
-  color: #777;
-  border-top: 1px solid #eee;
-  margin-top: 30px;
-}
+ 
       `}</style>
 
       {showTopBrand && (

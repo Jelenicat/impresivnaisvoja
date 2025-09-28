@@ -501,7 +501,7 @@ export default function CalendarEventModal({
         @media(max-width:820px){ .cal-modal .grid{ grid-template-columns:1fr; gap:12px; } }
         @media(max-width:480px){
         /* Header actions — u jednom redu na telefonu */
-cal-modal .h-actions{
+.cal-modal .h-actions{
     display:flex;
     gap:12px;            /* veći međurazmak */
     row-gap:8px;         /* ako se prelomi u dva reda, vertikalni razmak */
@@ -576,16 +576,17 @@ cal-modal .h-actions{
                 </div>
 
                 {!isBlock && form.clientId && (
-                  <div className="client-info-row" style={{marginTop:6}}>
-                    {(role==="admin" || role==="salon") ? (
-                      <button className="client-chip" onClick={openClientProfile} title="Otvori profil klijenta">
-                        👤 {formatClient(clientForUI || {}, role)}
-                      </button>
-                    ) : (
-                      <span className="client-chip" title="Klijent">👤 {formatClient(clientForUI || {}, role)}</span>
-                    )}
-                  </div>
-                )}
+  <div className="client-info-row" style={{ marginTop: 6 }}>
+    <button
+      className="client-chip"
+      onClick={openClientProfile}
+      title="Otvori profil klijenta"
+    >
+      👤 {formatClient(clientForUI || {}, role)}
+    </button>
+  </div>
+)}
+
                 {form.note?.trim() && (
   <div className="muted" style={{marginTop:4, fontSize:"13px"}}>
     📝 {form.note}
@@ -598,27 +599,17 @@ cal-modal .h-actions{
               /* === DESKTOP: klijent (levo) + akcije (desno) === */
 <div className="h-actions">
   {/* KLijent chip (ako postoji) */}
-  {!isBlock && form.clientId && (
-    (role==="admin" || role==="salon") ? (
-      <button
-        className="client-chip"
-        onClick={openClientProfile}
-        title="Otvori profil klijenta"
-        style={{ marginRight: 6 }}
-      >
-        👤 {formatClient(clientForUI || {}, role)}
-      </button>
-    ) : (
-      <span
-        className="client-chip"
-        title="Klijent"
-        style={{ marginRight: 6 }}
-      >
-        👤 {formatClient(clientForUI || {}, role)}
-      </span>
-    )
-  )}
-  
+ {!isBlock && form.clientId && (
+  <button
+    className="client-chip"
+    onClick={openClientProfile}
+    title="Otvori profil klijenta"
+    style={{ marginRight: 6 }}
+  >
+    👤 {formatClient(clientForUI || {}, role)}
+  </button>
+)}
+ 
   {form.note?.trim() && (
   <div className="muted" style={{marginTop:4, fontSize:"13px"}}>
     📝 {form.note}
