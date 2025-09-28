@@ -111,8 +111,14 @@ export default function ClientHistory(){
   }, [client?.id, client?.phone, nav, mode]);
 
   const nowMs = Date.now();
-  const upcoming = items.filter(a=>a.__src==="active" && toJsDate(a.start)?.getTime()>=nowMs && a.status!=="canceled")
-                        .sort((a,b)=>toJsDate(a.start)-toJsDate(b.start));
+  const upcoming = items
+    .filter(a =>
+      a.__src==="active" &&
+      toJsDate(a.start)?.getTime()>=nowMs &&
+      a.status!=="cancelled" // <-- uskladjeno
+    )
+    .sort((a,b)=>toJsDate(a.start)-toJsDate(b.start));
+
   const past = [
     ...items.filter(a=>a.__src==="active" && toJsDate(a.start)?.getTime()<nowMs),
     ...items.filter(a=>a.__src==="history")
@@ -130,13 +136,22 @@ export default function ClientHistory(){
       }
       const a = snap.data()||{};
       const when = toJsDate(a.start);
+
+      // upiši u istoriju sa pravopisom koji ostatak sistema očekuje
       await setDoc(doc(db,"appointments_history",id),{
-        ...a, originalId:id, status:"canceled",
-        canceledAt:serverTimestamp(), canceledBy:getClient()?.id||"public",
+        ...a,
+        originalId:id,
+        status:"cancelled",
+        cancelledAt:serverTimestamp(),
+        cancelledBy:getClient()?.id||"public",
         archivedAt:serverTimestamp()
       },{merge:true});
+
+      // ukloni iz aktivnih
       await deleteDoc(ref);
       setItems(prev=>prev.filter(x=>!(x.__src==="active"&&x.id===id)));
+
+      // notifikacija (ostaje kind sa jednim L, ako tako koristiš u drugim delovima)
       await addDoc(collection(db,"notifications"),{
         kind:"appointment_canceled",
         title:"❌ Termin otkazan",
@@ -146,6 +161,7 @@ export default function ClientHistory(){
         createdAt:serverTimestamp(),
         sent:false
       });
+
       alert("Termin je otkazan.");
     }catch(e){ console.error(e); alert("Greška pri otkazivanju."); }
   }
@@ -156,7 +172,7 @@ export default function ClientHistory(){
         .wrap{min-height:100dvh;background:#f5f5f5;}
         .sheet{background:#fff;min-height:100dvh;padding:20px;}
         @media(min-width:768px){.sheet{max-width:800px;margin:0 auto;border-radius:22px;box-shadow:0 4px 14px rgba(0,0,0,.08);}}
-        .title{text-align:center;font-size:24px;font-weight:900;margin-bottom:20px;}
+        .title{text-align:center;font-size:24px;font-weight:900;margin-bottom:20px;pedigng-top:40px;}
         .card{border:1px solid #e5e5e5;border-radius:16px;padding:16px 18px;margin-bottom:18px;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.05);}
         .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
         .badge{padding:4px 10px;border-radius:999px;font-size:12px;font-weight:700;}
@@ -207,7 +223,7 @@ export default function ClientHistory(){
                 {past.length===0? <div>Nema stavki u istoriji.</div> :
                   past.map(a=>{
                     const svcs=normalizeServices(a);
-                    const canceled=(a.status==="canceled"||a.__src==="history");
+                    const canceled=(a.status==="cancelled"||a.__src==="history");
                     return(
                       <div key={`${a.__src}:${a.id}`} className="card">
                         <div className="head">
