@@ -15,7 +15,11 @@ import BookingCategories from "./pages/booking/BookingCategories.jsx";
 import BookingServices from "./pages/booking/BookingServices.jsx";
 import BookingTime from "./pages/booking/BookingTime.jsx";
 import EmployeeSelect from "./pages/booking/EmployeeSelect.jsx";
-import ClientHistory from "./pages/ClientHistory.jsx"; // ⇠ NOVO
+import ClientHistory from "./pages/ClientHistory.jsx";
+
+// FCM foreground listener
+import { app } from "./firebase";
+import { getMessaging, isSupported, onMessage } from "firebase/messaging";
 
 // helper: samo admin
 function RequireAdmin({ children }) {
@@ -31,6 +35,25 @@ function RequireFinance({ children }) {
   return children;
 }
 
+// vrlo prost toaster bez biblioteka
+function showToast(title, body, onClick) {
+  const el = document.createElement("div");
+  el.style.cssText =
+    "position:fixed;right:12px;bottom:12px;background:#111;color:#fff;padding:12px 14px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.2);cursor:pointer;z-index:9999;max-width:86vw";
+  el.innerHTML = `
+    <div style="font-weight:800">${title}</div>
+    <div style="opacity:.85;margin-top:4px">${body}</div>
+  `;
+  el.onclick = () => {
+    onClick?.();
+    document.body.contains(el) && document.body.removeChild(el);
+  };
+  document.body.appendChild(el);
+  setTimeout(() => {
+    document.body.contains(el) && document.body.removeChild(el);
+  }, 6000);
+}
+
 export default function App() {
   const { pathname } = useLocation();
 
@@ -43,6 +66,45 @@ export default function App() {
     const handleScroll = () => setScrolled(window.scrollY > 20);
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  // FCM foreground poruke (dok je tab u fokusu)
+  useEffect(() => {
+    let unsub = () => {};
+    (async () => {
+      try {
+        if (!(await isSupported())) return;
+        const messaging = getMessaging(app);
+        unsub = onMessage(messaging, (payload) => {
+          // backend šalje data-only → koristimo payload.data
+          const title =
+            payload?.data?.title || payload?.notification?.title || "Impresivna i svoja";
+          const body =
+            payload?.data?.body || payload?.notification?.body || "";
+          const url = payload?.data?.url || payload?.data?.screen || "/";
+
+          showToast(title, body, () => {
+            // klik na toast → navigacija
+            try {
+              const dest = /^https?:\/\//i.test(url)
+                ? url
+                : new URL(url, window.location.origin).toString();
+              window.location.assign(dest);
+            } catch {
+              window.location.assign("/");
+            }
+          });
+
+          // (opciono) ako želiš i sistemsku notifikaciju u foreground-u:
+          // if (Notification.permission === "granted") {
+          //   new Notification(title, { body, icon: "/icons/icon-192.png" });
+          // }
+        });
+      } catch {
+        // ignore
+      }
+    })();
+    return () => unsub && unsub();
   }, []);
 
   // vrednosti iz localStorage za prosleđivanje u AdminCalendar/Finance
@@ -72,11 +134,7 @@ export default function App() {
         <header className={`brand-header ${scrolled ? "scrolled" : ""}`}>
           <Link to="/home">
             <div className="logo-wrap">
-              <img
-                src="/logo.webp"
-                alt="impresivnaisvoja"
-                className="logo-header"
-              />
+              <img src="/logo.webp" alt="impresivnaisvoja" className="logo-header" />
             </div>
           </Link>
         </header>
@@ -95,7 +153,7 @@ export default function App() {
         <Route path="/booking/time" element={<BookingTime />} />
 
         {/* klijent — istorija/otkazivanje */}
-        <Route path="/me/history" element={<ClientHistory />} /> {/* ⇠ NOVO */}
+        <Route path="/me/history" element={<ClientHistory />} />
 
         {/* admin/salon početna – zaštićeno: bilo koja rola */}
         <Route
