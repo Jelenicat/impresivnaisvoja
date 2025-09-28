@@ -186,6 +186,16 @@ export default function App() {
             height: 150px; /* smanji/sredi visinu po želji */
           }
         }
+          /* ===== Footer potpis ===== */
+.app-footer {
+  text-align: center;
+  padding: 20px 12px;
+  font-size: 13px;
+  font-style: italic;
+  color: #777;
+  border-top: 1px solid #eee;
+  margin-top: 30px;
+}
       `}</style>
 
       {showTopBrand && (
@@ -261,6 +271,12 @@ export default function App() {
         {/* fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      {pathname === "/home" && (
+  <footer className="app-footer">
+    App by Jelena — 060 420 4623
+  </footer>
+)}
+
     </div>
   );
 }

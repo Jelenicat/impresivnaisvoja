@@ -306,8 +306,6 @@ export default function Home() {
         <Link className="btn btn-dark btn-small" to="/admin-login">ULOGUJ SE</Link>
       </div>
 
-      {/* Footer potpis */}
-      <footer className="app-footer">App by Jelena — 060 420 4623</footer>
 
       {/* Auth modal */}
       <AuthModal
