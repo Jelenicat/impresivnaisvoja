@@ -299,18 +299,20 @@ export default function CalendarEventModal({
       const isOnline = !!(form.isOnline || value?.isOnline || form.bookedVia === "public_app" || value?.bookedVia === "public_app");
       const status = isOnline ? "booked" : (form.status || "booked");
 
-      const servicesLabel = makeServicesLabel(services, form.services);
+      const servicesLabel = servicesExpanded.map(s => s.name).filter(Boolean).join(", ");
 
       const totalDurationMin =
         (form.services || [])
           .map(id => (services.find(s=>s.id===id)?.durationMin)||0)
           .reduce((a,b)=>a+b,0) || 15;
      // pomoćno: ISO "date" ključ (yyyy-mm-dd) kao što radi public booking
-      const dateKey = (() => {
-        const d = new Date(form.start);
-        d.setHours(0,0,0,0);
-        return d.toISOString().slice(0,10);
-      })();
+       const dateKey = (() => {
+   const d = new Date(form.start);
+   const y = d.getFullYear();
+   const m = String(d.getMonth()+1).padStart(2,"0");
+   const day = String(d.getDate()).padStart(2,"0");
+   return `${y}-${m}-${day}`; // lokalni yyyy-mm-dd
+ })();
             // map (id -> definicija iz kataloga)
       const svcById = new Map((services || []).map(s => [s.id, s]));
       // prosiri ID-jeve u objekte (kao u public app-u)
