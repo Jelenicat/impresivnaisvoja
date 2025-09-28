@@ -14,6 +14,7 @@ html, body, #root { height: 100%; }
 html, body {
   overflow-x: hidden;      /* zaključaj horizontalni skrol */
   width: 100%;
+  overscroll-behavior-y: none; /* ne “bouncuje” i ne dodaje dno */
 }
 
 body {
@@ -29,7 +30,8 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }
 
 /* ===== App shell ===== */
 .app-shell {
-  min-height: 100%;
+  /* FIX: zauzmi tačnu visinu na mobilnim (bez dodatnog dna) */
+  min-height: 100svh;
   display: flex;
   flex-direction: column;
 }
@@ -52,7 +54,6 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }
   backdrop-filter: blur(6px);
 }
 
-
 .logo-wrap {
   height: 80px;
   display: flex;
@@ -74,7 +75,12 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }
   width: 100%;
   margin: 0;
   overflow-x: hidden;  /* dodat safety */
+  /* FIX: nema donjeg “jastuka” */
+  padding-bottom: 0 !important;
 }
+
+/* ukloni donju marginu poslednjeg elementa na stranici */
+.page > :last-child { margin-bottom: 0 !important; }
 
 /* ===== Hero ===== */
 .hero {
@@ -122,6 +128,8 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }
   transform: translateY(20px);
   animation: fadeInUp 0.8s ease forwards;
 }
+/* FIX: poslednja sekcija bez donje margine */
+.section:last-child { margin-bottom: 0 !important; }
 
 @keyframes fadeInUp {
   to { opacity: 1; transform: translateY(0); }
@@ -265,7 +273,8 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }
 
 /* ===== Splash ===== */
 .splash {
-  min-height: 100vh;
+  /* FIX: svh umesto vh zbog iOS trake */
+  min-height: 100svh;
   background: url('/pozadina.webp') center/cover no-repeat fixed;
   display: flex;
   align-items: flex-end;
@@ -487,4 +496,13 @@ h1, h2, h3, h4, h5, h6 { font-weight: 500; }
 }
 .contact-info p { margin: 4px 0; }
 
-
+/* ===== Footer potpis (ako ga koristiš na /home) ===== */
+.app-footer {
+  text-align: center;
+  padding: 20px 12px;
+  font-size: 13px;
+  font-style: italic;
+  color: #777;
+  border-top: 1px solid #eee;
+  margin-top: 30px;
+}
