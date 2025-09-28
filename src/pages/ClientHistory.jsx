@@ -40,64 +40,21 @@ const fmtDate = (d) => {
   if (!x || isNaN(x)) return "";
   return `${niceDate(x)} ${hhmm(x)}`;
 };
-const fmtPrice = (n)=> (Number(n)||0).toLocaleString("sr-RS");
+const fmtPrice = (n) => (Number(n)||0).toLocaleString("sr-RS");
 
-/** normalize services field (može biti string ID, objekat ili niz) */
+/* ---------- prikaz više usluga ---------- */
 function normalizeServices(a){
   const raw = a?.services;
   if (!raw) return [];
   if (Array.isArray(raw)){
-    if (raw.length===0) return [];
-    if (typeof raw[0]==="string") return raw.map(id=>({id,name:id}));
-    if (typeof raw[0]==="object") return raw.map(x=>({id:x.id||x.serviceId,name:x.name||"—",priceRsd:x.priceRsd||0}));
-    return [];
+    return raw.map(s=>{
+      if (typeof s==="string") return {id:s, name:s};
+      return {id:s.serviceId||s.id, name:s.name||"Usluga", priceRsd:s.priceRsd||0};
+    });
   }
-  if (typeof raw==="object") return [{id:raw.id||raw.serviceId,name:raw.name||"—",priceRsd:raw.priceRsd||0}];
-  if (typeof raw==="string") return [{id:raw,name:raw}];
+  if (typeof raw==="object") return [{id:raw.id||raw.serviceId, name:raw.name||"Usluga", priceRsd:raw.priceRsd||0}];
   return [];
 }
-
-/* ---------- styles ---------- */
-const styles = `
-.wrap{min-height:100dvh;background:#f5f5f5;}
-.sheet{background:#fff;min-height:100dvh;padding:20px;}
-@media(min-width:768px){
-  .sheet{max-width:800px;margin:0 auto;border-radius:22px;
-         box-shadow:0 4px 14px rgba(0,0,0,.08);}
-}
-.hdr{display:flex;align-items:center;gap:10px;margin-bottom:20px;}
-.back{appearance:none;border:none;background:#eee;padding:8px 14px;
-      border-radius:10px;font-weight:600;cursor:pointer;}
-.title{font-size:24px;font-weight:900;margin:0 0 20px;text-align:center;}
-.sec{margin-top:20px;}
-.sec h3{font-size:18px;margin:0 0 12px;font-weight:800;color:#333;}
-
-.card{border:1px solid #e5e5e5;border-radius:16px;padding:16px 18px;
-      margin-bottom:18px;background:#fff;
-      box-shadow:0 2px 6px rgba(0,0,0,.05);}
-@media(min-width:768px){.card{padding:20px 24px;}}
-
-.head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
-.badge{padding:4px 10px;font-size:12px;font-weight:700;border-radius:999px;border:1px solid;}
-.badge.upcoming{background:#ecfdf5;color:#065f46;border-color:#a7f3d0;}
-.badge.done{background:#f0f9ff;color:#075985;border-color:#bae6fd;}
-.badge.canceled{background:#fef2f2;color:#991b1b;border-color:#fecaca;}
-
-.grid{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;line-height:1.45;margin-bottom:6px;}
-.label{color:#6b7280;font-size:12px;}
-.value{font-weight:700;font-size:13px;}
-
-.services{margin-top:6px;}
-.chip{display:inline-block;margin:4px 6px 0 0;padding:4px 8px;
-      font-size:12px;font-weight:700;border:1px solid #e6e0d7;
-      border-radius:999px;background:#faf6f0;}
-
-.total{margin-top:8px;font-weight:800;}
-.reason{margin-top:4px;font-size:13px;color:#991b1b;}
-.empty{padding:20px;border:2px dashed #ccc;border-radius:12px;
-       background:#fafafa;text-align:center;color:#666;}
-.loading{padding:20px;text-align:center;}
-`;
 
 /* ---------- component ---------- */
 export default function ClientHistory(){
@@ -115,114 +72,155 @@ export default function ClientHistory(){
       nav("/onboarding", { replace:true, state:{ reason:"history-needs-login" }});
       return;
     }
+
     const unsubs = [];
     const seen = new Map();
     const pushDocs = (snap, source) => {
       snap.forEach(d => {
-        seen.set(`${source}:${d.id}`, { id:d.id, ...d.data(), __src:source });
+        const val = { id: d.id, ...d.data(), __src: source };
+        seen.set(`${source}:${d.id}`, val);
       });
-      const all = Array.from(seen.values()).sort((a,b)=>
+      const all = Array.from(seen.values()).sort((a,b)=>(
         (toJsDate(b.start)?.getTime()||0) - (toJsDate(a.start)?.getTime()||0)
-      );
-      setItems(all); setLoading(false);
+      ));
+      setItems(all);
+      setLoading(false);
     };
 
     if (mode==="cancel" || mode==="history"){
       if (client?.id){
-        const q1 = query(collection(db,"appointments"),where("clientId","==",client.id),orderBy("start","desc"));
+        const q1 = query(collection(db,"appointments"), where("clientId","==",client.id), orderBy("start","desc"));
         unsubs.push(onSnapshot(q1,(snap)=>pushDocs(snap,"active")));
       }
       if (phoneNorm){
-        const q2 = query(collection(db,"appointments"),where("clientPhoneNorm","==",phoneNorm),orderBy("start","desc"));
+        const q2 = query(collection(db,"appointments"), where("clientPhoneNorm","==",phoneNorm), orderBy("start","desc"));
         unsubs.push(onSnapshot(q2,(snap)=>pushDocs(snap,"active")));
       }
     }
     if (mode==="history"){
       if (client?.id){
-        const h1 = query(collection(db,"appointments_history"),where("clientId","==",client.id),orderBy("start","desc"));
+        const h1 = query(collection(db,"appointments_history"), where("clientId","==",client.id), orderBy("start","desc"));
         unsubs.push(onSnapshot(h1,(snap)=>pushDocs(snap,"history")));
       }
       if (phoneNorm){
-        const h2 = query(collection(db,"appointments_history"),where("clientPhoneNorm","==",phoneNorm),orderBy("start","desc"));
+        const h2 = query(collection(db,"appointments_history"), where("clientPhoneNorm","==",phoneNorm), orderBy("start","desc"));
         unsubs.push(onSnapshot(h2,(snap)=>pushDocs(snap,"history")));
       }
     }
     return ()=>unsubs.forEach(u=>u&&u());
-  },[client?.id, client?.phone, nav, mode]);
+  }, [client?.id, client?.phone, nav, mode]);
 
   const nowMs = Date.now();
-  const upcoming = items.filter(a=>a.__src==="active" && toJsDate(a.start)?.getTime()>=nowMs && a.status!=="canceled");
+  const upcoming = items.filter(a=>a.__src==="active" && toJsDate(a.start)?.getTime()>=nowMs && a.status!=="canceled")
+                        .sort((a,b)=>toJsDate(a.start)-toJsDate(b.start));
   const past = [
     ...items.filter(a=>a.__src==="active" && toJsDate(a.start)?.getTime()<nowMs),
     ...items.filter(a=>a.__src==="history")
-  ].sort((a,b)=>(toJsDate(b.start)-toJsDate(a.start)));
+  ].sort((a,b)=>toJsDate(b.start)-toJsDate(a.start));
+
+  async function cancel(id){
+    if (!window.confirm("Sigurno želiš da otkažeš ovaj termin?")) return;
+    try{
+      const ref  = doc(db,"appointments", id);
+      const snap = await getDoc(ref);
+      if (!snap.exists()){
+        setItems(prev=>prev.filter(x=>!(x.__src==="active"&&x.id===id)));
+        alert("Termin više ne postoji.");
+        return;
+      }
+      const a = snap.data()||{};
+      const when = toJsDate(a.start);
+      await setDoc(doc(db,"appointments_history",id),{
+        ...a, originalId:id, status:"canceled",
+        canceledAt:serverTimestamp(), canceledBy:getClient()?.id||"public",
+        archivedAt:serverTimestamp()
+      },{merge:true});
+      await deleteDoc(ref);
+      setItems(prev=>prev.filter(x=>!(x.__src==="active"&&x.id===id)));
+      await addDoc(collection(db,"notifications"),{
+        kind:"appointment_canceled",
+        title:"❌ Termin otkazan",
+        body:`${a?.clientName||getClient()?.name||"Klijent"} je otkazao ${a?.servicesLabel||"uslugu"} ${when?`— ${niceDate(when)} u ${hhmm(when)}`:""}`,
+        toRoles:["admin","salon"],
+        toEmployeeId:a?.employeeUsername||null,
+        createdAt:serverTimestamp(),
+        sent:false
+      });
+      alert("Termin je otkazan.");
+    }catch(e){ console.error(e); alert("Greška pri otkazivanju."); }
+  }
 
   return (
     <div className="wrap">
-      <style>{styles}</style>
+      <style>{`
+        .wrap{min-height:100dvh;background:#f5f5f5;}
+        .sheet{background:#fff;min-height:100dvh;padding:20px;}
+        @media(min-width:768px){.sheet{max-width:800px;margin:0 auto;border-radius:22px;box-shadow:0 4px 14px rgba(0,0,0,.08);}}
+        .title{text-align:center;font-size:24px;font-weight:900;margin-bottom:20px;}
+        .card{border:1px solid #e5e5e5;border-radius:16px;padding:16px 18px;margin-bottom:18px;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.05);}
+        .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+        .badge{padding:4px 10px;border-radius:999px;font-size:12px;font-weight:700;}
+        .badge.canceled{background:#ffecec;color:#c00;}
+        .badge.upcoming{background:#ecfdf5;color:#065f46;}
+        .badge.done{background:#f0f9ff;color:#075985;}
+        .services{margin-top:6px;}
+        .chip{display:inline-block;margin:3px;padding:4px 8px;border-radius:12px;background:#fafafa;font-size:12px;}
+        .total{margin-top:6px;font-weight:700;}
+        .rowbtns{display:flex;gap:10px;margin-top:12px;justify-content:flex-end}
+        .btn{padding:8px 12px;border-radius:10px;font-weight:700;cursor:pointer;}
+        .btn.ghost{background:#fff;border:1px solid #ddd;}
+        .btn.primary{background:#111;color:#fff;}
+      `}</style>
       <div className="sheet">
-        <div className="hdr">
-          <button className="back" onClick={()=>nav("/home")}>← Nazad</button>
-        </div>
-        <div className="title">{mode==="cancel" ? "Otkaži termin" : "Istorija termina"}</div>
-
-        {loading ? <div className="loading">Učitavanje…</div> : (
+        <div className="title">{mode==="cancel"?"Otkaži termin":"Istorija termina"}</div>
+        {loading? <div>Učitavanje…</div> : (
           <>
-            {mode==="cancel" ? (
-              <div className="sec">
+            {mode==="cancel"?(
+              <div>
                 <h3>Budući termini</h3>
-                {upcoming.length===0 ? <div className="empty">Nema zakazanih budućih termina.</div> :
+                {upcoming.length===0? <div>Nema zakazanih termina.</div> :
                   upcoming.map(a=>{
-                    const svcs = normalizeServices(a);
-                    return (
+                    const svcs=normalizeServices(a);
+                    return(
                       <div key={a.id} className="card">
                         <div className="head">
                           <span className="badge upcoming">Zakazano</span>
-                          <span className="time">{fmtDate(a.start)}</span>
+                          <span>{fmtDate(a.start)}</span>
                         </div>
-                        <div className="grid">
-                          <div className="label">Radnik</div>
-                          <div className="value">{a.employeeUsername||"Zaposleni"}</div>
+                        <div>{a.employeeUsername||"Zaposleni"}</div>
+                        <div className="services">
+                          {svcs.map(s=><span key={s.id||s.name} className="chip">{s.name}</span>)}
                         </div>
-                        {svcs.length>0 && (
-                          <div className="services">
-                            {svcs.map(s=><span key={s.id||s.name} className="chip">{s.name}</span>)}
-                          </div>
-                        )}
                         <div className="total">{fmtPrice(a.totalAmountRsd||0)} RSD</div>
+                        <div className="rowbtns">
+                          <button className="btn ghost" onClick={()=>nav("/booking/employee",{state:{rescheduleId:a.id}})}>Pomeri</button>
+                          <button className="btn primary" onClick={()=>cancel(a.id)}>Otkaži</button>
+                        </div>
                       </div>
                     );
                   })
                 }
               </div>
-            ) : (
-              <div className="sec">
+            ):(
+              <div>
                 <h3>Prošli i otkazani termini</h3>
-                {past.length===0 ? <div className="empty">Nema stavki u istoriji.</div> :
+                {past.length===0? <div>Nema stavki u istoriji.</div> :
                   past.map(a=>{
-                    const svcs = normalizeServices(a);
-                    const status = a.status || (a.__src==="history"?"canceled":"done");
-                    return (
+                    const svcs=normalizeServices(a);
+                    const canceled=(a.status==="canceled"||a.__src==="history");
+                    return(
                       <div key={`${a.__src}:${a.id}`} className="card">
                         <div className="head">
-                          <span className={`badge ${status==="done"?"done":status==="canceled"?"canceled":"upcoming"}`}>
-                            {status==="done"?"Završen":status==="canceled"?"Otkazano":"Zakazano"}
+                          <span className={`badge ${canceled?"canceled":"done"}`}>
+                            {canceled?"Otkazano":"Završen"}
                           </span>
-                          <span className="time">{fmtDate(a.start)}</span>
+                          <span>{fmtDate(a.start)}</span>
                         </div>
-                        <div className="grid">
-                          <div className="label">Radnik</div>
-                          <div className="value">{a.employeeUsername||"Zaposleni"}</div>
+                        <div>{a.employeeUsername||"Zaposleni"}</div>
+                        <div className="services">
+                          {svcs.map(s=><span key={s.id||s.name} className="chip">{s.name}</span>)}
                         </div>
-                        {svcs.length>0 && (
-                          <div className="services">
-                            {svcs.map(s=><span key={s.id||s.name} className="chip">{s.name}</span>)}
-                          </div>
-                        )}
                         <div className="total">{fmtPrice(a.totalAmountRsd||0)} RSD</div>
-                        {status==="canceled" && a.cancelReason && (
-                          <div className="reason"><b>Razlog:</b> {a.cancelReason}</div>
-                        )}
                       </div>
                     );
                   })
