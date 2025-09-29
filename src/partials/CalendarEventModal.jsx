@@ -54,6 +54,18 @@ function makeServicesLabel(services, selectedIds){
   const names = (selectedIds||[]).map(id => byId.get(id)?.name).filter(Boolean);
   return names.join(", ");
 }
+function groupServicesByCategory(selectedIds, allServices) {
+  const byId = new Map((allServices || []).map(s => [s.id, s]));
+  const groups = new Map(); // Map<categoryId, {categoryId, services: Service[]}>
+  for (const id of (selectedIds || [])) {
+    const s = byId.get(id);
+    if (!s) continue;
+    const k = s.categoryId || "__no_cat__";
+    if (!groups.has(k)) groups.set(k, { categoryId: k, services: [] });
+    groups.get(k).services.push(s);
+  }
+  return [...groups.values()];
+}
 
 export default function CalendarEventModal({
   role = "admin",                 // "admin" | "salon" | "worker"
@@ -68,6 +80,17 @@ export default function CalendarEventModal({
   onDelete
 }){
   const initialServiceIds = useMemo(() => extractServiceIds(value?.services), [value?.services]);
+
+  // početni autosum (za zaključavanje custom cene)
+  const initialAutoSum = useMemo(() => {
+    if (value?.type === "block") return 0;
+    const byId = new Map((services || []).map(s => [s.id, s]));
+    return (initialServiceIds || []).reduce((acc, id) => {
+      const s = byId.get(id);
+      return acc + (Number(s?.priceRsd) || 0);
+    }, 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [services, value?.id]);
 
   /* ---------- form state ---------- */
   const [form, setForm] = useState({
@@ -123,7 +146,30 @@ export default function CalendarEventModal({
   const isBlock = form.type === "block";
   const showPayment = role === "admin" || role === "salon";
 
-  const [customPrice, setCustomPrice] = useState(false);
+  // custom price locking
+  const [customPrice, setCustomPrice] = useState(() => {
+    const existing = Number(value?.priceRsd ?? 0);
+    return existing > 0 && existing !== initialAutoSum;
+  });
+
+  useEffect(() => {
+    if (isBlock) return;
+
+    const byId = new Map((services || []).map(s => [s.id, s]));
+    const sum = (form.services || []).reduce((acc, id) => {
+      const s = byId.get(id);
+      return acc + (Number(s?.priceRsd) || 0);
+    }, 0);
+
+    const existing = Number(value?.priceRsd ?? form.priceRsd ?? 0);
+
+    if (existing > 0 && existing !== sum) {
+      setCustomPrice(true);
+      setForm(f => ({ ...f, priceRsd: existing }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value?.id, services]);
+
   const [manualEnd, setManualEnd] = useState(!!value?.manualEnd);
   const [svcQuery, setSvcQuery] = useState("");
   const [clientQuery, setClientQuery] = useState("");
@@ -198,13 +244,29 @@ export default function CalendarEventModal({
     setForm(f=>({ ...f, end: nextEnd }));
   }, [autoDurationMin, form.start, isBlock, manualEnd]);
 
-
   const ghostServices = useMemo(() => {
-    const catIds = new Set((services||[]).map(s=>s.id));
+    const knownIds = new Set((services||[]).map(s=>s.id));
     const fromValue = Array.isArray(value?.services) ? value.services : [];
     if (!fromValue.length) return [];
-    return fromValue.filter(s => typeof s === "object" && !catIds.has(sid(s)));
+    return fromValue.filter(s => typeof s === "object" && !knownIds.has(sid(s)));
   }, [value?.services, services]);
+
+  // Izabrane usluge kao objekti iz kataloga
+  const selectedServiceObjs = useMemo(() => {
+    const byId = new Map((services || []).map(s => [s.id, s]));
+    return (form.services || []).map(id => byId.get(id)).filter(Boolean);
+  }, [form.services, services]);
+
+  // Grupisano po kategoriji
+  const groupedByCat = useMemo(() => {
+    const m = new Map(); // Map<categoryId, Service[]>
+    for (const s of selectedServiceObjs) {
+      const k = s?.categoryId || "__no_cat__";
+      if (!m.has(k)) m.set(k, []);
+      m.get(k).push(s);
+    }
+    return m;
+  }, [selectedServiceObjs]);
 
   /* ---------- actions ---------- */
   function onServiceToggle(id, checked){
@@ -239,59 +301,65 @@ export default function CalendarEventModal({
   }
 
   async function save(){
-    setSaving(true);
-    try{
-      if (isBlock) {
-        const payload = {
-          type: "block",
-          employeeUsername: form.employeeUsername || (employees[0]?.username || ""),
-          clientId: null,
-          services: [],
-          start: form.start,
-          end: form.end,
-          priceRsd: 0,
-          source: "manual",
-          pickedEmployee: false,
-          paid: null,
-          note: form.note || "",
-          updatedAt: serverTimestamp(),
-        };
-        if(form.id){
-          await setDoc(doc(db,"appointments", form.id), payload, { merge:true });
-        }else{
-          await addDoc(collection(db,"appointments"), { ...payload, createdAt: serverTimestamp() });
-        }
-        onSaved?.();
-        return;
+  setSaving(true);
+  try{
+    // === BLOKADA ostaje ista ===
+    if (isBlock) {
+      const payload = {
+        type: "block",
+        employeeUsername: form.employeeUsername || (employees[0]?.username || ""),
+        clientId: null,
+        services: [],
+        start: form.start,
+        end: form.end,
+        priceRsd: 0,
+        source: "manual",
+        pickedEmployee: false,
+        paid: null,
+        note: form.note || "",
+        updatedAt: serverTimestamp(),
+      };
+      if(form.id){
+        await setDoc(doc(db,"appointments", form.id), payload, { merge:true });
+      }else{
+        await addDoc(collection(db,"appointments"), { ...payload, createdAt: serverTimestamp() });
       }
+      onSaved?.();
+      return;
+    }
 
-      const pickedClient = (clients || []).find(c => c.id === form.clientId);
-      if (pickedClient?.blocked) {
-        alert("Ovaj klijent je blokiran i ne može da zakaže termin.");
-        setSaving(false);
-        return;
-      }
+    // Ako edituješ postojeći doc, zadrži postojeći behavior (jedan doc)
+    // – da ne bismo neočekivano brisali i kreirali više novih.
+    const editingExisting = !!form.id;
 
-      const clientId = await ensureNewClientIfNeeded();
+    const pickedClient = (clients || []).find(c => c.id === form.clientId);
+    if (pickedClient?.blocked) {
+      alert("Ovaj klijent je blokiran i ne može da zakaže termin.");
+      setSaving(false);
+      return;
+    }
 
-      // mapiranje plaćanja
-      const _canSetPayment = (role === "admin" || role === "salon");
-      const paymentMethod = _canSetPayment
-        ? (form.paid === "cash" ? "cash"
-          : form.paid === "card" ? "card"
-          : form.paid === "bank" ? "bank"
-          : null)
-        : (form.paymentMethod ?? null);
-      const paymentStatus = _canSetPayment
-        ? (form.paid ? "paid" : "unpaid")
-        : (form.paymentStatus ?? "unpaid");
-      const isPaid = paymentStatus === "paid";
+    const clientId = await ensureNewClientIfNeeded();
 
-      const isOnline = !!(form.isOnline || value?.isOnline || form.bookedVia === "public_app" || value?.bookedVia === "public_app");
-      const status = isOnline ? "booked" : (form.status || "booked");
+    // mapiranje plaćanja
+    const _canSetPayment = (role === "admin" || role === "salon");
+    const paymentMethod = _canSetPayment
+      ? (form.paid === "cash" ? "cash"
+        : form.paid === "card" ? "card"
+        : form.paid === "bank" ? "bank"
+        : null)
+      : (form.paymentMethod ?? null);
+    const paymentStatus = _canSetPayment
+      ? (form.paid ? "paid" : "unpaid")
+      : (form.paymentStatus ?? "unpaid");
+    const isPaid = paymentStatus === "paid";
 
+    const isOnline = !!(form.isOnline || value?.isOnline || form.bookedVia === "public_app" || value?.bookedVia === "public_app");
+    const status = isOnline ? "booked" : (form.status || "booked");
+
+    // === Ako je EDIT -> jedan doc kao i do sada ===
+    if (editingExisting) {
       const servicesLabel = makeServicesLabel(services, form.services);
-
       const totalDurationMin =
         (form.services || [])
           .map(id => (services.find(s=>s.id===id)?.durationMin)||0)
@@ -307,37 +375,121 @@ export default function CalendarEventModal({
         priceRsd: Number(form.priceRsd)||0,
         source: "manual",
         pickedEmployee: false,
-
         paid: _canSetPayment ? (form.paid ?? null) : null,
-
         note: form.note || "",
         updatedAt: serverTimestamp(),
         noShow: !!form.noShow,
-
-        isOnline,
-        bookedVia: form.bookedVia ?? value?.bookedVia ?? null,
-        status,
-
+        isOnline, bookedVia: form.bookedVia ?? value?.bookedVia ?? null, status,
         totalAmountRsd: Number(form.priceRsd) || 0,
         totalDurationMin: Math.max(15, totalDurationMin),
-
         servicesLabel,
-
-        paymentStatus,
-        paymentMethod,
-        isPaid,
+        paymentStatus, paymentMethod, isPaid,
       };
 
-      if(form.id){ await setDoc(doc(db,"appointments", form.id), payload, { merge:true }); }
-      else { await addDoc(collection(db,"appointments"), { ...payload, createdAt: serverTimestamp() }); }
-
+      await setDoc(doc(db,"appointments", form.id), payload, { merge:true });
       onSaved?.();
-    }catch(e){
-      console.error(e); alert("Greška pri čuvanju.");
-    } finally {
-      setSaving(false);
+      return;
     }
+
+    // === NOV TERMIN -> RAZDVOJI PO KATEGORIJAMA ===
+    const groups = groupServicesByCategory(form.services, services);
+
+    // Ako zapravo ima samo jedna kategorija, ponašaj se kao i do sada (jedan doc)
+    if (groups.length <= 1) {
+      const servicesLabel = makeServicesLabel(services, form.services);
+      const totalDurationMin =
+        (form.services || [])
+          .map(id => (services.find(s=>s.id===id)?.durationMin)||0)
+          .reduce((a,b)=>a+b,0) || 15;
+
+      const payload = {
+        type: "appointment",
+        employeeUsername: form.employeeUsername || (employees[0]?.username || ""),
+        clientId: clientId || null,
+        services: Array.isArray(form.services) ? form.services : [],
+        start: form.start,
+        end: form.end,
+        priceRsd: Number(form.priceRsd)||0,
+        source: "manual",
+        pickedEmployee: false,
+        paid: _canSetPayment ? (form.paid ?? null) : null,
+        note: form.note || "",
+        updatedAt: serverTimestamp(),
+        noShow: !!form.noShow,
+        isOnline, bookedVia: form.bookedVia ?? value?.bookedVia ?? null, status,
+        totalAmountRsd: Number(form.priceRsd) || 0,
+        totalDurationMin: Math.max(15, totalDurationMin),
+        servicesLabel,
+        paymentStatus, paymentMethod, isPaid,
+      };
+
+      await addDoc(collection(db,"appointments"), { ...payload, createdAt: serverTimestamp() });
+      onSaved?.();
+      return;
+    }
+
+    // Više kategorija -> napravi više DOC-ova, naslaganih po vremenu
+    const groupId = (typeof crypto !== "undefined" && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : `grp_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+
+    let cursor = new Date(form.start);
+    let totalSum = 0;
+
+    for (let i = 0; i < groups.length; i++) {
+      const g = groups[i];
+      const svcIds = g.services.map(s => s.id);
+      const gDuration = g.services.reduce((a,s)=> a + (Number(s.durationMin)||0), 0) || 15;
+      const gSum = g.services.reduce((a,s)=> a + (Number(s.priceRsd)||0), 0);
+      totalSum += gSum;
+
+      const gStart = new Date(cursor);
+      const gEnd = new Date(gStart.getTime() + gDuration*60000);
+      cursor = gEnd;
+
+      const servicesLabel = makeServicesLabel(services, svcIds);
+
+      const payload = {
+        type: "appointment",
+        employeeUsername: form.employeeUsername || (employees[0]?.username || ""),
+        clientId: clientId || null,
+        services: svcIds,
+        start: gStart,
+        end: gEnd,
+        priceRsd: gSum,                     // cena po kartici (po kategoriji)
+        source: "manual",
+        pickedEmployee: false,
+        paid: _canSetPayment ? (form.paid ?? null) : null,
+        note: form.note || "",
+        updatedAt: serverTimestamp(),
+        noShow: !!form.noShow,
+        isOnline, bookedVia: form.bookedVia ?? value?.bookedVia ?? null, status,
+        totalAmountRsd: gSum,
+        totalDurationMin: Math.max(15, gDuration),
+        servicesLabel,
+        paymentStatus, paymentMethod, isPaid,
+        // meta za grupu
+        groupId,
+        groupIndex: i,
+        groupCount: groups.length,
+        categoryId: g.categoryId || null,
+      };
+
+      await addDoc(collection(db,"appointments"), { ...payload, createdAt: serverTimestamp() });
+    }
+
+    // (opciono) mogao bi da upišeš i zbir u poslednju karticu ili da ga ignorišeš;
+    // kalendar će sada videti više dokumenata i iscrtaće više kartica.
+
+    onSaved?.();
+  }catch(e){
+    console.error(e);
+    alert("Greška pri čuvanju.");
+  } finally {
+    setSaving(false);
   }
+}
+
 
   async function markNoShow(){
     if (!form.clientId) { alert("Nema klijenta vezanog za termin."); return; }
@@ -362,38 +514,35 @@ export default function CalendarEventModal({
 
   function openClientProfile(){
     if(!form.clientId) return;
-    
     setClientDrawerOpen(true);
   }
 
   const selectedClient = (clients || []).find(c => c.id === form.clientId);
 
-const fallbackFromAppointment = useMemo(() => {
-  const full = String(value?.clientName || "").trim();
-  const [first, ...rest] = full.split(/\s+/);
-  if (!form.clientId && !full && !value?.clientPhone && !value?.clientEmail) return null;
-  return {
-    id: form.clientId || null,
-    firstName: first || "",
-    lastName: (rest.join(" ") || ""),
-    phone: value?.clientPhone || "",
-    email: value?.clientEmail || "",
-  };
-}, [form.clientId, value?.clientName, value?.clientPhone, value?.clientEmail]);
+  const fallbackFromAppointment = useMemo(() => {
+    const full = String(value?.clientName || "").trim();
+    const [first, ...rest] = full.split(/\s+/);
+    if (!form.clientId && !full && !value?.clientPhone && !value?.clientEmail) return null;
+    return {
+      id: form.clientId || null,
+      firstName: first || "",
+      lastName: (rest.join(" ") || ""),
+      phone: value?.clientPhone || "",
+      email: value?.clientEmail || "",
+    };
+  }, [form.clientId, value?.clientName, value?.clientPhone, value?.clientEmail]);
 
-const clientForUI = clientLive || selectedClient || fallbackFromAppointment;
+  const clientForUI = clientLive || selectedClient || fallbackFromAppointment;
 
-
-useEffect(()=>{
-  if (!clientForUI || !clientForUI.id) return; // guard
-  const cnt = clientForUI.noShowCount || 0;
-  if (cnt >= 5 && !clientForUI.blocked) {
-    updateDoc(doc(db,"clients", clientForUI.id), {
-      blocked: true, updatedAt: serverTimestamp()
-    }).catch(console.error);
-  }
-}, [clientForUI?.id, clientForUI?.noShowCount, clientForUI?.blocked]);
-
+  useEffect(()=>{
+    if (!clientForUI || !clientForUI.id) return;
+    const cnt = clientForUI.noShowCount || 0;
+    if (cnt >= 5 && !clientForUI.blocked) {
+      updateDoc(doc(db,"clients", clientForUI.id), {
+        blocked: true, updatedAt: serverTimestamp()
+      }).catch(console.error);
+    }
+  }, [clientForUI?.id, clientForUI?.noShowCount, clientForUI?.blocked]);
 
   async function handleToggleBlock(){
     if(!clientForUI) return;
@@ -417,7 +566,7 @@ useEffect(()=>{
     }
   }
 
-  /* ===== MOBILNI: expandable sekcije (sve “kao pre”, ali otvara se na klik) ===== */
+  /* ===== MOBILNI: expandable sekcije ===== */
   const [openEmp, setOpenEmp] = useState(false);
   const [openClient, setOpenClient] = useState(false);
   const [openTime, setOpenTime] = useState(false);
@@ -425,6 +574,39 @@ useEffect(()=>{
   const [openPrice, setOpenPrice] = useState(false);
   const [openPay, setOpenPay] = useState(false);
   const [openNote, setOpenNote] = useState(false);
+
+  function SelectedServiceCards() {
+    if (!selectedServiceObjs.length) return null;
+    return (
+      <div className="svc-groups">
+        {[...groupedByCat.entries()].map(([catId, arr]) => {
+          const catName = categoriesMap.get(catId)?.name || "Bez kategorije";
+          const subDur = arr.reduce((a, s) => a + (Number(s.durationMin) || 0), 0);
+          const subSum = arr.reduce((a, s) => a + (Number(s.priceRsd) || 0), 0);
+          return (
+            <div key={catId} className="svc-card">
+              <div className="svc-card__head">
+                <div className="svc-card__title">{catName}</div>
+                <div className="svc-card__sum">
+                  {subDur} min · {subSum.toLocaleString("sr-RS")} RSD
+                </div>
+              </div>
+              <div className="svc-card__body">
+                {arr.map(s => (
+                  <div key={s.id} className="svc-row">
+                    <div className="svc-row__name">{s.name}</div>
+                    <div className="svc-row__meta">
+                      {s.durationMin} min · {Number(s.priceRsd||0).toLocaleString("sr-RS")} RSD
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
 
   /* ---------- UI ---------- */
   return (
@@ -444,6 +626,18 @@ useEffect(()=>{
         }
         .cal-modal :is(input,select,textarea):focus{ box-shadow:0 0 0 3px var(--focus); border-color:#c7b299; }
         ::selection{ background:#f3e8d7; color:#000; }
+.svc-groups{ display:grid; gap:10px; margin-top:10px; }
+.svc-card{ border:1px solid var(--border); border-radius:12px; background:#fff; overflow:hidden; }
+.svc-card__head{
+  display:flex; justify-content:space-between; align-items:center;
+  padding:10px 12px; background:#faf6f0; border-bottom:1px solid #f1eee8; font-weight:700;
+}
+.svc-card__title{ font-weight:800; }
+.svc-card__sum{ font-weight:800; }
+.svc-card__body{ padding:8px 12px; display:grid; gap:8px; }
+.svc-row{ display:flex; justify-content:space-between; align-items:center; }
+.svc-row__name{ font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.svc-row__meta{ opacity:.8; white-space:nowrap; }
 
         .modal-backdrop{ position:fixed; inset:0; background:#0007; display:flex; align-items:stretch; justify-content:flex-end; padding:0; z-index:1000; }
         .cal-modal.modal{ background:var(--bg); width:100%; max-width:900px; height:100%; border-left:1px solid var(--border); box-shadow:-14px 0 40px rgba(0,0,0,.18); display:flex; flex-direction:column; }
@@ -495,53 +689,46 @@ useEffect(()=>{
         .cal-modal .footer-right{ display:flex; gap:8px; min-width:200px; }
 .cal-modal .h-actions{
     display:flex;
-    gap:14px;           /* veći razmak između dugmića */
+    gap:14px;
     align-items:center;
-    flex-wrap:nowrap;   /* ostaje sve u jednom redu */
-    overflow-x:visible; /* nema scrolla */
-    padding:4px 0;      /* malo “daha” gore/dole */
+    flex-wrap:nowrap;
+    overflow-x:visible;
+    padding:4px 0;
   }
 
   .cal-modal .h-actions .pill,
   .cal-modal .h-actions .danger{
-    padding:8px 12px;   /* šire dugmence */
+    padding:8px 12px;
     font-size:14px;
   }
 }@media(max-width:480px){
   .cal-modal .grid{
-    grid-template-columns:1fr !important; /* forsiraj jednu kolonu */
-    gap:14px; /* malo već razmak da ne bude zbijeno */
+    grid-template-columns:1fr !important;
+    gap:14px;
   }
 }
 
         @media(max-width:820px){ .cal-modal .grid{ grid-template-columns:1fr; gap:12px; } }
         @media(max-width:480px){
-        /* Header actions — u jednom redu na telefonu */
 .cal-modal .h-actions{
     display:flex;
-    gap:12px;            /* veći međurazmak */
-    row-gap:8px;         /* ako se prelomi u dva reda, vertikalni razmak */
+    gap:12px;
+    row-gap:8px;
     align-items:center;
-    flex-wrap:wrap;      /* dozvoli prelom umesto da gura sve u jedan red */
-    overflow-x:visible;  /* bez horizontalnog skrola */
+    flex-wrap:wrap;
+    overflow-x:visible;
     padding-bottom:2px;
-    padding-top:2px;     /* ispravljeno malo 'P' */
+    padding-top:2px;
     justify-content:flex-start;
   }
-
-  /* fallback ako browser ignoriše flex gap (ređe na mobilnim, ali neka stoji) */
   .cal-modal .h-actions > *{ margin-right: 12px; }
   .cal-modal .h-actions > *:last-child{ margin-right: 0; }
-
-  /* malo "daha" samim pilovima/dugmićima */
   .cal-modal .h-actions .pill,
   .cal-modal .h-actions .danger{
-    padding:8px 10px;    /* mrvu šire */
+    padding:8px 10px;
     font-size:13px;
     line-height:1.1;
   }
-
-  /* ako koristiš čip sa imenom klijenta – dodaj razmak posle njega */
   .cal-modal .client-chip{ margin-right:8px; }
   .cal-modal .client-chip{ cursor: pointer; }
 
@@ -570,9 +757,8 @@ useEffect(()=>{
 
       <div className="modal cal-modal" onMouseDown={(e)=>e.stopPropagation()}>
 
-          {/* ===== HEADER ===== */}
+        {/* ===== HEADER ===== */}
         <div className="h">
-     
           <div className="title-left">
             <div style={{fontWeight:700, fontSize:16}}>
               {isBlock ? (form.id ? "Blokada" : "Nova blokada") : (form.id ? "Termin" : "Novi termin")}
@@ -592,93 +778,78 @@ useEffect(()=>{
                     <button className="pill danger" onClick={()=>onDelete?.(form.id)} title="Obriši">Obriši</button>
                   )}
                 </div>
-{!isBlock && clientForUI && (
-  <div
-    className="client-info-row"
-    style={{ marginTop: 6, flexDirection: "column", alignItems: "flex-start" }}
-  >
-    {form.clientId ? (
-      <button
-        className="client-chip"
-        onClick={openClientProfile}
-        title="Otvori profil klijenta"
-      >
-        👤 {formatClient(clientForUI || {}, role)}
-      </button>
-    ) : (
-      <span className="client-chip" title="Klijent">
-        👤 {formatClient(clientForUI || {}, role)}
-      </span>
-    )}
 
-    {clientForUI?.note?.trim() && (
-  <div className="muted" style={{ marginTop: 6, fontSize: "13px" }}>
-    📝 {clientForUI.note}
-  </div>
-)}
+                {!isBlock && clientForUI && (
+                  <div
+                    className="client-info-row"
+                    style={{ marginTop: 6, flexDirection: "column", alignItems: "flex-start" }}
+                  >
+                    {form.clientId ? (
+                      <button
+                        className="client-chip"
+                        onClick={openClientProfile}
+                        title="Otvori profil klijenta"
+                      >
+                        👤 {formatClient(clientForUI || {}, role)}
+                      </button>
+                    ) : (
+                      <span className="client-chip" title="Klijent">
+                        👤 {formatClient(clientForUI || {}, role)}
+                      </span>
+                    )}
 
-  </div>
-)}
-
-
-
+                    {clientForUI?.note?.trim() && (
+                      <div className="muted" style={{ marginTop: 6, fontSize: "13px" }}>
+                        📝 {clientForUI.note}
+                      </div>
+                    )}
+                  </div>
+                )}
               </>
             ) : (
-              /* === DESKTOP: akcije desno === */
               /* === DESKTOP: klijent (levo) + akcije (desno) === */
-<div className="h-actions">
-  {/* KLijent chip (ako postoji) */}
-{!isBlock && clientForUI && (
-  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", marginRight: 6 }}>
-    {form.clientId ? (
-      <button
-        className="client-chip"
-        onClick={openClientProfile}
-        title="Otvori profil klijenta"
-      >
-        👤 {formatClient(clientForUI || {}, role)}
-      </button>
-    ) : (
-      <span className="client-chip" title="Klijent">
-        👤 {formatClient(clientForUI || {}, role)}
-      </span>
-    )}
+              <div className="h-actions">
+                {!isBlock && clientForUI && (
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", marginRight: 6 }}>
+                    {form.clientId ? (
+                      <button
+                        className="client-chip"
+                        onClick={openClientProfile}
+                        title="Otvori profil klijenta"
+                      >
+                        👤 {formatClient(clientForUI || {}, role)}
+                      </button>
+                    ) : (
+                      <span className="client-chip" title="Klijent">
+                        👤 {formatClient(clientForUI || {}, role)}
+                      </span>
+                    )}
 
-    {clientForUI?.note?.trim() && (
-  <div className="muted" style={{ marginTop: 6, fontSize: "13px" }}>
-    📝 {clientForUI.note}
-  </div>
-)}
+                    {clientForUI?.note?.trim() && (
+                      <div className="muted" style={{ marginTop: 6, fontSize: "13px" }}>
+                        📝 {clientForUI.note}
+                      </div>
+                    )}
+                  </div>
+                )}
 
-  </div>
-)}
-
-
-
-  
-
-
-  {/* Akcije */}
-  {(!isBlock && (form.isOnline || form.bookedVia === "public_app")) && (
-    <span className="pill" title="Online rezervacija">🌐 Online</span>
-  )}
-  {form.id && !isBlock && (
-    <button className="pill" onClick={markNoShow} title="Označi kao no-show">No-show ⚠️</button>
-  )}
-  {form.id && (
-    <button className="pill danger" onClick={()=>onDelete?.(form.id)} title="Obriši">Obriši</button>
-  )}
-  
- 
-</div>
-
+                {(!isBlock && (form.isOnline || form.bookedVia === "public_app")) && (
+                  <span className="pill" title="Online rezervacija">🌐 Online</span>
+                )}
+                {form.id && !isBlock && (
+                  <button className="pill" onClick={markNoShow} title="Označi kao no-show">No-show ⚠️</button>
+                )}
+                {form.id && (
+                  <button className="pill danger" onClick={()=>onDelete?.(form.id)} title="Obriši">Obriši</button>
+                )}
+              </div>
             )}
           </div>
-         </div>
+        </div>
 
         {/* ===== SCROLLABLE CONTENT ===== */}
         <div className="content">
-          {/* === MOBILNI: sekcije otvaranjem na klik === */}
+          {/* === MOBILNI: sekcije === */}
           {isMobile ? (
             <div className="grid">
               {/* Radnica */}
@@ -713,10 +884,9 @@ useEffect(()=>{
                   <button className="expander" onClick={()=>setOpenClient(v=>!v)}>
                     <span>
                       Klijent
-<span className="expander-sub">
-  {clientForUI ? formatClient(clientForUI || {}, role) : "Pronađi/izaberi klijenta"}
-</span>
-
+                      <span className="expander-sub">
+                        {clientForUI ? formatClient(clientForUI || {}, role) : "Pronađi/izaberi klijenta"}
+                      </span>
                     </span>
                     <span>{openClient ? "▴" : "▾"}</span>
                   </button>
@@ -865,7 +1035,6 @@ useEffect(()=>{
                   {openSvcs && (
                     <div className="section">
                       <div className="svc-totals">
-                        
                         <span>⏱️ Trajanje (auto): <b>{autoDurationMin} min</b></span>
                       </div>
 
@@ -916,6 +1085,7 @@ useEffect(()=>{
                             {ghostServices.map(g => g?.name || sid(g)).filter(Boolean).join(", ")}
                           </div>
                         )}
+                        <SelectedServiceCards />
                       </div>
                     </div>
                   )}
@@ -986,7 +1156,8 @@ useEffect(()=>{
                 </div>
               )}
 
-              {/* Beleška */}
+              {/* Beleška
+eška */}
               <div className="row">
                 <button className="expander" onClick={()=>setOpenNote(v=>!v)}>
                   <span>
@@ -1191,6 +1362,7 @@ useEffect(()=>{
                         {ghostServices.map(g => g?.name || sid(g)).filter(Boolean).join(", ")}
                       </div>
                     )}
+                    <SelectedServiceCards />
                   </div>
                 </div>
               )}

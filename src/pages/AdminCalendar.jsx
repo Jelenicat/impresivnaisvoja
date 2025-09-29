@@ -11,7 +11,20 @@ import CalendarEventModal from "../partials/CalendarEventModal";
 
 /* ---------- helpers ---------- */
 function toJsDate(x){ if(!x) return null; if(x instanceof Date) return x; if(typeof x?.toDate==="function") return x.toDate(); return new Date(x); }
+function parseLocalYmd(ymd){ // "YYYY-MM-DD" -> lokalna ponoć (bez TZ iznenađenja)
+  if (!ymd) return null;
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(y, (m || 1) - 1, d || 1, 0, 0, 0, 0);
+}
 function startOfDay(d){ const x=new Date(toJsDate(d)||new Date()); x.setHours(0,0,0,0); return x; }
+function localYmd(d){
+  const x = startOfDay(d);
+  const y = x.getFullYear();
+  const m = String(x.getMonth()+1).padStart(2,"0");
+  const dd = String(x.getDate()).padStart(2,"0");
+  return `${y}-${m}-${dd}`;
+}
+
 function endOfDay(d){ const x=new Date(toJsDate(d)||new Date()); x.setHours(23,59,59,999); return x; }
 function isSameDay(a,b){ const x=startOfDay(a), y=startOfDay(b); return x.getTime()===y.getTime(); }
 function fmtTime(d){ const x=toJsDate(d); if(!x) return ""; const hh=String(x.getHours()).padStart(2,"0"); const mm=String(x.getMinutes()).padStart(2,"0"); return `${hh}:${mm}`; }
@@ -104,12 +117,14 @@ function getWorkIntervalsFor(empUsername, dateObj, latestSchedules){
   const sch = latestSchedules.get(empUsername);
   if (!sch) return [];
   const d = startOfDay(dateObj);
-  const dStr = d.toISOString().slice(0,10);
+  const dStr = localYmd(d);
   const inRange = (!sch.startDate || sch.startDate <= dStr) && (!sch.endDate || sch.endDate >= dStr);
   if (!inRange) return [];
   const weeksCount = sch.pattern === "2w" ? 2 : sch.pattern === "3w" ? 3 : sch.pattern === "4w" ? 4 : 1;
-  const start = sch.startDate ? new Date(sch.startDate) : d;
-  const diffDays = Math.floor((d - startOfDay(start)) / (24*3600*1000));
+  const start = sch.startDate ? parseLocalYmd(sch.startDate) : d;
+const diffDays = Math.floor((d - startOfDay(start)) / (24*3600*1000));
+if (diffDays < 0) return []; // još nije počelo
+
   const weekIdx = ((Math.floor(diffDays/7) % weeksCount) + weeksCount) % weeksCount;
   const weeksArr = Array.isArray(sch.weeks) ? sch.weeks : Object.keys(sch.weeks || {}).sort((a,b)=>Number(a)-Number(b)).map(k=>sch.weeks[k]);
   const dayCfg = (weeksArr[weekIdx] || [])[weekdayIndex(d)];
@@ -254,12 +269,14 @@ const focusEmpFromUrl = qs.get("employeeId"); // opcionalno
     const sch = latestSchedules.get(empUsername);
     if (!sch) return false;
     const d = startOfDay(dateObj);
-    const dStr = d.toISOString().slice(0,10);
+    const dStr = localYmd(d);
     const inRange = (!sch.startDate || sch.startDate <= dStr) && (!sch.endDate || sch.endDate >= dStr);
     if (!inRange) return false;
     const weeksCount = sch.pattern === "2w" ? 2 : sch.pattern === "3w" ? 3 : sch.pattern === "4w" ? 4 : 1;
-    const start = sch.startDate ? new Date(sch.startDate) : d;
-    const diffDays = Math.floor((d - startOfDay(start)) / (24*3600*1000));
+    const start = sch.startDate ? parseLocalYmd(sch.startDate) : d;
+const diffDays = Math.floor((d - startOfDay(start)) / (24*3600*1000));
+if (diffDays < 0) return false; // još nije počelo
+
     const weekIdx = ((Math.floor(diffDays/7) % weeksCount) + weeksCount) % weeksCount;
     const weeksArr = Array.isArray(sch.weeks) ? sch.weeks : Object.keys(sch.weeks || {}).sort((a,b)=>Number(a)-Number(b)).map(k=>sch.weeks[k]);
     const dayCfg = (weeksArr[weekIdx] || [])[weekdayIndex(d)];
@@ -494,6 +511,8 @@ useEffect(() => {
 
 
   /* ---------- actions ---------- */
+
+
   function openCreateAt(date,employeeUsername){
     const s=toJsDate(date)||new Date();
     const targetEmp = role==="worker" ? (currentUsername || employeeUsername) : (employeeUsername || (visibleEmployees[0]?.username||""));
@@ -521,6 +540,7 @@ useEffect(() => {
     await deleteDoc(doc(db,"appointments",id));
     setOpen(false);
   }
+
 
   function prevDay(){ const d=new Date(dayStart); d.setDate(d.getDate()-1); setDay(d); }
   function nextDay(){ const d=new Date(dayStart); d.setDate(d.getDate()+1); setDay(d); }

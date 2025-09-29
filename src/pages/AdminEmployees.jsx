@@ -6,6 +6,7 @@ import {
   doc, setDoc, serverTimestamp, deleteDoc
 } from "firebase/firestore";
 import { db } from "../firebase";
+import { useNavigate } from "react-router-dom";
 
 /* ============== helpers ============== */
 const isMobile = () =>
@@ -280,6 +281,7 @@ function EmployeeDetailDrawer({ open, onClose, employee, onSave, onDelete, onOpe
 
 /* ============== Glavna stranica ============== */
 export default function AdminEmployees() {
+  const nav = useNavigate();
   const [categories, setCategories] = useState([]);
   const [services, setServices] = useState([]);
   const [employees, setEmployees] = useState([]);
@@ -443,6 +445,15 @@ export default function AdminEmployees() {
 
   return (
     <div className="page">
+      <div style={{marginBottom:"12px", marginTop:"50px"}}>
+  <button
+    className="btn btn--ghost"
+    onClick={()=>nav("/admin")}
+  >
+    ← Nazad
+  </button>
+</div>
+
       <style>{`
         *,*::before,*::after{ box-sizing:border-box; }
         html,body,#root{ min-height:100%; height:auto; }
@@ -455,6 +466,14 @@ export default function AdminEmployees() {
           overflow-x:hidden;
           overflow-y:auto;
         }
+          .btn--ghost {
+  background:#fff;
+  border:1px solid #ddd6cc;
+  border-radius:12px;
+  padding:8px 14px;
+  font-size:14px;
+}
+
         h1{ 
           font-family:"Playfair Display",serif; 
           margin:8px 0 16px; 
