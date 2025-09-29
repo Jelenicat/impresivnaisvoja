@@ -157,14 +157,22 @@ export default function BookingServices(){
 
         .title{ font-size:22px; font-weight:900; text-align:center; margin:12px 0 14px; }
 
+        /* >>> Responsive kartica usluge */
         .item{
-          display:grid; grid-template-columns: 1fr auto; gap:10px;
+          display:grid; grid-template-columns: minmax(0,1fr) auto; gap:10px;
           padding:12px; border-radius:16px; border:1px solid #eee; margin-bottom:10px; background:#fff;
         }
-        .name{ font-weight:900; font-size:18px; color:#0f0f10; }
+        .info{ min-width:0; } /* dozvoli levoj koloni da se stisne */
+        .name{
+          font-weight:900; font-size:18px; color:#0f0f10;
+          display:-webkit-box; -webkit-line-clamp:2; line-clamp:2; -webkit-box-orient:vertical;
+          overflow:hidden;
+          word-break: break-word;
+        }
         .meta{ font-size:14px; color:#6b7280; margin-top:2px; }
 
-        .actions{ display:flex; align-items:center; gap:8px; }
+        .actions{ display:flex; align-items:center; gap:8px; flex-shrink:0; }
+
         .btn{
           -webkit-appearance:none; appearance:none;
           padding:10px 14px; border-radius:12px; border:1px solid #e5e5e5;
@@ -177,6 +185,12 @@ export default function BookingServices(){
 
         .fab{ position:fixed; left:14px; right:14px; bottom:18px; display:flex; gap:10px; }
         .fab .btn-dark{ flex:1; padding:14px; border-radius:14px; font-size:16px; }
+
+        /* Ultra mali telefoni: akcije u novi red */
+        @media (max-width: 380px){
+          .item{ grid-template-columns: 1fr; }
+          .actions{ justify-content: space-between; margin-top:8px; }
+        }
 
         @media (min-width: 720px){
           .hero{ height: 280px; }
@@ -207,7 +221,7 @@ export default function BookingServices(){
 
         {services.map(s=>(
           <div key={s.id} className="item">
-            <div>
+            <div className="info">
               <div className="name">{s.name}</div>
               <div className="meta">
                 Trajanje: {s.durationMin} min • Fiksna cena: {Number(s.priceRsd||0).toLocaleString("sr-RS")} RSD

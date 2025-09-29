@@ -51,7 +51,6 @@ function expandServicesForHistory(appt){
 
   if (Array.isArray(raw)){
     return raw.map(item=>{
-      // item može biti string (id) ili objekat { serviceId, name, durationMin, priceRsd, ... }
       if (typeof item === "string"){
         const id = sid(item);
         return { serviceId:id, name:id, durationMin:0, priceRsd:0, categoryId:null, categoryName:null };
@@ -140,12 +139,12 @@ export default function ClientHistory(){
 
   // indeks servisa { [serviceId]: {name, durationMin, priceRsd, ...} }
   const [svcIndex, setSvcIndex] = useState({});
-  // indeks kategorija { [categoryId]: categoryName }
+  // indeks kategorija { [categoryId]: categoryName } (zadržavamo, ali ne prikazujemo)
   const [catIndex, setCatIndex] = useState({});
 
   const mode = location?.state?.autoCancel ? "cancel" : "history";
 
-  // Učitaj sve servise (za hidraciju naziva kad je u appointments samo ID)
+  // Učitaj sve servise
   useEffect(()=>{
     const unsub = onSnapshot(collection(db, "services"), (snap)=>{
       const m = {};
@@ -165,7 +164,7 @@ export default function ClientHistory(){
     return ()=>unsub && unsub();
   },[]);
 
-  // Učitaj kategorije (categoryId -> categoryName)
+  // Učitaj kategorije (možda ih koristiš na drugim mestima)
   useEffect(()=>{
     const unsub = onSnapshot(collection(db, "categories"), (snap)=>{
       const m = {};
@@ -194,10 +193,8 @@ export default function ClientHistory(){
 
     const pushDocs = (snap, source) => {
       snap.forEach(d => {
-        // deduplikacija po ID-u bez obzira na izvor
         const existing = seen.get(d.id);
         const val = { id: d.id, ...d.data(), __src: source };
-        // preferiraj active nad history ako oba stignu
         if (!existing || existing.__src === "history") {
           seen.set(d.id, val);
         }
@@ -208,7 +205,6 @@ export default function ClientHistory(){
       setLoading(false);
     };
 
-    // helper za dodavanje upita (i fallback za composite index)
     const addQ = (col, field, value, tag) => {
       if (!value) return;
       try{
@@ -223,15 +219,12 @@ export default function ClientHistory(){
       }
     };
 
-    // ACTIVE kolekcija
     if (mode==="cancel" || mode==="history"){
       addQ("appointments", "clientId",        client?.id,     "active");
       addQ("appointments", "clientPhoneNorm", phoneNorm,      "active");
       addQ("appointments", "clientPhone",     rawPhone,       "active");
       addQ("appointments", "clientEmail",     email,          "active");
     }
-
-    // HISTORY kolekcija
     if (mode==="history"){
       addQ("appointments_history", "clientId",        client?.id, "history");
       addQ("appointments_history", "clientPhoneNorm", phoneNorm,  "history");
@@ -242,10 +235,10 @@ export default function ClientHistory(){
     return ()=>unsubs.forEach(u=>u&&u());
   }, [client?.id, client?.phone, client?.email, nav, mode]);
 
-  // normalizovani zapisi (radi prikaza)
+  // normalizovani zapisi
   const normalized = useMemo(()=> (items || []).map(normalizeAppointment), [items]);
 
-  // hidracija + prevod kategorija + korekcija servicesLabel
+  // hidracija + korekcija servicesLabel, bez prikaza kategorije u nazivu
   const hydrated = useMemo(()=>{
     return (normalized || []).map(a=>{
       const hydraServices = (a.services || []).map(s=>{
@@ -259,8 +252,9 @@ export default function ClientHistory(){
           (resolvedCategoryId ? catIndex[resolvedCategoryId] : null) ??
           null;
 
+        // ključno: NEMA fallback-a na categoryName
         const resolvedName =
-          s.name || meta.name || resolvedCategoryName || s.serviceId;
+          s.name || meta.name || s.serviceId;
 
         return {
           ...s,
@@ -272,9 +266,7 @@ export default function ClientHistory(){
         };
       });
 
-      // derive lep label iz hidriranih imena
       const derivedLabel = hydraServices.map(x=>x.name).filter(Boolean).join(", ");
-      // ako je postojeći label prazan ili izgleda kao ID -> koristi derived
       const labelToUse =
         (a.servicesLabel && a.servicesLabel.trim() && !isDocIdLike(a.servicesLabel))
           ? a.servicesLabel.trim()
@@ -316,7 +308,6 @@ export default function ClientHistory(){
       const a = snap.data()||{};
       const when = toJsDate(a.start);
 
-      // 1) upiši u istoriju
       await setDoc(doc(db,"appointments_history",id),{
         ...a,
         originalId:id,
@@ -326,11 +317,9 @@ export default function ClientHistory(){
         archivedAt:serverTimestamp()
       },{merge:true});
 
-      // 2) ukloni iz aktivnih
       await deleteDoc(ref);
       setItems(prev=>prev.filter(x=>x.id!==id));
 
-      // 3) pošalji PUSH
       const employeeId = await getEmployeeIdByUsername(a?.employeeUsername);
 
       const title = "❌ Termin otkazan";
@@ -471,11 +460,15 @@ export default function ClientHistory(){
                           </div>
                         ) : null}
 
-                        {/* Chipovi svih servisa (hidrirani nazivi) */}
+                        {/* Čipovi bez kategorije u tekstu */}
                         <div className="services">
                           {a.services.map(s=>(
-                            <span key={s.serviceId||s.name} className="chip" title={s.categoryName ? `${s.categoryName} — ${s.name}` : s.name}>
-                              {s.name || s.serviceId}{s.categoryName ? ` · ${s.categoryName}` : ""}
+                            <span
+                              key={s.serviceId||s.name}
+                              className="chip"
+                              title={s.name || s.serviceId}
+                            >
+                              {s.name || s.serviceId}
                             </span>
                           ))}
                         </div>
@@ -506,18 +499,21 @@ export default function ClientHistory(){
 
                         <div>{a.employeeUsername||"Zaposleni"}</div>
 
-                        {/* Lep label (ignorisani sirovi ID-evi) */}
                         {a.servicesLabel ? (
                           <div style={{marginTop:6, fontWeight:600}}>
                             {a.servicesLabel}
                           </div>
                         ) : null}
 
-                        {/* Chipovi svih servisa (hidrirani nazivi) */}
+                        {/* Čipovi bez kategorije u tekstu */}
                         <div className="services">
                           {a.services.map(s=>(
-                            <span key={s.serviceId||s.name} className="chip" title={s.categoryName ? `${s.categoryName} — ${s.name}` : s.name}>
-                              {s.name || s.serviceId}{s.categoryName ? ` · ${s.categoryName}` : ""}
+                            <span
+                              key={s.serviceId||s.name}
+                              className="chip"
+                              title={s.name || s.serviceId}
+                            >
+                              {s.name || s.serviceId}
                             </span>
                           ))}
                         </div>
