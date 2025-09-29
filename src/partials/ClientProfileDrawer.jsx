@@ -219,16 +219,39 @@ export default function ClientProfileDrawer({
           .toolbar{ display:flex; gap:8px; flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch; }
           .btn{ padding:8px 12px; border-radius:10px; border:1px solid #ddd6cc; background:#fff; font-weight:700; font-size:14px; min-height:36px; }
           .btn:hover{ background:#f5f0e8; } .btn.danger{ color:#dc2626; border-color:#dc2626; }
-.link-btn{
-  font-weight:700;
-  text-decoration:none;
-  border:1px solid #ddd6cc;
-  background:#fff;
-  padding:2px 8px;
-  border-radius:999px;
-  display:inline-block;
+.link-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+
+  font-weight: 600;
+  font-size: 12px;
+  text-decoration: none;
+
+  background: linear-gradient(135deg, #fdfbfb, #ebedee);
+  border: 1px solid #ddd6cc;
+  color: #111;
+
+  padding: 10px 14px;
+  border-radius: 14px;
+  min-width: 120px;
+
+  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+  transition: all 0.2s ease;
 }
-.link-btn:hover{ background:#f5f0e8; }
+
+.link-btn:hover {
+  background: linear-gradient(135deg, #faf7f4, #f1f1f1);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(0,0,0,0.12);
+}
+
+.link-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
 
           .body{
             flex:1; overflow-y:auto; background:#f7f2eb;
