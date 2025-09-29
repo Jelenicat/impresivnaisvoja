@@ -595,6 +595,59 @@ export default function AdminEmployees() {
         .pill--active{ background:#f2f2f2; color:#1f1f1f; border-color:#ccc; box-shadow: inset 0 0 0 2px rgba(0,0,0,.03); }
         .pill:active{ background:#f5f5f5; }
         .empty{opacity:.65;font-size:13px;padding:8px}
+        /* ===== Desktop lev stub – poboljšanja ===== */
+@media (min-width: 761px){
+  /* širi i fleksibilniji levi stub */
+  .grid{
+    grid-template-columns: clamp(320px, 28vw, 420px) 1fr;
+    gap: 20px;
+    align-items: start;
+  }
+
+  /* levo: kartica sa listom da „lepi” uz vrh i skroluje */
+  .grid > .card:first-child{
+    position: sticky;
+    top: 16px;
+    align-self: start;
+    max-height: calc(100vh - 32px);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .grid > .card:first-child .emp-list-desktop{
+    overflow-y: auto;
+    max-height: 100%;
+    padding-right: 4px; /* da se ne lepi scrollbar */
+  }
+
+  /* red u listi: stabilan raspored i bolji wrap dugmića */
+  .emp-row{
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 10px;
+  }
+  .emp-row > div:first-child{ min-width: 0; } /* da elipsira */
+  .emp-row__name{
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .emp-row__user{ white-space: nowrap; opacity: .7; font-size: 12px; }
+
+  .emp-row__actions{
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;           /* ako nema mesta, prelomi u drugi red */
+    justify-content: flex-end;
+  }
+  .emp-row .btn{               /* kompaktnija dugmad u listi */
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+  .badge{ white-space: nowrap; }
+}
+
       `}</style>
 
       
