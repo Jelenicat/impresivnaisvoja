@@ -280,6 +280,10 @@ export default function BookingTime(){
     return ()=> unsubs.forEach(u=>u && u());
   },[selectedDay, chosenEmployeeId, employees]);
 
+  function employeeCanDoAll(services, employee){
+    return services.every(s => canEmployeeDo(s, employee));
+  }
+
   // 4) Slotovi za selektovani dan (bez preklapanja) + FILTAR PROŠLOSTI
   const { slots, anyWork } = useMemo(()=>{
     const d = selectedDay;
@@ -305,6 +309,7 @@ export default function BookingTime(){
     } else {
       const all=[];
       for (const e of employees){
+        if (!employeeCanDoAll(selectedServices, e)) continue;
         const sched = latestByUser[e.username];
         const day   = pickDayFromSchedule(sched, d);
         if (!day || day.closed) continue;
@@ -373,6 +378,31 @@ export default function BookingTime(){
     });
   }
 
+  // ✅ proveri i pokaži mismatch modal za KONKRETNOG employeeUsername (u "firstFree" toku)
+  function ensureValidForEmployeeUsername(empUsername, cb){
+    const emp = employees.find(e => e.username === empUsername);
+    if (!emp) { cb(); return; }
+    const { doable, notDoable } = splitByCanDo(selectedServices, emp);
+    if (notDoable.length === 0) { cb(); return; }
+    if (doable.length === 0){
+      setMismatch({
+        open:true, doable, notDoable,
+        proceedCb:null,
+        backCb:()=>{}
+      });
+      return;
+    }
+    setMismatch({
+      open:true, doable, notDoable,
+      proceedCb:()=>{
+        setSelectedIds(doable.map(s=>s.serviceId));
+        pushToast("Nastavljam samo sa uslugama koje ova radnica radi.");
+        cb();
+      },
+      backCb:()=>nav("/booking/employee", { state:{ reason:"pick-employee-for-remaining" } })
+    });
+  }
+
   /* ---------- Confirm sheet ---------- */
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmData, setConfirmData] = useState(null); // {start,end, employeeId}
@@ -387,15 +417,27 @@ export default function BookingTime(){
       pushToast("Izaberi bar jednu uslugu koju zakazuješ sada.");
       return;
     }
+
+    // Ako je "firstFree" — validiraj baš za radnicu koja je vlasnik izabranog slota
+    if (chosenEmployeeId === "firstFree" && opt?.employeeId){
+      ensureValidForEmployeeUsername(opt.employeeId, () => {
+        const employeeId = opt.employeeId;
+        setConfirmData({ start: opt.start, end: opt.end, employeeId });
+        setConfirmOpen(true);
+        pushToast(`Termin izabran: ${niceDate(opt.start)} u ${hhmm(opt.start)}`);
+        const e = employees.find(x=>x.username===employeeId);
+        pushToast(`Dodeljen: ${e ? (e.firstName||e.username) : "zaposleni"}`);
+      });
+      return;
+    }
+
+    // Inače (konkretno izabran zaposleni) koristi postojeću logiku
     ensureValidSelectionForEmployee(() => {
-      const employeeId = (chosenEmployeeId==="firstFree") ? (opt.employeeId || null) : chosenEmployeeId;
+      const employeeId = chosenEmployeeId;
       setConfirmData({ start: opt.start, end: opt.end, employeeId });
       setConfirmOpen(true);
       pushToast(`Termin izabran: ${niceDate(opt.start)} u ${hhmm(opt.start)}`);
-      if (chosenEmployeeId==="firstFree" && employeeId){
-        const e = employees.find(x=>x.username===employeeId);
-        pushToast(`Dodeljen: ${e ? (e.firstName||e.username) : "zaposleni"}`);
-      } else if (chosenEmployee) {
+      if (chosenEmployee) {
         pushToast(`Radnik: ${`${chosenEmployee.firstName||""} ${chosenEmployee.lastName||""}`.trim() || chosenEmployee.username}`);
       }
     });
@@ -426,6 +468,16 @@ export default function BookingTime(){
 
   async function confirmBooking(){
     if (!confirmData) return;
+
+    // hard guard za "firstFree" i uopšte
+    if (confirmData.employeeId){
+      const emp = employees.find(e => e.username === confirmData.employeeId);
+      if (!employeeCanDoAll(selectedServices, emp)) {
+        pushToast("Ova radnica ne radi sve izabrane usluge. Izaberi drugu ili smanji izbor.");
+        setConfirmOpen(false);
+        return;
+      }
+    }
     if (confirmData.start < new Date()){
       pushToast("Vreme je isteklo, izaberi novi termin.");
       setConfirmOpen(false);
@@ -434,14 +486,15 @@ export default function BookingTime(){
 
     try{
       setSaving(true);
-// ✅ izračunaj jednom, koristi svuda
-const safeClientName =
-  (client.name && client.name.trim()) ||
-  (client.phone && String(client.phone).trim()) ||
-  (client.email && String(client.email).trim()) ||
-  "";
 
-const { first: firstName, last: lastName } = splitName(safeClientName);
+      // ✅ izračunaj jednom, koristi svuda
+      const safeClientName =
+        (client.name && client.name.trim()) ||
+        (client.phone && String(client.phone).trim()) ||
+        (client.email && String(client.email).trim()) ||
+        "";
+
+      const { first: firstName, last: lastName } = splitName(safeClientName);
 
       // --- Klijent: nadji po phone/email -> kreiraj ako ne postoji -> merge update ---
       let clientId = client?.id || null;
@@ -458,36 +511,35 @@ const { first: firstName, last: lastName } = splitName(safeClientName);
         if (!s2.empty) foundId = s2.docs[0].id;
       }
       if (!foundId && !clientId){
-  const cref = await addDoc(collection(db,"clients"),{
-    firstName: firstName,
-    lastName:  lastName,
-    displayName: safeClientName,
-    phone: client.phone || "",
-    email: (client.email || "").toLowerCase(),
-    createdAt: serverTimestamp(),
-    source: "public_app"
-  });
-  foundId = cref.id;
-}
+        const cref = await addDoc(collection(db,"clients"),{
+          firstName: firstName,
+          lastName:  lastName,
+          displayName: safeClientName,
+          phone: client.phone || "",
+          email: (client.email || "").toLowerCase(),
+          createdAt: serverTimestamp(),
+          source: "public_app"
+        });
+        foundId = cref.id;
+      }
 
       clientId = clientId || foundId;
 
       // merge osveži ime/phone/email ako imamo podatke
       if (clientId){
-  await setDoc(
-    doc(db,"clients", clientId),
-    {
-      firstName: firstName,
-      lastName:  lastName,
-      displayName: safeClientName,
-      phone: client.phone || "",
-      email: (client.email || "").toLowerCase(),
-      updatedAt: serverTimestamp()
-    },
-    { merge:true }
-  );
-}
-
+        await setDoc(
+          doc(db,"clients", clientId),
+          {
+            firstName: firstName,
+            lastName:  lastName,
+            displayName: safeClientName,
+            phone: client.phone || "",
+            email: (client.email || "").toLowerCase(),
+            updatedAt: serverTimestamp()
+          },
+          { merge:true }
+        );
+      }
 
       const groups = groupServicesByCategory(selectedServices);
       let rollingStart = new Date(confirmData.start);
@@ -526,7 +578,7 @@ const { first: firstName, last: lastName } = splitName(safeClientName);
             categoryId: s.categoryId || null,
             categoryName: s.categoryName || null,
           })),
-            servicesIds: g.services.map(s => s.serviceId),
+          servicesIds: g.services.map(s => s.serviceId),
           totalDurationMin: gDuration,
           totalAmountRsd:   gAmount,
           priceRsd:         gAmount,
@@ -539,13 +591,13 @@ const { first: firstName, last: lastName } = splitName(safeClientName);
           groupCount: groups.length,
 
           clientId: clientId || null,
-clientName: safeClientName || "Klijent",
+          clientName: safeClientName || "Klijent",
 
-clientPhone: client.phone || "",
-clientEmail: (client.email || "").toLowerCase(),
-clientPhoneNorm: (client.phone || "").replace(/\D+/g, ""),
-isOnline: true,
-bookedVia: "public_app",
+          clientPhone: client.phone || "",
+          clientEmail: (client.email || "").toLowerCase(),
+          clientPhoneNorm: (client.phone || "").replace(/\D+/g, ""),
+          isOnline: true,
+          bookedVia: "public_app",
 
           pickedMode: (chosenEmployeeId==="firstFree") ? "firstFree" : "specific",
           isPaid: false,
@@ -562,48 +614,46 @@ bookedVia: "public_app",
         rollingStart = gEnd;
       }
 
-      // === ENQUEUE PUSH NOTIFIKACIJE + ODMAH POŠALJI ===
-     // === POŠALJI PUSH NOTIFIKACIJU DIREKTNO PREKO API-JA (bez addDoc na frontu) ===
-try {
-  const emp = employees.find(e => e.username === (confirmData.employeeId || ""));
-  const employeeDocId = emp?.id || null;
+      // === POŠALJI PUSH NOTIFIKACIJU DIREKTNO PREKO API-JA ===
+      try {
+        const emp = employees.find(e => e.username === (confirmData.employeeId || ""));
+        const employeeDocId = emp?.id || null;
 
-  const title = "📅 Zakazan termin";
-  const body =
-    `${safeClientName || "Klijent"} – ` +
-    `${(selectedServices[0]?.name || "usluga")}` +
-    `${selectedServices.length > 1 ? ` (+${selectedServices.length - 1})` : ""} · ` +
-    `${niceDate(confirmData.start)} ${hhmm(confirmData.start)} · ` +
-    `${totalAmountRsd.toLocaleString("sr-RS")} RSD`;
+        const title = "📅 Zakazan termin";
+        const body =
+          `${safeClientName || "Klijent"} – ` +
+          `${(selectedServices[0]?.name || "usluga")}` +
+          `${selectedServices.length > 1 ? ` (+${selectedServices.length - 1})` : ""} · ` +
+          `${niceDate(confirmData.start)} ${hhmm(confirmData.start)} · ` +
+          `${totalAmountRsd.toLocaleString("sr-RS")} RSD`;
 
-  const url = `/admin/kalendar?appointmentId=${createdIds?.[0] || ""}${
-    employeeDocId ? `&employeeId=${emp.username}` : "" // za UI fokus koristi username u URL-u
-  }`;
+        const url = `/admin/kalendar?appointmentId=${createdIds?.[0] || ""}${
+          employeeDocId ? `&employeeId=${emp.username}` : ""
+        }`;
 
-  await fetch("/api/sendNotifications", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      kind: "appointment_created",
-      title,
-      body,
-      toRoles: ["admin", "salon"],
-      toEmployeeId: employeeDocId,            // <<— VAŽNO: ID dokumenta employee-a
-      data: {
-        screen: "/admin/kalendar",
-        url,                                  // eksplicitni deep-link za SW
-        appointmentIds: createdIds,
-        employeeId: employeeDocId || "",      // ID dokumenta
-        employeeUsername: emp?.username || "",// za svaki slučaj
-        clientName: client?.name || "",
-        startTs: confirmData.start?.getTime?.() ?? null
+        await fetch("/api/sendNotifications", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            kind: "appointment_created",
+            title,
+            body,
+            toRoles: ["admin", "salon"],
+            toEmployeeId: employeeDocId,
+            data: {
+              screen: "/admin/kalendar",
+              url,
+              appointmentIds: createdIds,
+              employeeId: employeeDocId || "",
+              employeeUsername: emp?.username || "",
+              clientName: client?.name || "",
+              startTs: confirmData.start?.getTime?.() ?? null
+            }
+          })
+        });
+      } catch (e) {
+        console.warn("Slanje notifikacije nije uspelo:", e);
       }
-    })
-  });
-} catch (e) {
-  console.warn("Slanje notifikacije nije uspelo:", e);
-}
-
 
       pushToast(`✅ Rezervacija sačuvana (${createdIds.length} kartica)`);
       setConfirmOpen(false);
@@ -656,129 +706,83 @@ try {
 
   return (
     <div className="wrap">
-     <style>{`
-  :root { color-scheme: light; }
-
-  /* Global tap highlight off */
-  button, .btn, .btnx, .pill, .d { -webkit-tap-highlight-color: transparent; }
-  button:focus, button:active,
-  .btn:focus, .btn:active,
-  .btnx:focus, .btnx:active,
-  .pill:focus, .pill:active,
-  .d:focus, .d:active {
-    outline: none !important;
-    box-shadow: none !important;
-  }
-  .d:focus-visible { outline: 2px solid #111; }
-
-  .wrap{min-height:100dvh;background:#0f0f10;}
-  .sheet{background:#fff;min-height:100dvh;border-top-left-radius:22px;border-top-right-radius:22px;padding:16px 14px 120px;}
-  .hdr{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
-  .back{appearance:none;border:1px solid #eee;background:#fafafa;padding:8px 10px;border-radius:10px;font-weight:700;}
-  .title{font-size:26px;font-weight:900;margin:6px 0 4px;}
-  .sub{opacity:.7;font-weight:700;margin-bottom:10px;}
-  .hero{width:100%;height:140px;border-radius:18px;overflow:hidden;margin:20px 0 10px;}
-  .hero img{width:100%;height:100%;object-fit:cover}
-
-  .cal{margin-top:6px;border:1px solid #eee;border-radius:16px;padding:12px;}
-  .cal .mbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
-  .btnx{appearance:none;border:1px solid #eee;background:#fafafa;padding:8px 10px;border-radius:10px;font-weight:700;}
-  .grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;}
-  .dow{font-size:12px;opacity:.6;text-align:center;margin-bottom:6px}
-  .d{
-    aspect-ratio:1; border:1px solid #eee; border-radius:12px; display:flex;align-items:center;justify-content:center;
-    background:#fff; font-weight:900; font-size:16px; color:#111; user-select:none; -webkit-user-select:none;
-  }
-  .d.sel{ outline:2px solid #111; background:#111; color:#fff; border-color:#111; }
-  .d.disabled{opacity:.25;pointer-events:none}
-
-  .msg{margin:14px 0;padding:12px;border-radius:12px;background:#fff7f0;border:1px solid #ffe6d2;font-weight:700}
-  .slots{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
-  .slot{padding:10px 12px;border:1px solid #eee;border-radius:12px;background:#f7f7f7;font-weight:800}
-  .slot.emp{border-style:dashed}
-
-  .res{margin-top:14px;border-top:1px dashed #eee;padding-top:10px}
-  .svc{display:flex;justify-content:space-between;align-items:center;padding:6px 0;gap:10px}
-  .svc .l{display:flex;align-items:center;gap:10px}
-  .chk{width:20px;height:20px;border:1px solid #ddd;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;background:#fff}
-  .chk.on{background:#111;color:#fff;border-color:#111}
-  .sum{font-weight:900;margin-top:8px;display:flex;justify-content:space-between;align-items:center}
-  .pill{ font-size:12px;padding:6px 10px;border:1px solid #eee;border-radius:999px;background:#fafafa;font-weight:700; color:#111; }
-  .helpers{display:flex;gap:8px;margin-top:8px}
-
-  .fab{position:fixed;left:14px;right:14px;bottom:18px;display:flex;gap:10px}
-  .btn{padding:14px;border-radius:14px;font-weight:800;border:1px solid #1f1f1f}
-  .btn-dark{background:#1f1f1f;color:#fff;border-color:#1f1f1f;flex:1}
-  .btn-ghost{background:#fff;color:#111}
-
-  .confirm-overlay{position:fixed; inset:0; background:rgba(0,0,0,.35); display:flex; align-items:flex-end; z-index:50;}
-  .confirm-sheet{background:#fff; width:100%; border-top-left-radius:22px; border-top-right-radius:22px; padding:16px; max-height:80dvh; overflow:auto;}
-  .cs-title{font-size:18px; font-weight:900; margin-bottom:10px;}
-  .cs-row{display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px dashed #eee;}
-  .cs-row:last-child{border-bottom:none;}
-  .cs-sub{margin-top:12px; font-weight:800;}
-
-  .mm-backdrop{position:fixed; inset:0; background:rgba(0,0,0,.35); display:flex; align-items:center; justify-content:center; z-index:70;}
-  .mm-card{width:min(560px, 92vw); background:#fff; border-radius:18px; border:1px solid #eee; box-shadow:0 16px 44px rgba(0,0,0,.22); padding:18px;}
-  .mm-head{display:flex; align-items:center; gap:10px; margin-bottom:8px;}
-  .mm-ico{font-size:22px;}
-  .mm-title{font-weight:900; font-size:18px;}
-  .mm-section{background:#fafafa; border:1px solid #eee; border-radius:12px; padding:10px 12px; margin-top:10px;}
-  .mm-sub{font-weight:800; margin-bottom:6px;}
-  .mm-list{margin:0; padding-left:14px; line-height:1.5;}
-  .mm-list.ok li{color:#1f3b1f;}
-  .mm-actions{display:flex; gap:10px; justify-content:flex-end; margin-top:14px;}
-  .mm-btn{padding:12px 14px; border-radius:12px; font-weight:800; border:1px solid #1f1f1f;}
-  .mm-btn.dark{background:#1f1f1f; color:#fff;}
-  .mm-btn.ghost{background:#fff; color:#111; border-color:#ddd;}
-  @media (max-width: 520px){ .mm-card{padding:16px;} .mm-title{font-size:16px;} .mm-btn{flex:1;} }
-
-  .toasts{position:fixed; left:12px; right:12px; bottom:90px; display:flex; flex-direction:column; gap:8px; z-index:60;}
-  .toast{background:#111;color:#fff;padding:10px 12px;border-radius:12px;font-weight:800;opacity:.95}
-
-  /* ==== iOS Safari: fix plavog teksta (postavljeno na kraj da pregazi sve) ==== */
-  a, a:visited, a:active { color: inherit; text-decoration: none; }
-
-  button, .btn, .btnx, .pill, .d, .slot, .back {
-    appearance: none !important;
-    -webkit-appearance: none !important;
-    color: #111 !important;
-    -webkit-text-fill-color: #111 !important;
-  }
-  .btn-dark {
-    color: #fff !important;
-    -webkit-text-fill-color: #fff !important;
-  }
-  .back:focus, .back:active,
-  .btn:focus, .btn:active,
-  .btnx:focus, .btnx:active,
-  .pill:focus, .pill:active,
-  .d:focus, .d:active,
-  .slot:focus, .slot:active {
-    color: inherit !important;
-    -webkit-text-fill-color: inherit !important;
-    outline: none !important;
-    box-shadow: none !important;
-  }
-
-  /* iOS data detectors (tel/datumi) – spreči plavo linkovanje */
-  a[x-apple-data-detectors],
-  a[href^="x-apple-data-detectors:"],
-  a[href^="tel:"]{
-    color: inherit !important;
-    -webkit-text-fill-color: inherit !important;
-    text-decoration: none !important;
-  }
-
-  /* Dodatno: global tap highlight off (fallback) */
-  * { -webkit-tap-highlight-color: transparent; }
-`}</style>
- <div className="sheet">
-        
+      <style>{`
+        :root { color-scheme: light; }
+        button, .btn, .btnx, .pill { -webkit-tap-highlight-color: transparent; }
+        button:focus, button:active,
+        .btn:focus, .btn:active,
+        .btnx:focus, .btnx:active,
+        .pill:focus, .pill:active { outline:none !important; box-shadow:none !important; }
+        .d:focus, .d:active { outline:none !important; box-shadow:none !important; }
+        .d:focus-visible { outline:2px solid #111; }
+        .wrap{min-height:100dvh;background:#0f0f10;}
+        .sheet{background:#fff;min-height:100dvh;border-top-left-radius:22px;border-top-right-radius:22px;padding:16px 14px 120px;}
+        .hdr{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+        .back{appearance:none;border:1px solid #eee;background:#fafafa;padding:8px 10px;border-radius:10px;font-weight:700;}
+        .title{font-size:26px;font-weight:900;margin:6px 0 4px;}
+        .sub{opacity:.7;font-weight:700;margin-bottom:10px;}
+        .hero{width:100%;height:140px;border-radius:18px;overflow:hidden;margin:20px 0 10px;}
+        .hero img{width:100%;height:100%;object-fit:cover}
+        .cal{margin-top:6px;border:1px solid #eee;border-radius:16px;padding:12px;}
+        .cal .mbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+        .btnx{appearance:none;border:1px solid #eee;background:#fafafa;padding:8px 10px;border-radius:10px;font-weight:700;}
+        .grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;}
+        .dow{font-size:12px;opacity:.6;text-align:center;margin-bottom:6px}
+        .d{aspect-ratio:1; border:1px solid #eee; border-radius:12px; display:flex;align-items:center;justify-content:center; background:#fff; font-weight:900; font-size:16px; color:#111; user-select:none;}
+        .d.sel{ outline:2px solid #111; background:#111; color:#fff; border-color:#111; }
+        .d.disabled{opacity:.25;pointer-events:none}
+        .msg{margin:14px 0;padding:12px;border-radius:12px;background:#fff7f0;border:1px solid #ffe6d2;font-weight:700}
+        .slots{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+        .slot{padding:10px 12px;border:1px solid #eee;border-radius:12px;background:#f7f7f7;font-weight:800}
+        .slot.emp{border-style:dashed}
+        .res{margin-top:14px;border-top:1px dashed #eee;padding-top:10px}
+        .svc{display:flex;justify-content:space-between;align-items:center;padding:6px 0;gap:10px}
+        .svc .l{display:flex;align-items:center;gap:10px}
+        .chk{width:20px;height:20px;border:1px solid #ddd;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;background:#fff}
+        .chk.on{background:#111;color:#fff;border-color:#111}
+        .sum{font-weight:900;margin-top:8px;display:flex;justify-content:space-between;align-items:center}
+        .pill{ font-size:12px;padding:6px 10px;border:1px solid #eee;border-radius:999px;background:#fafafa;font-weight:700; color:#111; }
+        .helpers{display:flex;gap:8px;margin-top:8px}
+        .fab{position:fixed;left:14px;right:14px;bottom:18px;display:flex;gap:10px}
+        .btn{padding:14px;border-radius:14px;font-weight:800;border:1px solid #1f1f1f}
+        .btn-dark{background:#1f1f1f;color:#fff;border-color:#1f1f1f;flex:1}
+        .btn-ghost{background:#fff;color:#111}
+        .confirm-overlay{position:fixed; inset:0; background:rgba(0,0,0,.35); display:flex; align-items:flex-end; z-index:50;}
+        .confirm-sheet{background:#fff; width:100%; border-top-left-radius:22px; border-top-right-radius:22px; padding:16px; max-height:80dvh; overflow:auto;}
+        .cs-title{font-size:18px; font-weight:900; margin-bottom:10px;}
+        .cs-row{display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px dashed #eee;}
+        .cs-row:last-child{border-bottom:none;}
+        .cs-sub{margin-top:12px; font-weight:800;}
+        .mm-backdrop{position:fixed; inset:0; background:rgba(0,0,0,.35); display:flex; align-items:center; justify-content:center; z-index:70;}
+        .mm-card{width:min(560px, 92vw); background:#fff; border-radius:18px; border:1px solid #eee; box-shadow:0 16px 44px rgba(0,0,0,.22); padding:18px;}
+        .mm-head{display:flex; align-items:center; gap:10px; margin-bottom:8px;}
+        .mm-ico{font-size:22px;}
+        .mm-title{font-weight:900; font-size:18px;}
+        .mm-section{background:#fafafa; border:1px solid #eee; border-radius:12px; padding:10px 12px; margin-top:10px;}
+        .mm-sub{font-weight:800; margin-bottom:6px;}
+        .mm-list{margin:0; padding-left:14px; line-height:1.5;}
+        .mm-list.ok li{color:#1f3b1f;}
+        .mm-actions{display:flex; gap:10px; justify-content:flex-end; margin-top:14px;}
+        .mm-btn{padding:12px 14px; border-radius:12px; font-weight:800; border:1px solid #1f1f1f;}
+        .mm-btn.dark{background:#1f1f1f; color:#fff;}
+        .mm-btn.ghost{background:#fff; color:#111; border-color:#ddd;}
+        @media (max-width: 520px){ .mm-card{padding:16px;} .mm-title{font-size:16px;} .mm-btn{flex:1;} }
+        .toasts{position:fixed; left:12px; right:12px; bottom:90px; display:flex; flex-direction:column; gap:8px; z-index:60;}
+        .toast{background:#111;color:#fff;padding:10px 12px;border-radius:12px;font-weight:800;opacity:.95}
+        a, a:visited, a:active { color: inherit; text-decoration: none; }
+        button, .btn, .btnx, .pill, .slot, .back { appearance:none!important; -webkit-appearance:none!important; color:#111!important; -webkit-text-fill-color:#111!important; }
+        .btn-dark { color:#fff!important; -webkit-text-fill-color:#fff!important; }
+        .back:focus, .back:active, .btn:focus, .btn:active, .btnx:focus, .btnx:active, .pill:focus, .pill:active, .slot:focus, .slot:active { color:inherit!important; -webkit-text-fill-color:inherit!important; outline:none!important; box-shadow:none!important; }
+        .d { -webkit-text-fill-color: inherit !important; }
+        .d.sel { -webkit-text-fill-color: #fff !important; }
+        a[x-apple-data-detectors], a[href^="x-apple-data-detectors:"], a[href^="tel:"]{ color: inherit !important; -webkit-text-fill-color: inherit !important; text-decoration: none !important; }
+        * { -webkit-tap-highlight-color: transparent; }
+      `}</style>
+      <div className="sheet">
 
         {/* Hero slika */}
         <div className="hero"><img src="/usluge1.webp" alt="Usluga" /></div>
-<button className="back" onClick={()=>nav(-1)}>Nazad</button>
+        <button className="back" onClick={()=>nav(-1)}>Nazad</button>
         <div className="title">{anchor.toLocaleString("sr-RS",{month:"long", year:"numeric"})}</div>
         <div className="sub">{headerName}</div>
 
