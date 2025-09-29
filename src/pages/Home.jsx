@@ -1,5 +1,4 @@
-// src/pages/Home.jsx
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { db, getFcmToken } from "../firebase";
 import {
@@ -7,6 +6,139 @@ import {
   collection, getDocs, query, where
 } from "firebase/firestore";
 import AuthModal from "../components/AuthModal.jsx";
+
+/* =============================================================
+   Lepši modal za „USLUGE” (search + filter + kartice)
+   - Bez cena, prikaz samo naziva i kategorije
+   - Na klik usluge vodi u flow za zakazivanje (po potrebi login)
+   - Mobilni: fullscreen panel, sticky filter bar
+============================================================= */
+function ServicesModal({ open, onClose, services = [], loading, error, onPick }) {
+  const [term, setTerm] = useState("");
+  const [cat, setCat]   = useState("sve");
+
+  // kategorije iz podataka
+  const categories = useMemo(() => {
+    const set = new Set();
+    for (const s of services) if (s?.categoryName) set.add(s.categoryName);
+    return ["sve", ...Array.from(set).sort((a,b)=>a.localeCompare(b, "sr"))];
+  }, [services]);
+
+  const filtered = useMemo(() => {
+    const t = term.trim().toLowerCase();
+    return services.filter(s => {
+      const okCat = cat === "sve" || s?.categoryName === cat;
+      if (!okCat) return false;
+      if (!t) return true;
+      const hay = `${s?.name || ''} ${s?.categoryName || ''}`.toLowerCase();
+      return hay.includes(t);
+    });
+  }, [services, term, cat]);
+
+  // ESC to close
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => { if (e.key === "Escape") onClose?.(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div className="srv-modal" role="dialog" aria-modal="true">
+      <div className="srv-modal__backdrop" onClick={onClose} />
+      <div className="srv-modal__panel" role="document" onClick={(e)=>e.stopPropagation()}>
+        <div className="srv-modal__header">
+          <h3 className="srv-modal__title">Usluge</h3>
+          <button className="srv-btn srv-btn--ghost" onClick={onClose} aria-label="Zatvori">✕</button>
+        </div>
+
+        <div className="srv-filters">
+          <div className="srv-input-wrap">
+            <input
+              className="srv-input"
+              placeholder="Pretraži uslugu…"
+              value={term}
+              onChange={(e)=>setTerm(e.target.value)}
+            />
+            {term && (<button className="srv-clear" onClick={()=>setTerm("")} aria-label="Obriši pretragu">×</button>)}
+          </div>
+          <select className="srv-select" value={cat} onChange={(e)=>setCat(e.target.value)}>
+            {categories.map(c => (
+              <option key={c} value={c}>{c === "sve" ? "Sve kategorije" : c}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="srv-body">
+          {loading ? (
+            <div className="srv-empty">Učitavam usluge…</div>
+          ) : error ? (
+            <div className="srv-empty" style={{color:'#b00020'}}>{error}</div>
+          ) : filtered.length === 0 ? (
+            <div className="srv-empty">Nema rezultata za zadate filtere.</div>
+          ) : (
+            <div className="srv-grid">
+              {filtered.map((s) => (
+                <button key={`${s.id}-${s.name}`} className="srv-card" onClick={()=>onPick?.(s)}>
+                  <div className="srv-card__text">
+                    <div className="srv-card__title">{s.name}</div>
+                    {s.categoryName && <div className="srv-chip">{s.categoryName}</div>}
+                  </div>
+                  <span className="srv-card__cta">Zakaži</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <style>{`
+        .srv-modal{ position:fixed; inset:0; z-index:1000; display:flex; align-items:center; justify-content:center; }
+        .srv-modal__backdrop{ position:absolute; inset:0; background:rgba(4,4,5,0.55); backdrop-filter:saturate(120%) blur(6px); animation:fadeIn .2s ease-out; }
+        .srv-modal__panel{ position:relative; width:min(1080px,92vw); max-height:86vh; background:rgba(255,255,255,0.88); border:1px solid rgba(0,0,0,0.06); box-shadow:0 20px 60px rgba(0,0,0,0.25); border-radius:20px; overflow:hidden; transform:scale(0.98); animation:popIn .18s ease-out forwards; }
+
+        .srv-modal__header{ position:sticky; top:0; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:14px 16px; background:linear-gradient(180deg, rgba(255,255,255,0.95), rgba(255,255,255,0.85)); border-bottom:1px solid rgba(0,0,0,0.06); backdrop-filter:saturate(120%) blur(4px); z-index:2; }
+        .srv-modal__title{ margin:0; font-size:20px; font-weight:600; letter-spacing:0.2px; }
+
+        .srv-filters{ position:sticky; top:56px; display:flex; gap:10px; padding:12px 16px; background:linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.78)); border-bottom:1px solid rgba(0,0,0,0.06); z-index:1; }
+        .srv-input-wrap{ position:relative; flex:1 1 auto; }
+        .srv-input{ width:100%; height:40px; border-radius:12px; border:1px solid #e6e0d6; padding:0 42px 0 12px; font-size:14px; outline:none; background:#fff; }
+        .srv-input:focus{ border-color:#d0c7b9; box-shadow:0 0 0 3px rgba(172,149,116,0.18); }
+        .srv-clear{ position:absolute; right:8px; top:50%; transform:translateY(-50%); border:0; background:transparent; font-size:20px; line-height:1; padding:4px; cursor:pointer; color:#888; }
+        .srv-select{ height:40px; min-width:180px; border-radius:12px; border:1px solid #e6e0d6; padding:0 12px; background:#fff; font-size:14px; }
+
+        .srv-body{ overflow:auto; max-height: calc(86vh - 56px - 52px); }
+        .srv-grid{ padding:14px 16px 18px; display:grid; grid-template-columns: repeat( auto-fill, minmax(220px,1fr) ); gap:12px; }
+        .srv-card{ position:relative; display:flex; align-items:flex-end; justify-content:space-between; text-align:left; gap:10px; border:1px solid rgba(0,0,0,0.06); background:linear-gradient(180deg, #ffffff, #faf7f3); padding:14px; border-radius:16px; cursor:pointer; transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease; }
+        .srv-card:hover{ transform: translateY(-2px); box-shadow:0 10px 26px rgba(0,0,0,0.12); border-color: rgba(172,149,116,0.35); }
+        .srv-card:active{ transform: translateY(0); }
+        .srv-card__title{ font-weight:600; font-size:15px; margin-bottom:6px; color:var(--ink, #1f1f1f); }
+        .srv-chip{ margin-top:8px; display:inline-block; font-size:11px; padding:4px 8px; border-radius:999px; background:#f4efe9; border:1px solid #eadfce; }
+        .srv-card__cta{ font-size:13px; padding:8px 10px; border-radius:10px; border:1px solid #eadfce; background:#fff; }
+
+        .srv-empty{ opacity:0.75; padding:24px; text-align:center; }
+        .srv-btn{ height:36px; padding:0 12px; border-radius:10px; border:1px solid #d8d1c6; background:var(--card, #f4efe9); cursor:pointer; }
+        .srv-btn--ghost{ background:transparent; border:0; height:auto; font-size:20px; }
+
+        @keyframes popIn{ to{ transform:scale(1); } }
+        @keyframes fadeIn{ from{ opacity:0 } to{ opacity:1 } }
+
+        @media (max-width: 760px){
+          .srv-modal__panel{ width:100vw; height:92vh; max-height:92vh; border-radius:16px 16px 0 0; }
+          .srv-filters{ top:56px; }
+          .srv-body{ max-height: calc(92vh - 56px - 52px); }
+          .srv-grid{ grid-template-columns: repeat(2, minmax(0,1fr)); gap:10px; padding:12px; }
+          .srv-select{ min-width:140px; }
+          .srv-card{ padding:12px; border-radius:14px; }
+          .srv-card__title{ font-size:14px; }
+          .srv-card__cta{ padding:6px 8px; font-size:12px; }
+        }
+      `}</style>
+    </div>
+  );
+}
 
 export default function Home() {
   const nav = useNavigate();
@@ -132,7 +264,7 @@ export default function Home() {
   const isClientLogged = !!localStorage.getItem("clientProfile");
 
   /* ===================== Usluge iz Firestore-a (bez cena) ===================== */
-  const [svcGroups, setSvcGroups] = useState([]);
+  const [servicesFlat, setServicesFlat] = useState([]); // {id, name, categoryName}
   const [svcLoading, setSvcLoading] = useState(false);
   const [svcError, setSvcError] = useState("");
 
@@ -155,39 +287,23 @@ export default function Home() {
       const raw = [];
       svcSnap.forEach(d => raw.push({ id: d.id, ...(d.data() || {}) }));
 
-      // filtriraj validne usluge (imaju name)
-      const valid = raw.filter(s => (s.name || "").toString().trim());
+      const valid = raw
+        .filter(s => (s.name || "").toString().trim())
+        .map(s => ({ id: s.id, name: s.name, categoryName: catById.get(s.categoryId) || null }));
 
-      // sort (order pa ime)
+      // sort: cat -> name
       valid.sort((a, b) => {
-        const ao = Number.isFinite(a.order) ? a.order : 999999;
-        const bo = Number.isFinite(b.order) ? b.order : 999999;
-        if (ao !== bo) return ao - bo;
-        return String(a.name || "").localeCompare(String(b.name || ""), "sr-RS", { sensitivity: "base" });
+        const ac = a.categoryName || "~"; // tilde da cat=null ode na kraj
+        const bc = b.categoryName || "~";
+        if (ac !== bc) return ac.localeCompare(bc, "sr-RS", { sensitivity: "base" });
+        return a.name.localeCompare(b.name, "sr-RS", { sensitivity: "base" });
       });
 
-      // grupiši po kategoriji (prevedi categoryId -> naziv)
-      const byCat = new Map();
-      for (const s of valid) {
-        const catName = catById.get(s.categoryId) || "Usluge";
-        if (!byCat.has(catName)) byCat.set(catName, []);
-        byCat.get(catName).push(s.name);
-      }
-
-      const groups = Array.from(byCat.entries())
-        .sort(([a],[b]) => a.localeCompare(b, "sr-RS", { sensitivity: "base" }))
-        .map(([cat, items]) => ({
-          cat,
-          items: Array.from(new Set(items)).sort((a,b) =>
-            a.localeCompare(b, "sr-RS", { sensitivity: "base" })
-          )
-        }));
-
-      setSvcGroups(groups);
+      setServicesFlat(valid);
     } catch (e) {
       console.error("Greška pri učitavanju usluga:", e);
       setSvcError("Ne mogu da učitam usluge. Pokušaj kasnije.");
-      setSvcGroups([]);
+      setServicesFlat([]);
     } finally {
       setSvcLoading(false);
     }
@@ -306,7 +422,6 @@ export default function Home() {
         <Link className="btn btn-dark btn-small" to="/admin-login">ULOGUJ SE</Link>
       </div>
 
-
       {/* Auth modal */}
       <AuthModal
         open={authOpen}
@@ -317,42 +432,25 @@ export default function Home() {
         }}
       />
 
-      {/* ===== MODAL: USLUGE (bez cena) ===== */}
-      {servicesOpen && (
-        <div className="modal-backdrop" onClick={() => setServicesOpen(false)}>
-          <div className="modal" onClick={(e)=>e.stopPropagation()}>
-            <h3>Usluge salona</h3>
-
-            {svcLoading ? (
-              <p style={{ textAlign:"center", margin:"8px 0 0" }}>Učitavam usluge…</p>
-            ) : svcError ? (
-              <p style={{ textAlign:"center", margin:"8px 0 0", color:"#c00" }}>{svcError}</p>
-            ) : svcGroups.length === 0 ? (
-              <p style={{ textAlign:"center", margin:"8px 0 0" }}>Nema unetih usluga.</p>
-            ) : (
-              <div style={{ display:"grid", gap:12, maxHeight: "70vh", overflow:"auto" }}>
-                {svcGroups.map(group => (
-                  <div key={group.cat} style={{ border:"1px solid #eee", borderRadius:12, padding:12, background:"#fff" }}>
-                    <div style={{ fontWeight:800, marginBottom:8 }}>{group.cat}</div>
-                    <ul style={{ margin:0, paddingLeft:18 }}>
-                      {group.items.map(item => (
-                        <li key={item} style={{ margin:"6px 0" }}>{item}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="actions">
-              <button className="btn btn-outline" onClick={()=>setServicesOpen(false)}>Zatvori</button>
-              <button className="btn btn-accent" onClick={()=>{ setServicesOpen(false); handleBookClick(); }}>
-                Zakaži termin
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ===== MODAL: USLUGE – lepši prikaz ===== */}
+      <ServicesModal
+        open={servicesOpen}
+        onClose={() => setServicesOpen(false)}
+        services={servicesFlat}
+        loading={svcLoading}
+        error={svcError}
+        onPick={(s) => {
+          setServicesOpen(false);
+          // Ako korisnik nije ulogovan, tražimo login, posle vodimo na booking
+          const profile = localStorage.getItem("clientProfile");
+          if (!profile) {
+            setAuthOpen(true);
+          } else {
+            // Može i sa preselected: nav("/booking", { state: { serviceName: s.name } });
+            goToServices();
+          }
+        }}
+      />
 
       {/* ===== MODAL: GALERIJA ===== */}
       {galleryOpen && (

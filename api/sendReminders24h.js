@@ -1,5 +1,5 @@
 // api/sendReminders24h.js
-import { initializeApp, getApps, applicationDefault, cert } from "firebase-admin/app";
+import { initializeApp, getApps, cert } from "firebase-admin/app";
 import { getFirestore, Timestamp, FieldValue } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
 
@@ -53,11 +53,22 @@ export default async function handler(req, res) {
       });
     }
 
-    // prozor: sada + 24h do +24h + 5min
+    /* ===================== PROZOR ZA 24h PODSETNIKE =====================
+       Umesto uskog intervala (24h do 24h+5min), koristimo centar "now + 24h"
+       i simetričan jastuk ±padMin (minuta).
+       - ?padMin=60  -> 24h ± 60 min
+       - REM24_PAD_MIN ENV var služi kao default (ako nema query param), podrazumevano 30
+       ================================================================== */
     const now = new Date();
-    const from = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-    const to   = new Date(from.getTime() + 5 * 60 * 1000);
+    const center = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
+    const padMin = Number(
+      req.query?.padMin ?? process.env.REM24_PAD_MIN ?? 30
+    );
+    const from = new Date(center.getTime() - padMin * 60 * 1000);
+    const to   = new Date(center.getTime() + padMin * 60 * 1000);
+
+    // Dohvati termine koji upadaju u prozor
     const snap = await db.collection("appointments")
       .where("type", "==", "appointment")
       .where("status", "==", "booked")
@@ -72,23 +83,43 @@ export default async function handler(req, res) {
     for (const d of snap.docs) {
       const appt = { id: d.id, ...d.data() };
 
-      if (!appt.clientId) { inspected.push({ id: d.id, reason: "no client" }); continue; }
-      if (!force && appt.remind24hSent) { inspected.push({ id: d.id, reason: "already sent" }); continue; }
+      if (!appt.clientId) {
+        inspected.push({ id: d.id, reason: "no client" });
+        continue;
+      }
+      if (!force && appt.remind24hSent) {
+        inspected.push({ id: d.id, reason: "already sent" });
+        continue;
+      }
 
       // client
       const clientDoc = await db.collection("clients").doc(appt.clientId).get();
-      if (!clientDoc.exists) { inspected.push({ id: d.id, reason: "client missing" }); continue; }
+      if (!clientDoc.exists) {
+        inspected.push({ id: d.id, reason: "client missing" });
+        continue;
+      }
 
-      // tokens
-      const tokensSnap = await db.collection("fcmTokens").where("ownerId", "==", appt.clientId).get();
+      // tokens (svi tokeni za tog klijenta - podrška za više uređaja)
+      const tokensSnap = await db.collection("fcmTokens")
+        .where("ownerId", "==", appt.clientId)
+        .get();
       const tokens = tokensSnap.docs.map(x => x.get("token")).filter(Boolean);
-      if (!tokens.length) { inspected.push({ id: d.id, reason: "no tokens" }); continue; }
+
+      if (!tokens.length) {
+        inspected.push({ id: d.id, reason: "no tokens" });
+        continue;
+      }
 
       const start = (appt.start?.toDate?.() || new Date(appt.start));
+      const startLocal = new Date(start.getTime()); // samo za log
+
       const payload = {
         notification: {
           title: "Podsetnik za termin",
-          body: `Sutra u ${start.toLocaleTimeString("sr-RS", { hour: "2-digit", minute: "2-digit" })} imate zakazan termin.`,
+          body: `Sutra u ${start.toLocaleTimeString("sr-RS", {
+            hour: "2-digit",
+            minute: "2-digit"
+          })} imate zakazan termin.`,
         },
         data: {
           click_action: "FLUTTER_NOTIFICATION_CLICK",
@@ -97,18 +128,30 @@ export default async function handler(req, res) {
       };
 
       const resp = await messaging.sendEachForMulticast({ tokens, ...payload });
+
       await d.ref.set({
         remind24hSent: true,
         remind24hAt: FieldValue.serverTimestamp()
       }, { merge: true });
 
       sent += resp.successCount;
-      inspected.push({ id: d.id, tokens: tokens.length, success: resp.successCount, fail: resp.failureCount });
+      inspected.push({
+        id: d.id,
+        tokens: tokens.length,
+        success: resp.successCount,
+        fail: resp.failureCount,
+        startISO: start.toISOString(),
+        startLocal: startLocal.toString()
+      });
     }
 
     return ok(res, {
       sent,
-      window: { from: from.toISOString(), to: to.toISOString() },
+      window: {
+        from: from.toISOString(),
+        to: to.toISOString(),
+        padMin
+      },
       count: snap.size,
       inspected,
     });

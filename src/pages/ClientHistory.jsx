@@ -132,7 +132,30 @@ export default function ClientHistory(){
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // indeks servisa { [serviceId]: {name, durationMin, priceRsd, ...} }
+  const [svcIndex, setSvcIndex] = useState({});
+
   const mode = location?.state?.autoCancel ? "cancel" : "history";
+
+  // Učitaj sve servise (za hidraciju naziva kad je u appointments samo ID)
+  useEffect(()=>{
+    const unsub = onSnapshot(collection(db, "services"), (snap)=>{
+      const m = {};
+      snap.forEach(d=>{
+        const v = d.data() || {};
+        m[d.id] = {
+          id: d.id,
+          name: v.name || "",
+          durationMin: Number(v.durationMin)||0,
+          priceRsd: Number(v.priceRsd)||0,
+          categoryId: v.categoryId ?? null,
+          categoryName: v.categoryName ?? null
+        };
+      });
+      setSvcIndex(m);
+    });
+    return ()=>unsub && unsub();
+  },[]);
 
   useEffect(()=>{
     const phoneNorm = normPhone(client?.phone);
@@ -200,18 +223,48 @@ export default function ClientHistory(){
   // normalizovani zapisi (radi prikaza)
   const normalized = useMemo(()=> (items || []).map(normalizeAppointment), [items]);
 
-  const nowMs = Date.now();
-  const upcoming = normalized
-    .filter(a =>
-      // iz active skupa, budućnost, i nije otkazano
-      toJsDate(a.start)?.getTime()>=nowMs &&
-      a.status!=="cancelled"
-    )
-    .sort((a,b)=>toJsDate(a.start)-toJsDate(b.start));
+  // hidracija naziva/price/duration po serviceId
+  const hydrated = useMemo(()=>{
+    return (normalized || []).map(a=>{
+      const hydraServices = (a.services || []).map(s=>{
+        const meta = svcIndex[s.serviceId] || {};
+        return {
+          ...s,
+          name: s.name || meta.name || s.serviceId,
+          durationMin: s.durationMin || meta.durationMin || 0,
+          priceRsd: s.priceRsd || meta.priceRsd || 0,
+          categoryId: s.categoryId ?? meta.categoryId ?? null,
+          categoryName: s.categoryName ?? meta.categoryName ?? null
+        };
+      });
 
-  const past = normalized
-    .filter(a => toJsDate(a.start)?.getTime() < nowMs || a.status==="cancelled")
-    .sort((a,b)=>toJsDate(b.start)-toJsDate(a.start));
+      const servicesLabel =
+        a.servicesLabel && a.servicesLabel.trim()
+          ? a.servicesLabel
+          : hydraServices.map(x=>x.name).filter(Boolean).join(", ");
+
+      const totalDurationMin = a.totalDurationMin ||
+        Math.max(15, hydraServices.reduce((acc,x)=>acc+(x.durationMin||0),0) || 15);
+
+      const totalAmountRsd = (a.totalAmountRsd != null ? a.totalAmountRsd : null) ??
+        hydraServices.reduce((acc,x)=>acc+(x.priceRsd||0),0);
+
+      return { ...a, services: hydraServices, servicesLabel, totalDurationMin, totalAmountRsd };
+    });
+  }, [normalized, svcIndex]);
+
+  const nowMs = Date.now();
+  const upcoming = useMemo(()=>(
+    (hydrated || [])
+      .filter(a => toJsDate(a.start)?.getTime()>=nowMs && a.status!=="cancelled")
+      .sort((a,b)=>toJsDate(a.start)-toJsDate(b.start))
+  ), [hydrated, nowMs]);
+
+  const past = useMemo(()=>(
+    (hydrated || [])
+      .filter(a => toJsDate(a.start)?.getTime() < nowMs || a.status==="cancelled")
+      .sort((a,b)=>toJsDate(b.start)-toJsDate(a.start))
+  ), [hydrated, nowMs]);
 
   async function cancel(id){
     if (!window.confirm("Sigurno želiš da otkažeš ovaj termin?")) return;
@@ -313,10 +366,25 @@ export default function ClientHistory(){
                           <span className="badge upcoming">Zakazano</span>
                           <span>{fmtDate(a.start)}</span>
                         </div>
+
                         <div>{a.employeeUsername||"Zaposleni"}</div>
+
+                        {/* Ako postoji kombinovani label, prikaži ga */}
+                        {a.servicesLabel ? (
+                          <div style={{marginTop:6, fontWeight:600}}>
+                            {a.servicesLabel}
+                          </div>
+                        ) : null}
+
+                        {/* Chipovi svih servisa (hidrirani nazivi) */}
                         <div className="services">
-                          {a.services.map(s=><span key={s.serviceId||s.name} className="chip">{s.name||s.serviceId}</span>)}
+                          {a.services.map(s=>(
+                            <span key={s.serviceId||s.name} className="chip">
+                              {s.name || s.serviceId}
+                            </span>
+                          ))}
                         </div>
+
                         <div className="total">{fmtPrice(a.totalAmountRsd||0)} RSD</div>
                         <div className="rowbtns">
                           <button className="btn primary" onClick={()=>cancel(a.id)}>Otkaži</button>
@@ -340,10 +408,25 @@ export default function ClientHistory(){
                           </span>
                           <span>{fmtDate(a.start)}</span>
                         </div>
+
                         <div>{a.employeeUsername||"Zaposleni"}</div>
+
+                        {/* Ako postoji kombinovani label, prikaži ga */}
+                        {a.servicesLabel ? (
+                          <div style={{marginTop:6, fontWeight:600}}>
+                            {a.servicesLabel}
+                          </div>
+                        ) : null}
+
+                        {/* Chipovi svih servisa (hidrirani nazivi) */}
                         <div className="services">
-                          {a.services.map(s=><span key={s.serviceId||s.name} className="chip">{s.name||s.serviceId}</span>)}
+                          {a.services.map(s=>(
+                            <span key={s.serviceId||s.name} className="chip">
+                              {s.name || s.serviceId}
+                            </span>
+                          ))}
                         </div>
+
                         <div className="total">{fmtPrice(a.totalAmountRsd||0)} RSD</div>
                       </div>
                     );

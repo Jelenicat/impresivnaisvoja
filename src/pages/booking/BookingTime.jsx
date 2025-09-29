@@ -434,6 +434,14 @@ export default function BookingTime(){
 
     try{
       setSaving(true);
+// ✅ izračunaj jednom, koristi svuda
+const safeClientName =
+  (client.name && client.name.trim()) ||
+  (client.phone && String(client.phone).trim()) ||
+  (client.email && String(client.email).trim()) ||
+  "";
+
+const { first: firstName, last: lastName } = splitName(safeClientName);
 
       // --- Klijent: nadji po phone/email -> kreiraj ako ne postoji -> merge update ---
       let clientId = client?.id || null;
@@ -450,32 +458,36 @@ export default function BookingTime(){
         if (!s2.empty) foundId = s2.docs[0].id;
       }
       if (!foundId && !clientId){
-        const { first, last } = splitName(client.name||"");
-        const cref = await addDoc(collection(db,"clients"),{
-          firstName:first, lastName:last,
-          phone: client.phone || "",
-          email: client.email || "",
-          createdAt: serverTimestamp(),
-          source: "public_app"
-        });
-        foundId = cref.id;
-      }
+  const cref = await addDoc(collection(db,"clients"),{
+    firstName: firstName,
+    lastName:  lastName,
+    displayName: safeClientName,
+    phone: client.phone || "",
+    email: (client.email || "").toLowerCase(),
+    createdAt: serverTimestamp(),
+    source: "public_app"
+  });
+  foundId = cref.id;
+}
+
       clientId = clientId || foundId;
 
       // merge osveži ime/phone/email ako imamo podatke
       if (clientId){
-        const { first, last } = splitName(client.name||"");
-        await setDoc(
-          doc(db,"clients", clientId),
-          {
-            firstName:first, lastName:last,
-            phone: client.phone || "",
-            email: client.email || "",
-            updatedAt: serverTimestamp()
-          },
-          { merge:true }
-        );
-      }
+  await setDoc(
+    doc(db,"clients", clientId),
+    {
+      firstName: firstName,
+      lastName:  lastName,
+      displayName: safeClientName,
+      phone: client.phone || "",
+      email: (client.email || "").toLowerCase(),
+      updatedAt: serverTimestamp()
+    },
+    { merge:true }
+  );
+}
+
 
       const groups = groupServicesByCategory(selectedServices);
       let rollingStart = new Date(confirmData.start);
@@ -527,12 +539,14 @@ export default function BookingTime(){
           groupCount: groups.length,
 
           clientId: clientId || null,
-          clientName: client.name || "",
-          clientPhone: client.phone || "",
-          clientEmail: client.email || "",
-    clientPhoneNorm: (client.phone || "").replace(/\D+/g, ""),
-          isOnline: true,
-          bookedVia: "public_app",
+clientName: safeClientName || "Klijent",
+
+clientPhone: client.phone || "",
+clientEmail: (client.email || "").toLowerCase(),
+clientPhoneNorm: (client.phone || "").replace(/\D+/g, ""),
+isOnline: true,
+bookedVia: "public_app",
+
           pickedMode: (chosenEmployeeId==="firstFree") ? "firstFree" : "specific",
           isPaid: false,
           paymentStatus: "unpaid",
@@ -556,7 +570,7 @@ try {
 
   const title = "📅 Zakazan termin";
   const body =
-    `${client?.name || "Klijent"} – ` +
+    `${safeClientName || "Klijent"} – ` +
     `${(selectedServices[0]?.name || "usluga")}` +
     `${selectedServices.length > 1 ? ` (+${selectedServices.length - 1})` : ""} · ` +
     `${niceDate(confirmData.start)} ${hhmm(confirmData.start)} · ` +

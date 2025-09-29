@@ -5,6 +5,9 @@ import {
   addDoc, serverTimestamp
 } from "firebase/firestore";
 import { db } from "../firebase";
+import Flatpickr from "react-flatpickr";
+import "flatpickr/dist/flatpickr.min.css";
+import { Serbian } from "flatpickr/dist/l10n/sr.js";
 
 /* ---- helpers ---- */
 const toJsDate = (x) =>
@@ -389,6 +392,7 @@ export default function AdminFinance({
     -webkit-appearance: none !important;
     outline: none !important;
     box-shadow: none !important;
+    margin-top:20px;
   }
 }
 
@@ -397,7 +401,7 @@ export default function AdminFinance({
   .btn-group{
     display: flex;
     gap: 10px;
-    margin-top: 8px;
+    margin-top: 20px;
   }
   .btn-group .btn{
     flex: 1 1 0%;
@@ -406,6 +410,7 @@ export default function AdminFinance({
     font-weight: 600;
     outline: none !important;
     box-shadow: none !important;
+    margin-top:20px;
   }
 }
 
@@ -837,6 +842,20 @@ export default function AdminFinance({
     -webkit-text-fill-color: #1f1f1f !important;
   }
 }
+/* === FIX: vrati native date picker na AdminFinance === */
+.fin-wrap .bar input.inp[type="date"]{
+  appearance: auto !important;
+  -webkit-appearance: auto !important;
+  -moz-appearance: auto !important;
+  cursor: text !important;   /* da se ponaša kao input, ne kao "dugme" */
+  background-image: none !important; /* skloni našu custom ikonicu ako smeta */
+}
+.fin-wrap .bar input.inp[type="date"]::-webkit-calendar-picker-indicator{
+  display: block !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+  
 
 
       `}</style>
@@ -845,23 +864,32 @@ export default function AdminFinance({
         <div className="fin-title">Finansijski pregled</div>
 
         {/* Kontrole opsega - MOBILNI (NE DIRAJ) */}
-       <div className="bar mobile-only">
+      <div className="bar mobile-only">
   <div className="date-group">
-    <input
-      className="inp"
-      type="date"
-      value={asDateInput(from)}
-      onChange={e=>setFrom(startOfDay(new Date(e.target.value)))}
-      disabled={!canPickRange}
-    />
-    <input
-      className="inp"
-      type="date"
-      value={asDateInput(to)}
-      onChange={e=>setTo(endOfDay(new Date(e.target.value)))}
-      disabled={!canPickRange}
-    />
+    <label className="date-field">
+      
+      <Flatpickr
+        className="inp"
+        options={{ dateFormat: "Y-m-d", locale: Serbian, allowInput: true }}
+        value={from}
+        onChange={(dates)=> dates[0] && setFrom(startOfDay(dates[0]))}
+        disabled={!canPickRange}
+      />
+    </label>
+
+    <label className="date-field">
+      
+      <Flatpickr
+        className="inp"
+        options={{ dateFormat: "Y-m-d", locale: Serbian, allowInput: true }}
+        value={to}
+        onChange={(dates)=> dates[0] && setTo(endOfDay(dates[0]))}
+        disabled={!canPickRange}
+      />
+    </label>
   </div>
+
+
 
   {canPickRange && (
     <div className="btn-group">
@@ -879,23 +907,31 @@ export default function AdminFinance({
 
 
         {/* Kontrole opsega - DESKTOP */}
-        <div className="bar desktop-only">
+    <div className="bar desktop-only">
   <div className="date-group">
-    <input
-      className="inp"
-      type="date"
-      value={asDateInput(from)}
-      onChange={e=>setFrom(startOfDay(new Date(e.target.value)))}
-      disabled={!canPickRange}
-    />
-    <input
-      className="inp"
-      type="date"
-      value={asDateInput(to)}
-      onChange={e=>setTo(endOfDay(new Date(e.target.value)))}
-      disabled={!canPickRange}
-    />
+    <label className="date-field">
+      
+      <Flatpickr
+        className="inp"
+        options={{ dateFormat: "Y-m-d", locale: Serbian, allowInput: true }}
+        value={from}
+        onChange={(dates)=> dates[0] && setFrom(startOfDay(dates[0]))}
+        disabled={!canPickRange}
+      />
+    </label>
+
+    <label className="date-field">
+      
+      <Flatpickr
+        className="inp"
+        options={{ dateFormat: "Y-m-d", locale: Serbian, allowInput: true }}
+        value={to}
+        onChange={(dates)=> dates[0] && setTo(endOfDay(dates[0]))}
+        disabled={!canPickRange}
+      />
+    </label>
   </div>
+
 
   {canPickRange && (
     <>
