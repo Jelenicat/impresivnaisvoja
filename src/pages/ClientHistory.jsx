@@ -115,6 +115,12 @@ function normalizeAppointment(appt){
   };
 }
 
+/* ---------- util: da li string liči na Firestore docId ---------- */
+function isDocIdLike(str){
+  if (!str) return false;
+  return /^[A-Za-z0-9_-]{15,}$/.test(str.trim());
+}
+
 /* ---------- lookup helper: nađi employee docId po username (za notifikaciju) ---------- */
 async function getEmployeeIdByUsername(username){
   if (!username) return null;
@@ -159,7 +165,7 @@ export default function ClientHistory(){
     return ()=>unsub && unsub();
   },[]);
 
-  // Učitaj kategorije (za prevođenje categoryId -> categoryName)
+  // Učitaj kategorije (categoryId -> categoryName)
   useEffect(()=>{
     const unsub = onSnapshot(collection(db, "categories"), (snap)=>{
       const m = {};
@@ -239,7 +245,7 @@ export default function ClientHistory(){
   // normalizovani zapisi (radi prikaza)
   const normalized = useMemo(()=> (items || []).map(normalizeAppointment), [items]);
 
-  // hidracija naziva/price/duration po serviceId + prevođenje categoryId -> categoryName
+  // hidracija + prevod kategorija + korekcija servicesLabel
   const hydrated = useMemo(()=>{
     return (normalized || []).map(a=>{
       const hydraServices = (a.services || []).map(s=>{
@@ -266,10 +272,13 @@ export default function ClientHistory(){
         };
       });
 
-      const servicesLabel =
-        a.servicesLabel && a.servicesLabel.trim()
-          ? a.servicesLabel
-          : hydraServices.map(x=>x.name).filter(Boolean).join(", ");
+      // derive lep label iz hidriranih imena
+      const derivedLabel = hydraServices.map(x=>x.name).filter(Boolean).join(", ");
+      // ako je postojeći label prazan ili izgleda kao ID -> koristi derived
+      const labelToUse =
+        (a.servicesLabel && a.servicesLabel.trim() && !isDocIdLike(a.servicesLabel))
+          ? a.servicesLabel.trim()
+          : derivedLabel;
 
       const totalDurationMin = a.totalDurationMin ||
         Math.max(15, hydraServices.reduce((acc,x)=>acc+(x.durationMin||0),0) || 15);
@@ -277,7 +286,7 @@ export default function ClientHistory(){
       const totalAmountRsd = (a.totalAmountRsd != null ? a.totalAmountRsd : null) ??
         hydraServices.reduce((acc,x)=>acc+(x.priceRsd||0),0);
 
-      return { ...a, services: hydraServices, servicesLabel, totalDurationMin, totalAmountRsd };
+      return { ...a, services: hydraServices, servicesLabel: labelToUse, totalDurationMin, totalAmountRsd };
     });
   }, [normalized, svcIndex, catIndex]);
 
@@ -362,7 +371,7 @@ export default function ClientHistory(){
     <div className="wrap">
       <style>{`
         .wrap{
-          min-height:100svh; /* stabilno na mobilnom, bez sečenja */
+          min-height:100svh;
           background:#f5f5f5;
         }
         @supports not (height: 100svh){
@@ -372,7 +381,7 @@ export default function ClientHistory(){
         .sheet{
           background:#fff;
           min-height:100%;
-          padding:50px 20px 80px; /* dno veće da dugmad ne budu presečena */
+          padding:50px 20px 80px;
           overflow: visible;
         }
         @media(min-width:768px){
@@ -389,7 +398,7 @@ export default function ClientHistory(){
           font-size:24px;
           font-weight:900;
           margin-bottom:20px;
-          padding-top:40px; /* fix tipfelera pedigng-top */
+          padding-top:40px;
         }
 
         .card{
@@ -401,9 +410,9 @@ export default function ClientHistory(){
           margin-bottom:18px;
           background:#fff;
           box-shadow:0 2px 6px rgba(0,0,0,.05);
-          overflow:visible;  /* ne seci sadržaj */
+          overflow:visible;
         }
-        .card *{ min-height:0; } /* rešava flex-overflow edge-case */
+        .card *{ min-height:0; }
 
         .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
         .badge{padding:4px 10px;border-radius:999px;font-size:12px;font-weight:700;}
@@ -431,7 +440,7 @@ export default function ClientHistory(){
           gap:10px;
           margin-top:12px;
           justify-content:flex-end;
-          flex-wrap:wrap; /* dozvoli prelazak u novi red */
+          flex-wrap:wrap;
         }
         .btn{padding:10px 14px;border-radius:10px;font-weight:700;cursor:pointer;line-height:1;}
         .btn.ghost{background:#fff;border:1px solid #ddd;}
@@ -455,7 +464,7 @@ export default function ClientHistory(){
 
                         <div>{a.employeeUsername||"Zaposleni"}</div>
 
-                        {/* Ako postoji kombinovani label, prikaži ga */}
+                        {/* Lep label (ignorisani sirovi ID-evi) */}
                         {a.servicesLabel ? (
                           <div style={{marginTop:6, fontWeight:600}}>
                             {a.servicesLabel}
@@ -497,7 +506,7 @@ export default function ClientHistory(){
 
                         <div>{a.employeeUsername||"Zaposleni"}</div>
 
-                        {/* Ako postoji kombinovani label, prikaži ga */}
+                        {/* Lep label (ignorisani sirovi ID-evi) */}
                         {a.servicesLabel ? (
                           <div style={{marginTop:6, fontWeight:600}}>
                             {a.servicesLabel}
