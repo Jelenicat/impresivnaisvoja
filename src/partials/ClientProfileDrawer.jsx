@@ -219,6 +219,16 @@ export default function ClientProfileDrawer({
           .toolbar{ display:flex; gap:8px; flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch; }
           .btn{ padding:8px 12px; border-radius:10px; border:1px solid #ddd6cc; background:#fff; font-weight:700; font-size:14px; min-height:36px; }
           .btn:hover{ background:#f5f0e8; } .btn.danger{ color:#dc2626; border-color:#dc2626; }
+.link-btn{
+  font-weight:700;
+  text-decoration:none;
+  border:1px solid #ddd6cc;
+  background:#fff;
+  padding:2px 8px;
+  border-radius:999px;
+  display:inline-block;
+}
+.link-btn:hover{ background:#f5f0e8; }
 
           .body{
             flex:1; overflow-y:auto; background:#f7f2eb;
@@ -360,19 +370,45 @@ export default function ClientProfileDrawer({
         <div className="body">
           <div className="container">
             {/* INFO O KLIJENTU — PRVO */}
-            {!edit ? (
-              <div className="panel">
-                <div className="line"><b>Telefon:</b> {maskedPhone(clientLive.phone)}</div>
-                {role==="admin" && hasPaid && (
-                  <div className="line"><b>Ukupno zarađeno:</b> {fmtMoney(totalEarnedPaid)} RSD</div>
-                )}
-                <div className="line"><b>E-mail:</b> {role==="admin" ? (clientLive.email || "—") : "—"}</div>
-                <div className="line"><b>Beleška:</b> {clientLive.note || "—"}</div>
-                {nextAppt && (
-                  <div className="line"><b>Naredni termin:</b> {fmtDateTime(nextAppt.start)} · {nextAppt.employeeName || nextAppt.employeeUsername || ""}</div>
-                )}
-              </div>
-            ) : (
+      {/* INFO O KLIJENTU — PRVO */}
+{!edit ? (
+  <div className="panel">
+    <div className="line">
+      <b>Telefon:</b>{" "}
+      {role === "admin" && clientLive.phone ? (
+        <>
+          <a
+            className="link-btn"
+            href={`tel:${normPhone(clientLive.phone)}`}
+          >
+            {clientLive.phone}
+          </a>
+          <span className="muted"> · </span>
+          <a
+            className="link-btn"
+            href={`sms:${normPhone(clientLive.phone)}`}
+            // ako želiš i pripremljen tekst poruke, odkomentariši dole:
+            // href={`sms:${normPhone(clientLive.phone)}?body=${encodeURIComponent("Zdravo " + (clientLive.firstName || "") + ", ")}`}
+          >
+            Pošalji SMS
+          </a>
+        </>
+      ) : (
+        maskedPhone(clientLive.phone)
+      )}
+    </div>
+
+    {role==="admin" && hasPaid && (
+      <div className="line"><b>Ukupno zarađeno:</b> {fmtMoney(totalEarnedPaid)} RSD</div>
+    )}
+    <div className="line"><b>E-mail:</b> {role==="admin" ? (clientLive.email || "—") : "—"}</div>
+    <div className="line"><b>Beleška:</b> {clientLive.note || "—"}</div>
+    {nextAppt && (
+      <div className="line"><b>Naredni termin:</b> {fmtDateTime(nextAppt.start)} · {nextAppt.employeeName || nextAppt.employeeUsername || ""}</div>
+    )}
+  </div>
+) : (
+
               <div className="grid">
                 <input className="input" placeholder="Ime" value={form.firstName} onChange={e=>setForm(s=>({...s,firstName:e.target.value}))}/>
                 <input className="input" placeholder="Prezime" value={form.lastName} onChange={e=>setForm(s=>({...s,lastName:e.target.value}))}/>
