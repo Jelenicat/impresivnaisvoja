@@ -139,7 +139,7 @@ export default function ClientHistory(){
 
   // indeks servisa { [serviceId]: {name, durationMin, priceRsd, ...} }
   const [svcIndex, setSvcIndex] = useState({});
-  // indeks kategorija { [categoryId]: categoryName } (zadržavamo, ali ne prikazujemo)
+  // indeks kategorija { [categoryId]: categoryName } (ne prikazujemo je, ali punimo index)
   const [catIndex, setCatIndex] = useState({});
 
   const mode = location?.state?.autoCancel ? "cancel" : "history";
@@ -164,7 +164,7 @@ export default function ClientHistory(){
     return ()=>unsub && unsub();
   },[]);
 
-  // Učitaj kategorije (možda ih koristiš na drugim mestima)
+  // Učitaj kategorije
   useEffect(()=>{
     const unsub = onSnapshot(collection(db, "categories"), (snap)=>{
       const m = {};
@@ -252,9 +252,9 @@ export default function ClientHistory(){
           (resolvedCategoryId ? catIndex[resolvedCategoryId] : null) ??
           null;
 
-        // ključno: NEMA fallback-a na categoryName
+        // NEMA fallback-a na serviceId; ako nema imena, ostaje prazno
         const resolvedName =
-          s.name || meta.name || s.serviceId;
+          (s.name || meta.name || "").trim();
 
         return {
           ...s,
@@ -444,6 +444,8 @@ export default function ClientHistory(){
                 <h3>Budući termini</h3>
                 {upcoming.length===0? <div>Nema zakazanih termina.</div> :
                   upcoming.map(a=>{
+                    // pripremi čipove bez ID-jeva
+                    const chips = (a.services || []).filter(s => s.name && !isDocIdLike(s.name));
                     return(
                       <div key={a.id} className="card">
                         <div className="head">
@@ -453,25 +455,25 @@ export default function ClientHistory(){
 
                         <div>{a.employeeUsername||"Zaposleni"}</div>
 
-                        {/* Lep label (ignorisani sirovi ID-evi) */}
                         {a.servicesLabel ? (
                           <div style={{marginTop:6, fontWeight:600}}>
                             {a.servicesLabel}
                           </div>
                         ) : null}
 
-                        {/* Čipovi bez kategorije u tekstu */}
-                        <div className="services">
-                          {a.services.map(s=>(
-                            <span
-                              key={s.serviceId||s.name}
-                              className="chip"
-                              title={s.name || s.serviceId}
-                            >
-                              {s.name || s.serviceId}
-                            </span>
-                          ))}
-                        </div>
+                        {chips.length>0 && (
+                          <div className="services">
+                            {chips.map(s=>(
+                              <span
+                                key={s.serviceId || s.name}
+                                className="chip"
+                                title={s.name}
+                              >
+                                {s.name}
+                              </span>
+                            ))}
+                          </div>
+                        )}
 
                         <div className="total">{fmtPrice(a.totalAmountRsd||0)} RSD</div>
                         <div className="rowbtns">
@@ -488,6 +490,7 @@ export default function ClientHistory(){
                 {past.length===0? <div>Nema stavki u istoriji.</div> :
                   past.map(a=>{
                     const canceled=(a.status==="cancelled" || a.__src==="history");
+                    const chips = (a.services || []).filter(s => s.name && !isDocIdLike(s.name));
                     return(
                       <div key={a.id} className="card">
                         <div className="head">
@@ -505,18 +508,19 @@ export default function ClientHistory(){
                           </div>
                         ) : null}
 
-                        {/* Čipovi bez kategorije u tekstu */}
-                        <div className="services">
-                          {a.services.map(s=>(
-                            <span
-                              key={s.serviceId||s.name}
-                              className="chip"
-                              title={s.name || s.serviceId}
-                            >
-                              {s.name || s.serviceId}
-                            </span>
-                          ))}
-                        </div>
+                        {chips.length>0 && (
+                          <div className="services">
+                            {chips.map(s=>(
+                              <span
+                                key={s.serviceId || s.name}
+                                className="chip"
+                                title={s.name}
+                              >
+                                {s.name}
+                              </span>
+                            ))}
+                          </div>
+                        )}
 
                         <div className="total">{fmtPrice(a.totalAmountRsd||0)} RSD</div>
                       </div>
