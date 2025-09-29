@@ -46,6 +46,9 @@ export default async function handler(req, res) {
       });
     }
 
+    const isPreview = String(req.query?.preview || "") === "1";
+    const force = String(req.query?.force || "") === "1";
+
     /* ===== prozor: 24h ± padMin ===== */
     const now = new Date();
     const center = new Date(now.getTime() + 24 * 60 * 60 * 1000);
@@ -79,7 +82,6 @@ export default async function handler(req, res) {
       snap = { docs: [...map.values()], size: map.size };
     }
 
-    const force = String(req.query?.force || "") === "1";
     let sent = 0;
     const inspected = [];
 
@@ -122,7 +124,7 @@ export default async function handler(req, res) {
         .get();
       const adminTokens = adminTokSnap.docs.map(x => x.get("token"));
 
-      // ukupno (neće slati duplikate zahvaljujući dedup-u)
+      // ukupno (bez duplikata)
       const tokens = dedup([...clientTokens, ...employeeTokens, ...adminTokens]);
 
       if (!tokens.length) {
@@ -145,30 +147,50 @@ export default async function handler(req, res) {
         },
       };
 
-      const resp = await messaging.sendEachForMulticast({ tokens, ...payload });
+      if (isPreview) {
+        // samo prikaži šta bismo poslali
+        inspected.push({
+          id: d.id,
+          startISO: start.toISOString(),
+          who: {
+            client: clientTokens.length,
+            employee: employeeTokens.length,
+            admin: adminTokens.length
+          },
+          wouldSend: {
+            title: payload.notification.title,
+            body:  payload.notification.body,
+            tokens
+          }
+        });
+      } else {
+        // stvarno slanje
+        const resp = await messaging.sendEachForMulticast({ tokens, ...payload });
 
-      await d.ref.set({
-        remind24hSent: true,
-        remind24hAt: FieldValue.serverTimestamp()
-      }, { merge: true });
+        await d.ref.set({
+          remind24hSent: true,
+          remind24hAt: FieldValue.serverTimestamp()
+        }, { merge: true });
 
-      sent += resp.successCount;
-      inspected.push({
-        id: d.id,
-        tokens: tokens.length,
-        success: resp.successCount,
-        fail: resp.failureCount,
-        startISO: start.toISOString(),
-        who: {
-          client: clientTokens.length,
-          employee: employeeTokens.length,
-          admin: adminTokens.length
-        }
-      });
+        sent += resp.successCount;
+        inspected.push({
+          id: d.id,
+          tokens: tokens.length,
+          success: resp.successCount,
+          fail: resp.failureCount,
+          startISO: start.toISOString(),
+          who: {
+            client: clientTokens.length,
+            employee: employeeTokens.length,
+            admin: adminTokens.length
+          }
+        });
+      }
     }
 
     return ok(res, {
       sent,
+      preview: isPreview,
       window: { from: from.toISOString(), to: to.toISOString(), padMin },
       count: snap.size,
       inspected,
