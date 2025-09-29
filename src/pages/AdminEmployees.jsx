@@ -546,7 +546,7 @@ export default function AdminEmployees() {
         @media(max-width:760px){
           .page{ padding:12px 12px 90px; }
           h1{ font-size:20px; margin:4px 0 10px; }
-          .top-actions{ display:flex; gap:10px; margin-bottom:12px; }
+          .top-actions{ display:flex; gap:10px; margin-bottom:12px;padding-top:50px; }
           input, select, button {
             color:#1f1f1f !important;
             -webkit-text-fill-color:#1f1f1f !important;
@@ -597,7 +597,7 @@ export default function AdminEmployees() {
         .empty{opacity:.65;font-size:13px;padding:8px}
       `}</style>
 
-      <h1>Zaposleni</h1>
+      
 
       {mobile ? (
         <>
