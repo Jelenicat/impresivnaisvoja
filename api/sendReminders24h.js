@@ -22,6 +22,7 @@ function err(res, e) { res.setHeader("Access-Control-Allow-Origin", "*"); return
 
 /* --- util --- */
 const dedup = (arr) => [...new Set(arr.filter(Boolean))];
+const TZ = "Europe/Belgrade";
 
 export default async function handler(req, res) {
   try {
@@ -133,12 +134,27 @@ export default async function handler(req, res) {
       }
 
       const start = (appt.start?.toDate?.() || new Date(appt.start));
-      const bodyTime = start.toLocaleTimeString("sr-RS", { hour: "2-digit", minute: "2-digit" });
+
+      // TAČNO vreme u Beogradu
+      const bodyTime = new Intl.DateTimeFormat("sr-RS", {
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone: TZ,
+      }).format(start);
+
+      // Opcionalno: preciznije "Sutra"
+      const dFmt = (d0) => new Intl.DateTimeFormat("en-CA", {
+        timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit"
+      }).format(d0);
+      const todayStr = dFmt(now);
+      const tomorrowStr = dFmt(new Date(new Date(todayStr).getTime() + 24*60*60*1000));
+      const apptDateStr = dFmt(start);
+      const whenText = (apptDateStr === tomorrowStr) ? "Sutra" : apptDateStr;
 
       const payload = {
         notification: {
           title: "Podsetnik za termin",
-          body: `Sutra u ${bodyTime} imate zakazan termin.`,
+          body: `${whenText} u ${bodyTime} imate zakazan termin.`,
         },
         data: {
           click_action: "FLUTTER_NOTIFICATION_CLICK",

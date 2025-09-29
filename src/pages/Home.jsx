@@ -27,7 +27,6 @@ function ServicesModal({ open, onClose, services = [], loading, error, onPick })
   const categories = useMemo(() => {
     const set = new Set();
     for (const s of services) if (s?.categoryName) set.add(s.categoryName);
-    // sortiraj po azbuci (sr)
     return Array.from(set).sort((a,b)=>a.localeCompare(b, "sr-RS", { sensitivity: "base" }));
   }, [services]);
 
@@ -40,11 +39,9 @@ function ServicesModal({ open, onClose, services = [], loading, error, onPick })
       .filter(s => !t || (s.name || "").toLowerCase().includes(t));
   }, [services, selectedCat, term]);
 
-  // reset pretrage kada promenimo kategoriju / zatvorimo
   useEffect(() => { setTerm(""); }, [selectedCat]);
   useEffect(() => { if (!open) setSelectedCat(null); }, [open]);
 
-  // ESC to close
   useEffect(() => {
     if (!open) return;
     const onKey = (e) => { if (e.key === "Escape") onClose?.(); };
@@ -58,9 +55,10 @@ function ServicesModal({ open, onClose, services = [], loading, error, onPick })
     <div className="srv2-modal" role="dialog" aria-modal="true">
       <div className="srv2-backdrop" onClick={onClose} />
 
-      <div className="srv2-panel" role="document" onClick={(e)=>e.stopPropagation()}>
-        {/* Header */}
-        <div className="srv2-head">
+      {/* MANJI, ELEGANTAN PANEL — nije zalepljen za vrh, već blago spušten */}
+      <div className="srv2-panel slim" role="document" onClick={(e)=>e.stopPropagation()}>
+        {/* Header (kompaktan) */}
+        <div className="srv2-head slim">
           <div className="srv2-bc">
             {selectedCat ? (
               <>
@@ -77,7 +75,7 @@ function ServicesModal({ open, onClose, services = [], loading, error, onPick })
 
         {/* Filters bar (samo na drugom koraku) */}
         {selectedCat && (
-          <div className="srv2-filters">
+          <div className="srv2-filters slim">
             <div className="srv2-input-wrap">
               <input
                 className="srv2-input"
@@ -91,24 +89,24 @@ function ServicesModal({ open, onClose, services = [], loading, error, onPick })
         )}
 
         {/* Body */}
-        <div className="srv2-body">
+        <div className="srv2-body slim">
           {loading ? (
             <div className="srv2-empty">Učitavam…</div>
           ) : error ? (
             <div className="srv2-empty" style={{color:'#b00020'}}>{error}</div>
           ) : !selectedCat ? (
-            // KORAK 1: Kategorije
+            // KORAK 1: Kategorije — JEDNA KOLONA
             categories.length ? (
-              <div className="srv2-grid cats">
+              <div className="srv2-list cats one-col">
                 {categories.map(cat => (
                   <button
                     key={cat}
-                    className="srv2-card cat"
+                    className="srv2-row cat fancy"
                     onClick={()=>setSelectedCat(cat)}
                     title={cat}
                   >
-                    <div className="srv2-cat-title">{cat}</div>
-                    <span className="srv2-cta">Otvori</span>
+                    <div className="srv2-row-title">{cat}</div>
+                    <span className="srv2-cta arrow">›</span>
                   </button>
                 ))}
               </div>
@@ -116,13 +114,13 @@ function ServicesModal({ open, onClose, services = [], loading, error, onPick })
               <div className="srv2-empty">Nema kategorija.</div>
             )
           ) : (
-            // KORAK 2: Usluge u kategoriji
+            // KORAK 2: Usluge u kategoriji — JEDNA KOLONA
             catServices.length ? (
-              <div className="srv2-list">
+              <div className="srv2-list one-col">
                 {catServices.map(s => (
                   <button
                     key={`${s.id}-${s.name}`}
-                    className="srv2-row"
+                    className="srv2-row fancy"
                     onClick={()=>onPick?.(s)}
                     title={s.name}
                   >
@@ -138,32 +136,42 @@ function ServicesModal({ open, onClose, services = [], loading, error, onPick })
         </div>
       </div>
 
-      {/* CSS — kompaktno & elegantno */}
+      {/* CSS — manji, spušten panel + jedna kolona + fensi hoveri */}
       <style>{`
-        .srv2-modal{ position:fixed; inset:0; z-index:1000; display:flex; align-items:center; justify-content:center; }
+        .srv2-modal{
+        
+          position:fixed; inset:0; z-index:1000;
+          display:flex; align-items:flex-start; justify-content:center;
+          padding:36vh 30px 40vh; /* malo spušteno od vrha */
+        }
         .srv2-backdrop{ position:absolute; inset:0; background:rgba(6,6,8,.52); backdrop-filter: blur(6px) saturate(120%); }
+
         .srv2-panel{
-          position:relative; width:min(860px,94vw); max-height:86vh;
+          position:relative;
+          width:min(720px, 92vw);
+          max-height:82vh;
           background:linear-gradient(180deg, #ffffffee, #fffffff6);
-          border:1px solid rgba(0,0,0,.06); border-radius:16px; box-shadow:0 18px 48px rgba(0,0,0,.18);
+          border:1px solid rgba(0,0,0,.06);
+          border-radius:18px;
+          box-shadow:0 18px 48px rgba(0,0,0,.18);
           overflow:hidden; display:flex; flex-direction:column;
         }
+        .srv2-panel.slim{ width:min(560px, 92vw); max-height:78vh; border-radius:16px; }
 
         .srv2-head{
           display:flex; align-items:center; justify-content:space-between;
-          padding:10px 12px; border-bottom:1px solid rgba(0,0,0,.06);
+          padding:12px 14px; border-bottom:1px solid rgba(0,0,0,.06);
           background:linear-gradient(180deg,#fff,#faf8f5);
         }
-        .srv2-bc{ display:flex; align-items:center; gap:8px; font-size:14px; }
+        .srv2-head.slim{ padding:10px 12px; }
+        .srv2-bc{ display:flex; align-items:center; gap:8px; font-size:13px; letter-spacing:.2px; }
         .srv2-link{ background:transparent; border:none; color:#6a5d4b; font-weight:700; cursor:pointer; }
         .srv2-sep{ color:#b7aea0; }
         .srv2-cur{ font-weight:800; color:#2a2a2e; }
-        .srv2-x{ background:transparent; border:none; font-size:18px; cursor:pointer; color:#666; }
+        .srv2-x{ background:transparent; border:none; font-size:18px; cursor:pointer; color:#666; line-height:1; }
 
-        .srv2-filters{
-          padding:8px 12px; border-bottom:1px solid rgba(0,0,0,.06);
-          background:linear-gradient(180deg,#ffffff, #faf8f5);
-        }
+        .srv2-filters{ padding:8px 12px; border-bottom:1px solid rgba(0,0,0,.06); background:linear-gradient(180deg,#ffffff, #faf8f5); }
+        .srv2-filters.slim{ padding:8px 12px; }
         .srv2-input-wrap{ position:relative; }
         .srv2-input{
           width:100%; height:36px; border-radius:10px; border:1px solid #e6e0d6; padding:0 40px 0 10px; font-size:14px; outline:none; background:#fff;
@@ -171,38 +179,48 @@ function ServicesModal({ open, onClose, services = [], loading, error, onPick })
         .srv2-input:focus{ border-color:#d7cfc3; box-shadow:0 0 0 3px rgba(172,149,116,.18); }
         .srv2-clear{ position:absolute; right:6px; top:50%; transform:translateY(-50%); border:0; background:transparent; font-size:18px; color:#888; cursor:pointer; }
 
-        .srv2-body{ overflow:auto; max-height:calc(86vh - 46px - 0px); }
-        .srv2-grid.cats{
-          padding:10px; display:grid; grid-template-columns: repeat( auto-fill, minmax(160px,1fr) ); gap:10px;
-        }
-        .srv2-card.cat{
-          display:flex; align-items:center; justify-content:space-between; gap:8px;
-          border:1px solid #eadfce; background:linear-gradient(180deg,#fff,#faf7f3); padding:10px 12px; border-radius:12px;
-          cursor:pointer; transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease;
-        }
-        .srv2-card.cat:hover{ transform:translateY(-1px); box-shadow:0 10px 22px rgba(0,0,0,.08); border-color:#d6c7b0; }
-        .srv2-cat-title{ font-weight:700; font-size:14px; color:#2a2a2e; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .srv2-body{ overflow:auto; }
+        .srv2-body.slim{ max-height: calc(78vh - 46px - 0px); }
 
-        .srv2-cta{ font-size:12px; padding:6px 8px; border-radius:9px; border:1px solid #eadfce; background:#fff; color:#6a5d4b; }
+        /* LISTA U JEDNOJ KOLONI */
+        .srv2-list{ display:flex; flex-direction:column; padding:8px; gap:8px; }
+        .srv2-list.cats{ padding:6px 8px 10px; }
+        .srv2-list.one-col{ max-width: 100%; }
 
-        .srv2-list{ display:flex; flex-direction:column; padding:6px; gap:6px; }
+        /* Elegantne “row” kartice */
         .srv2-row{
-          display:flex; align-items:center; justify-content:space-between; gap:8px;
-          padding:10px 12px; border-radius:10px; border:1px solid #eee4d6; background:#fff; cursor:pointer;
-          transition: background .12s ease, box-shadow .12s ease, border-color .12s ease, transform .08s ease;
+          display:flex; align-items:center; justify-content:space-between; gap:10px;
+          padding:12px 14px; border-radius:12px; border:1px solid #eee4d6; background:#fff; cursor:pointer;
+          transition: background .14s ease, box-shadow .16s ease, border-color .14s ease, transform .08s ease;
         }
-        .srv2-row:hover{ background:#fffaf4; box-shadow:0 6px 18px rgba(0,0,0,.06); border-color:#e2d6c5; transform:translateY(-1px); }
-        .srv2-row-title{ font-size:14px; font-weight:700; color:#26262a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .srv2-row.fancy:hover{
+          background:#fffaf4;
+          box-shadow:0 10px 28px rgba(0,0,0,.08);
+          border-color:#e2d6c5;
+          transform:translateY(-1px);
+        }
+        .srv2-row.cat{ padding:12px 14px; }
+
+        .srv2-row-title{
+          font-size:15px; font-weight:800; color:#26262a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+          letter-spacing:.2px;
+        }
+
+        .srv2-cta{
+          font-size:12px; padding:6px 10px; border-radius:999px; border:1px solid #eadfce; background:#fff;
+          color:#6a5d4b; font-weight:700; line-height:1;
+        }
+        .srv2-cta.arrow{ padding:4px 8px; border-radius:10px; }
 
         .srv2-empty{ padding:18px; text-align:center; color:#777; }
 
         @media (max-width: 760px){
-          .srv2-panel{ width:100vw; height:92vh; max-height:92vh; border-radius:14px 14px 0 0; }
-          .srv2-body{ max-height: calc(92vh - 46px - 40px); } /* header + filters (ako su) */
-          .srv2-grid.cats{ grid-template-columns: repeat(2, minmax(0,1fr)); gap:8px; padding:8px; }
-          .srv2-card.cat{ padding:10px; border-radius:10px; }
-          .srv2-list{ padding:8px; gap:8px; }
-          .srv2-row{ padding:10px; border-radius:10px; }
+          .srv2-modal{ padding:10vh 8px 2vh; }
+          .srv2-panel{ width:100%; border-radius:16px; }
+          .srv2-panel.slim{ width:100%; max-height:76vh; }
+          .srv2-body.slim{ max-height: calc(86vh - 46px - 0px); }
+          .srv2-row{ padding:32px; border-radius:12px; }
+          .srv2-row-title{ font-size:14px; }
         }
       `}</style>
     </div>
