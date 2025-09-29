@@ -134,6 +134,8 @@ export default function ClientHistory(){
 
   // indeks servisa { [serviceId]: {name, durationMin, priceRsd, ...} }
   const [svcIndex, setSvcIndex] = useState({});
+  // indeks kategorija { [categoryId]: categoryName }
+  const [catIndex, setCatIndex] = useState({});
 
   const mode = location?.state?.autoCancel ? "cancel" : "history";
 
@@ -153,6 +155,20 @@ export default function ClientHistory(){
         };
       });
       setSvcIndex(m);
+    });
+    return ()=>unsub && unsub();
+  },[]);
+
+  // Učitaj kategorije (za prevođenje categoryId -> categoryName)
+  useEffect(()=>{
+    const unsub = onSnapshot(collection(db, "categories"), (snap)=>{
+      const m = {};
+      snap.forEach(d=>{
+        const v = d.data() || {};
+        const name = (v.name || v.title || "").toString().trim();
+        if (name) m[d.id] = name;
+      });
+      setCatIndex(m);
     });
     return ()=>unsub && unsub();
   },[]);
@@ -223,18 +239,30 @@ export default function ClientHistory(){
   // normalizovani zapisi (radi prikaza)
   const normalized = useMemo(()=> (items || []).map(normalizeAppointment), [items]);
 
-  // hidracija naziva/price/duration po serviceId
+  // hidracija naziva/price/duration po serviceId + prevođenje categoryId -> categoryName
   const hydrated = useMemo(()=>{
     return (normalized || []).map(a=>{
       const hydraServices = (a.services || []).map(s=>{
         const meta = svcIndex[s.serviceId] || {};
+        const resolvedCategoryId =
+          s.categoryId ?? meta.categoryId ?? null;
+
+        const resolvedCategoryName =
+          s.categoryName ??
+          meta.categoryName ??
+          (resolvedCategoryId ? catIndex[resolvedCategoryId] : null) ??
+          null;
+
+        const resolvedName =
+          s.name || meta.name || resolvedCategoryName || s.serviceId;
+
         return {
           ...s,
-          name: s.name || meta.name || s.serviceId,
+          name: resolvedName,
           durationMin: s.durationMin || meta.durationMin || 0,
           priceRsd: s.priceRsd || meta.priceRsd || 0,
-          categoryId: s.categoryId ?? meta.categoryId ?? null,
-          categoryName: s.categoryName ?? meta.categoryName ?? null
+          categoryId: resolvedCategoryId,
+          categoryName: resolvedCategoryName
         };
       });
 
@@ -251,20 +279,20 @@ export default function ClientHistory(){
 
       return { ...a, services: hydraServices, servicesLabel, totalDurationMin, totalAmountRsd };
     });
-  }, [normalized, svcIndex]);
+  }, [normalized, svcIndex, catIndex]);
 
   const nowMs = Date.now();
-  const upcoming = useMemo(()=>(
+  const upcoming = useMemo(()=>
     (hydrated || [])
       .filter(a => toJsDate(a.start)?.getTime()>=nowMs && a.status!=="cancelled")
       .sort((a,b)=>toJsDate(a.start)-toJsDate(b.start))
-  ), [hydrated, nowMs]);
+  , [hydrated, nowMs]);
 
-  const past = useMemo(()=>(
+  const past = useMemo(()=>
     (hydrated || [])
       .filter(a => toJsDate(a.start)?.getTime() < nowMs || a.status==="cancelled")
       .sort((a,b)=>toJsDate(b.start)-toJsDate(a.start))
-  ), [hydrated, nowMs]);
+  , [hydrated, nowMs]);
 
   async function cancel(id){
     if (!window.confirm("Sigurno želiš da otkažeš ovaj termin?")) return;
@@ -333,21 +361,79 @@ export default function ClientHistory(){
   return (
     <div className="wrap">
       <style>{`
-        .wrap{min-height:100dvh;background:#f5f5f5;}
-        .sheet{background:#fff;min-height:100dvh;padding:50px 20px;}
-        @media(min-width:768px){.sheet{max-width:800px;margin:0 auto;border-radius:22px;box-shadow:0 4px 14px rgba(0,0,0,.08);}}
-        .title{text-align:center;font-size:24px;font-weight:900;margin-bottom:20px;pedigng-top:40px;}
-        .card{border:1px solid #e5e5e5;border-radius:16px;padding:16px 18px;margin-bottom:18px;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.05);}
+        .wrap{
+          min-height:100svh; /* stabilno na mobilnom, bez sečenja */
+          background:#f5f5f5;
+        }
+        @supports not (height: 100svh){
+          .wrap{ min-height:100dvh; }
+        }
+
+        .sheet{
+          background:#fff;
+          min-height:100%;
+          padding:50px 20px 80px; /* dno veće da dugmad ne budu presečena */
+          overflow: visible;
+        }
+        @media(min-width:768px){
+          .sheet{
+            max-width:800px;
+            margin:0 auto;
+            border-radius:22px;
+            box-shadow:0 4px 14px rgba(0,0,0,.08);
+          }
+        }
+
+        .title{
+          text-align:center;
+          font-size:24px;
+          font-weight:900;
+          margin-bottom:20px;
+          padding-top:40px; /* fix tipfelera pedigng-top */
+        }
+
+        .card{
+          display:flex;
+          flex-direction:column;
+          border:1px solid #e5e5e5;
+          border-radius:16px;
+          padding:16px 18px;
+          margin-bottom:18px;
+          background:#fff;
+          box-shadow:0 2px 6px rgba(0,0,0,.05);
+          overflow:visible;  /* ne seci sadržaj */
+        }
+        .card *{ min-height:0; } /* rešava flex-overflow edge-case */
+
         .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
         .badge{padding:4px 10px;border-radius:999px;font-size:12px;font-weight:700;}
         .badge.canceled{background:#ffecec;color:#c00;}
         .badge.upcoming{background:#ecfdf5;color:#065f46;}
         .badge.done{background:#f0f9ff;color:#075985;}
+
         .services{margin-top:6px;}
-        .chip{display:inline-block;margin:3px;padding:4px 8px;border-radius:12px;background:#fafafa;font-size:12px;}
+        .chip{
+          display:inline-block;
+          margin:3px;
+          padding:4px 8px;
+          border-radius:12px;
+          background:#fafafa;
+          font-size:12px;
+          max-width:100%;
+          white-space:nowrap;
+          text-overflow:ellipsis;
+          overflow:hidden;
+        }
+
         .total{margin-top:6px;font-weight:700;}
-        .rowbtns{display:flex;gap:10px;margin-top:12px;justify-content:flex-end}
-        .btn{padding:8px 12px;border-radius:10px;font-weight:700;cursor:pointer;}
+        .rowbtns{
+          display:flex;
+          gap:10px;
+          margin-top:12px;
+          justify-content:flex-end;
+          flex-wrap:wrap; /* dozvoli prelazak u novi red */
+        }
+        .btn{padding:10px 14px;border-radius:10px;font-weight:700;cursor:pointer;line-height:1;}
         .btn.ghost{background:#fff;border:1px solid #ddd;}
         .btn.primary{background:#111;color:#fff;}
       `}</style>
@@ -379,8 +465,8 @@ export default function ClientHistory(){
                         {/* Chipovi svih servisa (hidrirani nazivi) */}
                         <div className="services">
                           {a.services.map(s=>(
-                            <span key={s.serviceId||s.name} className="chip">
-                              {s.name || s.serviceId}
+                            <span key={s.serviceId||s.name} className="chip" title={s.categoryName ? `${s.categoryName} — ${s.name}` : s.name}>
+                              {s.name || s.serviceId}{s.categoryName ? ` · ${s.categoryName}` : ""}
                             </span>
                           ))}
                         </div>
@@ -421,8 +507,8 @@ export default function ClientHistory(){
                         {/* Chipovi svih servisa (hidrirani nazivi) */}
                         <div className="services">
                           {a.services.map(s=>(
-                            <span key={s.serviceId||s.name} className="chip">
-                              {s.name || s.serviceId}
+                            <span key={s.serviceId||s.name} className="chip" title={s.categoryName ? `${s.categoryName} — ${s.name}` : s.name}>
+                              {s.name || s.serviceId}{s.categoryName ? ` · ${s.categoryName}` : ""}
                             </span>
                           ))}
                         </div>

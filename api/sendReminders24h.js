@@ -142,7 +142,7 @@ export default async function handler(req, res) {
         timeZone: TZ,
       }).format(start);
 
-      // Opcionalno: preciznije "Sutra"
+      // preciznije "Sutra"
       const dFmt = (d0) => new Intl.DateTimeFormat("en-CA", {
         timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit"
       }).format(d0);
@@ -179,29 +179,61 @@ export default async function handler(req, res) {
             tokens
           }
         });
-      } else {
-        // stvarno slanje
-        const resp = await messaging.sendEachForMulticast({ tokens, ...payload });
+        continue; // u preview modu ne šaljemo i ne diramo flag
+      }
 
-        await d.ref.set({
+      // ===== CLAIM & SEND: zaštita od duplikata =====
+      const claimed = await db.runTransaction(async (tx) => {
+        const fresh = await tx.get(d.ref);
+        const already = !!fresh.get("remind24hSent");
+        if (already && !force) return false; // drugi proces je već poslao
+        tx.set(d.ref, {
           remind24hSent: true,
           remind24hAt: FieldValue.serverTimestamp()
         }, { merge: true });
+        return true;
+      });
 
-        sent += resp.successCount;
-        inspected.push({
-          id: d.id,
-          tokens: tokens.length,
-          success: resp.successCount,
-          fail: resp.failureCount,
-          startISO: start.toISOString(),
-          who: {
-            client: clientTokens.length,
-            employee: employeeTokens.length,
-            admin: adminTokens.length
-          }
-        });
+      if (!claimed) {
+        inspected.push({ id: d.id, reason: "race: already claimed" });
+        continue; // ne šalji drugi put
       }
+
+      // stvarno slanje
+      const resp = await messaging.sendEachForMulticast({ tokens, ...payload });
+      sent += resp.successCount;
+
+      // automatsko čišćenje nevažećih tokena
+      const badTokens = [];
+      (resp.responses || []).forEach((r, i) => {
+        if (!r.success) {
+          const code = r.error?.code || "";
+          if (code === "messaging/registration-token-not-registered" ||
+              code === "messaging/invalid-registration-token") {
+            badTokens.push(tokens[i]);
+          }
+        }
+      });
+      if (badTokens.length) {
+        await Promise.all(badTokens.map(async (t) => {
+          const q = await db.collection("fcmTokens").where("token", "==", t).get();
+          await Promise.all(q.docs.map(doc => doc.ref.delete()));
+        }));
+      }
+
+      inspected.push({
+        id: d.id,
+        tokens: tokens.length,
+        success: resp.successCount,
+        fail: resp.failureCount,
+        messageIds: (resp.responses || []).map(r => r.messageId).filter(Boolean),
+        startISO: start.toISOString(),
+        who: {
+          client: clientTokens.length,
+          employee: employeeTokens.length,
+          admin: adminTokens.length
+        }
+      });
     }
 
     return ok(res, {

@@ -13,15 +13,18 @@ function initAdmin() {
   initializeApp({ credential: cert({ projectId, clientEmail, privateKey }) });
 }
 
-function ok(res, data)  { res.setHeader("Access-Control-Allow-Origin","*"); return res.status(200).json({ ok:true, ...data }); }
-function err(res, e)    { res.setHeader("Access-Control-Allow-Origin","*"); return res.status(500).json({ ok:false, error:String(e?.message||e) }); }
+function ok(res, data) { res.setHeader("Access-Control-Allow-Origin","*"); return res.status(200).json({ ok:true, ...data }); }
+function err(res, e)   { res.setHeader("Access-Control-Allow-Origin","*"); return res.status(500).json({ ok:false, error:String(e?.message||e) }); }
+
+const dedup = (arr) => [...new Set(arr.filter(Boolean))];
+const TZ = "Europe/Belgrade";
 
 export default async function handler(req, res) {
   try {
     if (req.method === "OPTIONS") {
-      res.setHeader("Access-Control-Allow-Origin", "*");
-      res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
-      res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+      res.setHeader("Access-Control-Allow-Origin","*");
+      res.setHeader("Access-Control-Allow-Methods","GET,OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers","Content-Type");
       return res.status(200).end();
     }
 
@@ -37,54 +40,188 @@ export default async function handler(req, res) {
       });
     }
 
-    // prozor: sada + 2h do +2h + 5min
-    const now = new Date();
-    const from = new Date(now.getTime() + 2 * 60 * 60 * 1000);
-    const to   = new Date(from.getTime() + 5 * 60 * 1000);
+    const isPreview = String(req.query?.preview || "") === "1";
+    const force     = String(req.query?.force   || "") === "1";
 
-    const snap = await db.collection("appointments")
-      .where("type", "==", "appointment")
-      .where("status", "==", "booked")
-      .where("start", ">=", Timestamp.fromDate(from))
-      .where("start", "<",  Timestamp.fromDate(to))
-      .get();
+    // ===== prozor: 2h ± padMin =====
+    const now    = new Date();
+    const center = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+    const padMin = Number(req.query?.padMin ?? process.env.REM2H_PAD_MIN ?? 15); // default ±15 min
+    const from   = new Date(center.getTime() - padMin * 60 * 1000);
+    const to     = new Date(center.getTime() + padMin * 60 * 1000);
 
-    const force = String(req.query?.force || "") === "1";
+    // Dohvati termine (bez filtera po "type"/"bookedVia"), status booked/confirmed
+    let snap;
+    try {
+      snap = await db.collection("appointments")
+        .where("status", "in", ["booked", "confirmed"])
+        .where("start", ">=", Timestamp.fromDate(from))
+        .where("start", "<",  Timestamp.fromDate(to))
+        .get();
+    } catch {
+      const [s1, s2] = await Promise.all([
+        db.collection("appointments")
+          .where("status", "==", "booked")
+          .where("start", ">=", Timestamp.fromDate(from))
+          .where("start", "<",  Timestamp.fromDate(to))
+          .get(),
+        db.collection("appointments")
+          .where("status", "==", "confirmed")
+          .where("start", ">=", Timestamp.fromDate(from))
+          .where("start", "<",  Timestamp.fromDate(to))
+          .get(),
+      ]);
+      const map = new Map();
+      for (const d of [...s1.docs, ...s2.docs]) map.set(d.id, d);
+      snap = { docs: [...map.values()], size: map.size };
+    }
+
     let sent = 0;
     const inspected = [];
 
     for (const d of snap.docs) {
       const appt = { id: d.id, ...d.data() };
 
-      if (!appt.clientId) { inspected.push({ id: d.id, reason: "no client" }); continue; }
-      if (!force && appt.remind2hSent) { inspected.push({ id: d.id, reason: "already sent" }); continue; }
+      if (!appt.clientId && !appt.clientPhoneNorm) {
+        inspected.push({ id: d.id, reason: "no client identifiers" });
+        continue;
+      }
+      if (!force && appt.remind2hSent) {
+        inspected.push({ id: d.id, reason: "already sent" });
+        continue;
+      }
 
-      const tokensSnap = await db.collection("fcmTokens").where("ownerId","==", appt.clientId).get();
-      const tokens = tokensSnap.docs.map(x => x.get("token")).filter(Boolean);
-      if (!tokens.length) { inspected.push({ id: d.id, reason: "no tokens" }); continue; }
+      // --- tokens: klijent ---
+      let clientTokensSnap = await db.collection("fcmTokens")
+        .where("ownerId", "==", appt.clientId || "__none__")
+        .get();
+      if (clientTokensSnap.empty && appt.clientPhoneNorm) {
+        clientTokensSnap = await db.collection("fcmTokens")
+          .where("ownerPhone", "==", appt.clientPhoneNorm)
+          .get();
+      }
+      const clientTokens = clientTokensSnap.docs.map(x => x.get("token"));
+
+      // --- tokens: zaposleni (ako postoji) ---
+      let employeeTokens = [];
+      if (appt.employeeId) {
+        const empTokSnap = await db.collection("fcmTokens")
+          .where("ownerId", "==", appt.employeeId)
+          .get();
+        employeeTokens = empTokSnap.docs.map(x => x.get("token"));
+      }
+
+      // --- tokens: admin/salon ---
+      const adminTokSnap = await db.collection("fcmTokens")
+        .where("role", "in", ["admin", "salon"])
+        .get();
+      const adminTokens = adminTokSnap.docs.map(x => x.get("token"));
+
+      // ukupno (bez duplikata)
+      const tokens = dedup([...clientTokens, ...employeeTokens, ...adminTokens]);
+
+      if (!tokens.length) {
+        inspected.push({ id: d.id, reason: "no tokens (client/emp/admin)" });
+        continue;
+      }
 
       const start = (appt.start?.toDate?.() || new Date(appt.start));
+
+      // tačno vreme u Beogradu
+      const bodyTime = new Intl.DateTimeFormat("sr-RS", {
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone: TZ,
+      }).format(start);
+
       const payload = {
         notification: {
           title: "Podsetnik za termin",
-          body: `Uskoro (${start.toLocaleString("sr-RS")}) imate zakazan termin.`,
+          body: `Uskoro (u ${bodyTime}) imate zakazan termin.`,
         },
         data: {
           click_action: "FLUTTER_NOTIFICATION_CLICK",
           appointmentId: String(appt.id),
+          employeeId: appt.employeeId ? String(appt.employeeId) : "",
         },
       };
 
-      const resp = await messaging.sendEachForMulticast({ tokens, ...payload });
-      await d.ref.set({ remind2hSent: true, remind2hAt: FieldValue.serverTimestamp() }, { merge: true });
+      if (isPreview) {
+        inspected.push({
+          id: d.id,
+          startISO: start.toISOString(),
+          who: {
+            client: clientTokens.length,
+            employee: employeeTokens.length,
+            admin: adminTokens.length
+          },
+          wouldSend: {
+            title: payload.notification.title,
+            body:  payload.notification.body,
+            tokens
+          }
+        });
+        continue; // u preview modu ne šaljemo i ne diramo flag
+      }
 
+      // ===== CLAIM & SEND (sprečava duplikate) =====
+      const claimed = await db.runTransaction(async (tx) => {
+        const fresh = await tx.get(d.ref);
+        const already = !!fresh.get("remind2hSent");
+        if (already && !force) return false;
+        tx.set(d.ref, {
+          remind2hSent: true,
+          remind2hAt: FieldValue.serverTimestamp()
+        }, { merge: true });
+        return true;
+      });
+
+      if (!claimed) {
+        inspected.push({ id: d.id, reason: "race: already claimed" });
+        continue;
+      }
+
+      // stvarno slanje
+      const resp = await messaging.sendEachForMulticast({ tokens, ...payload });
       sent += resp.successCount;
-      inspected.push({ id: d.id, tokens: tokens.length, success: resp.successCount, fail: resp.failureCount });
+
+      // čišćenje loših tokena
+      const badTokens = [];
+      (resp.responses || []).forEach((r, i) => {
+        if (!r.success) {
+          const code = r.error?.code || "";
+          if (code === "messaging/registration-token-not-registered" ||
+              code === "messaging/invalid-registration-token") {
+            badTokens.push(tokens[i]);
+          }
+        }
+      });
+      if (badTokens.length) {
+        await Promise.all(badTokens.map(async (t) => {
+          const q = await db.collection("fcmTokens").where("token", "==", t).get();
+          await Promise.all(q.docs.map(doc => doc.ref.delete()));
+        }));
+      }
+
+      inspected.push({
+        id: d.id,
+        tokens: tokens.length,
+        success: resp.successCount,
+        fail: resp.failureCount,
+        messageIds: (resp.responses || []).map(r => r.messageId).filter(Boolean),
+        startISO: start.toISOString(),
+        who: {
+          client: clientTokens.length,
+          employee: employeeTokens.length,
+          admin: adminTokens.length
+        }
+      });
     }
 
     return ok(res, {
       sent,
-      window: { from: from.toISOString(), to: to.toISOString() },
+      preview: isPreview,
+      window: { from: from.toISOString(), to: to.toISOString(), padMin },
       count: snap.size,
       inspected,
     });
