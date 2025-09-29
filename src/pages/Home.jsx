@@ -13,27 +13,36 @@ import AuthModal from "../components/AuthModal.jsx";
    - Na klik usluge vodi u flow za zakazivanje (po potrebi login)
    - Mobilni: fullscreen panel, sticky filter bar
 ============================================================= */
+/* =============================================================
+   Lepši modal (2 koraka): Kategorije → Usluge
+   - Korak 1: mreža kategorija
+   - Korak 2: lista usluga u odabranoj kategoriji (sa pretragom)
+   - Kompaktni razmaci i elegantan izgled
+============================================================= */
 function ServicesModal({ open, onClose, services = [], loading, error, onPick }) {
+  const [selectedCat, setSelectedCat] = useState(null); // null => prikaz kategorija
   const [term, setTerm] = useState("");
-  const [cat, setCat]   = useState("sve");
 
   // kategorije iz podataka
   const categories = useMemo(() => {
     const set = new Set();
     for (const s of services) if (s?.categoryName) set.add(s.categoryName);
-    return ["sve", ...Array.from(set).sort((a,b)=>a.localeCompare(b, "sr"))];
+    // sortiraj po azbuci (sr)
+    return Array.from(set).sort((a,b)=>a.localeCompare(b, "sr-RS", { sensitivity: "base" }));
   }, [services]);
 
-  const filtered = useMemo(() => {
+  // usluge izabrane kategorije + pretraga
+  const catServices = useMemo(() => {
+    if (!selectedCat) return [];
     const t = term.trim().toLowerCase();
-    return services.filter(s => {
-      const okCat = cat === "sve" || s?.categoryName === cat;
-      if (!okCat) return false;
-      if (!t) return true;
-      const hay = `${s?.name || ''} ${s?.categoryName || ''}`.toLowerCase();
-      return hay.includes(t);
-    });
-  }, [services, term, cat]);
+    return services
+      .filter(s => s.categoryName === selectedCat)
+      .filter(s => !t || (s.name || "").toLowerCase().includes(t));
+  }, [services, selectedCat, term]);
+
+  // reset pretrage kada promenimo kategoriju / zatvorimo
+  useEffect(() => { setTerm(""); }, [selectedCat]);
+  useEffect(() => { if (!open) setSelectedCat(null); }, [open]);
 
   // ESC to close
   useEffect(() => {
@@ -46,94 +55,154 @@ function ServicesModal({ open, onClose, services = [], loading, error, onPick })
   if (!open) return null;
 
   return (
-    <div className="srv-modal" role="dialog" aria-modal="true">
-      <div className="srv-modal__backdrop" onClick={onClose} />
-      <div className="srv-modal__panel" role="document" onClick={(e)=>e.stopPropagation()}>
-        <div className="srv-modal__header">
-          <h3 className="srv-modal__title">Usluge</h3>
-          <button className="srv-btn srv-btn--ghost" onClick={onClose} aria-label="Zatvori">✕</button>
-        </div>
+    <div className="srv2-modal" role="dialog" aria-modal="true">
+      <div className="srv2-backdrop" onClick={onClose} />
 
-        <div className="srv-filters">
-          <div className="srv-input-wrap">
-            <input
-              className="srv-input"
-              placeholder="Pretraži uslugu…"
-              value={term}
-              onChange={(e)=>setTerm(e.target.value)}
-            />
-            {term && (<button className="srv-clear" onClick={()=>setTerm("")} aria-label="Obriši pretragu">×</button>)}
+      <div className="srv2-panel" role="document" onClick={(e)=>e.stopPropagation()}>
+        {/* Header */}
+        <div className="srv2-head">
+          <div className="srv2-bc">
+            {selectedCat ? (
+              <>
+                <button className="srv2-link" onClick={()=>setSelectedCat(null)} aria-label="Nazad na kategorije">Kategorije</button>
+                <span className="srv2-sep">/</span>
+                <span className="srv2-cur">{selectedCat}</span>
+              </>
+            ) : (
+              <span className="srv2-cur">Kategorije</span>
+            )}
           </div>
-          <select className="srv-select" value={cat} onChange={(e)=>setCat(e.target.value)}>
-            {categories.map(c => (
-              <option key={c} value={c}>{c === "sve" ? "Sve kategorije" : c}</option>
-            ))}
-          </select>
+          <button className="srv2-x" onClick={onClose} aria-label="Zatvori">✕</button>
         </div>
 
-        <div className="srv-body">
-          {loading ? (
-            <div className="srv-empty">Učitavam usluge…</div>
-          ) : error ? (
-            <div className="srv-empty" style={{color:'#b00020'}}>{error}</div>
-          ) : filtered.length === 0 ? (
-            <div className="srv-empty">Nema rezultata za zadate filtere.</div>
-          ) : (
-            <div className="srv-grid">
-              {filtered.map((s) => (
-                <button key={`${s.id}-${s.name}`} className="srv-card" onClick={()=>onPick?.(s)}>
-                  <div className="srv-card__text">
-                    <div className="srv-card__title">{s.name}</div>
-                    {s.categoryName && <div className="srv-chip">{s.categoryName}</div>}
-                  </div>
-                  <span className="srv-card__cta">Zakaži</span>
-                </button>
-              ))}
+        {/* Filters bar (samo na drugom koraku) */}
+        {selectedCat && (
+          <div className="srv2-filters">
+            <div className="srv2-input-wrap">
+              <input
+                className="srv2-input"
+                placeholder="Pretraži uslugu…"
+                value={term}
+                onChange={(e)=>setTerm(e.target.value)}
+              />
+              {term && <button className="srv2-clear" onClick={()=>setTerm("")} aria-label="Obriši">×</button>}
             </div>
+          </div>
+        )}
+
+        {/* Body */}
+        <div className="srv2-body">
+          {loading ? (
+            <div className="srv2-empty">Učitavam…</div>
+          ) : error ? (
+            <div className="srv2-empty" style={{color:'#b00020'}}>{error}</div>
+          ) : !selectedCat ? (
+            // KORAK 1: Kategorije
+            categories.length ? (
+              <div className="srv2-grid cats">
+                {categories.map(cat => (
+                  <button
+                    key={cat}
+                    className="srv2-card cat"
+                    onClick={()=>setSelectedCat(cat)}
+                    title={cat}
+                  >
+                    <div className="srv2-cat-title">{cat}</div>
+                    <span className="srv2-cta">Otvori</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="srv2-empty">Nema kategorija.</div>
+            )
+          ) : (
+            // KORAK 2: Usluge u kategoriji
+            catServices.length ? (
+              <div className="srv2-list">
+                {catServices.map(s => (
+                  <button
+                    key={`${s.id}-${s.name}`}
+                    className="srv2-row"
+                    onClick={()=>onPick?.(s)}
+                    title={s.name}
+                  >
+                    <div className="srv2-row-title">{s.name}</div>
+                    <span className="srv2-cta">Zakaži</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="srv2-empty">Nema usluga za zadate filtere.</div>
+            )
           )}
         </div>
       </div>
 
+      {/* CSS — kompaktno & elegantno */}
       <style>{`
-        .srv-modal{ position:fixed; inset:0; z-index:1000; display:flex; align-items:center; justify-content:center; }
-        .srv-modal__backdrop{ position:absolute; inset:0; background:rgba(4,4,5,0.55); backdrop-filter:saturate(120%) blur(6px); animation:fadeIn .2s ease-out; }
-        .srv-modal__panel{ position:relative; width:min(1080px,92vw); max-height:86vh; background:rgba(255,255,255,0.88); border:1px solid rgba(0,0,0,0.06); box-shadow:0 20px 60px rgba(0,0,0,0.25); border-radius:20px; overflow:hidden; transform:scale(0.98); animation:popIn .18s ease-out forwards; }
+        .srv2-modal{ position:fixed; inset:0; z-index:1000; display:flex; align-items:center; justify-content:center; }
+        .srv2-backdrop{ position:absolute; inset:0; background:rgba(6,6,8,.52); backdrop-filter: blur(6px) saturate(120%); }
+        .srv2-panel{
+          position:relative; width:min(860px,94vw); max-height:86vh;
+          background:linear-gradient(180deg, #ffffffee, #fffffff6);
+          border:1px solid rgba(0,0,0,.06); border-radius:16px; box-shadow:0 18px 48px rgba(0,0,0,.18);
+          overflow:hidden; display:flex; flex-direction:column;
+        }
 
-        .srv-modal__header{ position:sticky; top:0; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:14px 16px; background:linear-gradient(180deg, rgba(255,255,255,0.95), rgba(255,255,255,0.85)); border-bottom:1px solid rgba(0,0,0,0.06); backdrop-filter:saturate(120%) blur(4px); z-index:2; }
-        .srv-modal__title{ margin:0; font-size:20px; font-weight:600; letter-spacing:0.2px; }
+        .srv2-head{
+          display:flex; align-items:center; justify-content:space-between;
+          padding:10px 12px; border-bottom:1px solid rgba(0,0,0,.06);
+          background:linear-gradient(180deg,#fff,#faf8f5);
+        }
+        .srv2-bc{ display:flex; align-items:center; gap:8px; font-size:14px; }
+        .srv2-link{ background:transparent; border:none; color:#6a5d4b; font-weight:700; cursor:pointer; }
+        .srv2-sep{ color:#b7aea0; }
+        .srv2-cur{ font-weight:800; color:#2a2a2e; }
+        .srv2-x{ background:transparent; border:none; font-size:18px; cursor:pointer; color:#666; }
 
-        .srv-filters{ position:sticky; top:56px; display:flex; gap:10px; padding:12px 16px; background:linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.78)); border-bottom:1px solid rgba(0,0,0,0.06); z-index:1; }
-        .srv-input-wrap{ position:relative; flex:1 1 auto; }
-        .srv-input{ width:100%; height:40px; border-radius:12px; border:1px solid #e6e0d6; padding:0 42px 0 12px; font-size:14px; outline:none; background:#fff; }
-        .srv-input:focus{ border-color:#d0c7b9; box-shadow:0 0 0 3px rgba(172,149,116,0.18); }
-        .srv-clear{ position:absolute; right:8px; top:50%; transform:translateY(-50%); border:0; background:transparent; font-size:20px; line-height:1; padding:4px; cursor:pointer; color:#888; }
-        .srv-select{ height:40px; min-width:180px; border-radius:12px; border:1px solid #e6e0d6; padding:0 12px; background:#fff; font-size:14px; }
+        .srv2-filters{
+          padding:8px 12px; border-bottom:1px solid rgba(0,0,0,.06);
+          background:linear-gradient(180deg,#ffffff, #faf8f5);
+        }
+        .srv2-input-wrap{ position:relative; }
+        .srv2-input{
+          width:100%; height:36px; border-radius:10px; border:1px solid #e6e0d6; padding:0 40px 0 10px; font-size:14px; outline:none; background:#fff;
+        }
+        .srv2-input:focus{ border-color:#d7cfc3; box-shadow:0 0 0 3px rgba(172,149,116,.18); }
+        .srv2-clear{ position:absolute; right:6px; top:50%; transform:translateY(-50%); border:0; background:transparent; font-size:18px; color:#888; cursor:pointer; }
 
-        .srv-body{ overflow:auto; max-height: calc(86vh - 56px - 52px); }
-        .srv-grid{ padding:14px 16px 18px; display:grid; grid-template-columns: repeat( auto-fill, minmax(220px,1fr) ); gap:12px; }
-        .srv-card{ position:relative; display:flex; align-items:flex-end; justify-content:space-between; text-align:left; gap:10px; border:1px solid rgba(0,0,0,0.06); background:linear-gradient(180deg, #ffffff, #faf7f3); padding:14px; border-radius:16px; cursor:pointer; transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease; }
-        .srv-card:hover{ transform: translateY(-2px); box-shadow:0 10px 26px rgba(0,0,0,0.12); border-color: rgba(172,149,116,0.35); }
-        .srv-card:active{ transform: translateY(0); }
-        .srv-card__title{ font-weight:600; font-size:15px; margin-bottom:6px; color:var(--ink, #1f1f1f); }
-        .srv-chip{ margin-top:8px; display:inline-block; font-size:11px; padding:4px 8px; border-radius:999px; background:#f4efe9; border:1px solid #eadfce; }
-        .srv-card__cta{ font-size:13px; padding:8px 10px; border-radius:10px; border:1px solid #eadfce; background:#fff; }
+        .srv2-body{ overflow:auto; max-height:calc(86vh - 46px - 0px); }
+        .srv2-grid.cats{
+          padding:10px; display:grid; grid-template-columns: repeat( auto-fill, minmax(160px,1fr) ); gap:10px;
+        }
+        .srv2-card.cat{
+          display:flex; align-items:center; justify-content:space-between; gap:8px;
+          border:1px solid #eadfce; background:linear-gradient(180deg,#fff,#faf7f3); padding:10px 12px; border-radius:12px;
+          cursor:pointer; transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+        }
+        .srv2-card.cat:hover{ transform:translateY(-1px); box-shadow:0 10px 22px rgba(0,0,0,.08); border-color:#d6c7b0; }
+        .srv2-cat-title{ font-weight:700; font-size:14px; color:#2a2a2e; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
-        .srv-empty{ opacity:0.75; padding:24px; text-align:center; }
-        .srv-btn{ height:36px; padding:0 12px; border-radius:10px; border:1px solid #d8d1c6; background:var(--card, #f4efe9); cursor:pointer; }
-        .srv-btn--ghost{ background:transparent; border:0; height:auto; font-size:20px; }
+        .srv2-cta{ font-size:12px; padding:6px 8px; border-radius:9px; border:1px solid #eadfce; background:#fff; color:#6a5d4b; }
 
-        @keyframes popIn{ to{ transform:scale(1); } }
-        @keyframes fadeIn{ from{ opacity:0 } to{ opacity:1 } }
+        .srv2-list{ display:flex; flex-direction:column; padding:6px; gap:6px; }
+        .srv2-row{
+          display:flex; align-items:center; justify-content:space-between; gap:8px;
+          padding:10px 12px; border-radius:10px; border:1px solid #eee4d6; background:#fff; cursor:pointer;
+          transition: background .12s ease, box-shadow .12s ease, border-color .12s ease, transform .08s ease;
+        }
+        .srv2-row:hover{ background:#fffaf4; box-shadow:0 6px 18px rgba(0,0,0,.06); border-color:#e2d6c5; transform:translateY(-1px); }
+        .srv2-row-title{ font-size:14px; font-weight:700; color:#26262a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+        .srv2-empty{ padding:18px; text-align:center; color:#777; }
 
         @media (max-width: 760px){
-          .srv-modal__panel{ width:100vw; height:92vh; max-height:92vh; border-radius:16px 16px 0 0; }
-          .srv-filters{ top:56px; }
-          .srv-body{ max-height: calc(92vh - 56px - 52px); }
-          .srv-grid{ grid-template-columns: repeat(2, minmax(0,1fr)); gap:10px; padding:12px; }
-          .srv-select{ min-width:140px; }
-          .srv-card{ padding:12px; border-radius:14px; }
-          .srv-card__title{ font-size:14px; }
-          .srv-card__cta{ padding:6px 8px; font-size:12px; }
+          .srv2-panel{ width:100vw; height:92vh; max-height:92vh; border-radius:14px 14px 0 0; }
+          .srv2-body{ max-height: calc(92vh - 46px - 40px); } /* header + filters (ako su) */
+          .srv2-grid.cats{ grid-template-columns: repeat(2, minmax(0,1fr)); gap:8px; padding:8px; }
+          .srv2-card.cat{ padding:10px; border-radius:10px; }
+          .srv2-list{ padding:8px; gap:8px; }
+          .srv2-row{ padding:10px; border-radius:10px; }
         }
       `}</style>
     </div>
