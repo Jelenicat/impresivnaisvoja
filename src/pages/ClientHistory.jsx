@@ -42,25 +42,84 @@ const fmtDate = (d) => {
 };
 const fmtPrice = (n) => (Number(n)||0).toLocaleString("sr-RS");
 
-/* ---------- prikaz više usluga ---------- */
-function normalizeServices(a){
-  const raw = a?.services;
+/* ---------- services normalization (radi za stare i nove zapise) ---------- */
+const sid = (s) => String(s?.serviceId ?? s?.id ?? s ?? "");
+
+function expandServicesForHistory(appt){
+  const raw = appt?.services;
   if (!raw) return [];
+
   if (Array.isArray(raw)){
-    return raw.map(s=>{
-      if (typeof s==="string") return {id:s, name:s};
-      return {id:s.serviceId||s.id, name:s.name||"Usluga", priceRsd:s.priceRsd||0};
+    return raw.map(item=>{
+      // item može biti string (id) ili objekat { serviceId, name, durationMin, priceRsd, ... }
+      if (typeof item === "string"){
+        const id = sid(item);
+        return { serviceId:id, name:id, durationMin:0, priceRsd:0, categoryId:null, categoryName:null };
+      }
+      const id = sid(item);
+      return {
+        serviceId: id,
+        name: item.name || "",
+        durationMin: Number(item.durationMin)||0,
+        priceRsd: Number(item.priceRsd)||0,
+        categoryId: item.categoryId ?? null,
+        categoryName: item.categoryName ?? null
+      };
     });
   }
-  if (typeof raw==="object") return [{id:raw.id||raw.serviceId, name:raw.name||"Usluga", priceRsd:raw.priceRsd||0}];
+
+  if (typeof raw === "object"){
+    const id = sid(raw);
+    return [{
+      serviceId: id,
+      name: raw.name || "",
+      durationMin: Number(raw.durationMin)||0,
+      priceRsd: Number(raw.priceRsd)||0,
+      categoryId: raw.categoryId ?? null,
+      categoryName: raw.categoryName ?? null
+    }];
+  }
+
   return [];
 }
 
-/* ---------- lookup helper: nadji employee docId po username ---------- */
+function normalizeAppointment(appt){
+  const expanded = expandServicesForHistory(appt);
+  const servicesLabel =
+    appt.servicesLabel ||
+    expanded.map(s => s.name).filter(Boolean).join(", ");
+
+  const totalDurationMin =
+    appt.totalDurationMin ||
+    Math.max(15, expanded.reduce((sum, s) => sum + (Number(s.durationMin)||0), 0) || 15);
+
+  const totalAmountRsd =
+    (appt.totalAmountRsd != null ? Number(appt.totalAmountRsd) : null) ??
+    (appt.priceRsd != null ? Number(appt.priceRsd) : null) ??
+    expanded.reduce((sum, s) => sum + (Number(s.priceRsd)||0), 0);
+
+  const paymentStatus = appt.paymentStatus ?? (appt.paid ? "paid" : "unpaid");
+  const paymentMethod = appt.paymentMethod ?? (typeof appt.paid === "string" ? appt.paid : null);
+  const isPaid = paymentStatus === "paid";
+
+  return {
+    ...appt,
+    services: expanded,
+    servicesIds: expanded.map(s => s.serviceId),
+    servicesLabel,
+    totalDurationMin,
+    totalAmountRsd,
+    paymentStatus,
+    paymentMethod,
+    isPaid
+  };
+}
+
+/* ---------- lookup helper: nađi employee docId po username (za notifikaciju) ---------- */
 async function getEmployeeIdByUsername(username){
   if (!username) return null;
-  const q = query(collection(db, "employees"), where("username", "==", username));
-  const snap = await getDocs(q);
+  const qx = query(collection(db, "employees"), where("username", "==", username));
+  const snap = await getDocs(qx);
   const first = snap.docs[0];
   return first ? first.id : null;
 }
@@ -98,9 +157,8 @@ export default function ClientHistory(){
           seen.set(d.id, val);
         }
       });
-      const all = Array.from(seen.values()).sort((a,b)=>(
-        (toJsDate(b.start)?.getTime()||0) - (toJsDate(a.start)?.getTime()||0)
-      ));
+      const all = Array.from(seen.values())
+        .sort((a,b)=>((toJsDate(b.start)?.getTime()||0) - (toJsDate(a.start)?.getTime()||0)));
       setItems(all);
       setLoading(false);
     };
@@ -139,16 +197,19 @@ export default function ClientHistory(){
     return ()=>unsubs.forEach(u=>u&&u());
   }, [client?.id, client?.phone, client?.email, nav, mode]);
 
+  // normalizovani zapisi (radi prikaza)
+  const normalized = useMemo(()=> (items || []).map(normalizeAppointment), [items]);
+
   const nowMs = Date.now();
-  const upcoming = items
+  const upcoming = normalized
     .filter(a =>
-      // iz active skupa, budućnost, i nije otkazano
+      // iz active skupa, budućnost, i nije otkazano
       toJsDate(a.start)?.getTime()>=nowMs &&
       a.status!=="cancelled"
     )
     .sort((a,b)=>toJsDate(a.start)-toJsDate(b.start));
 
-  const past = items
+  const past = normalized
     .filter(a => toJsDate(a.start)?.getTime() < nowMs || a.status==="cancelled")
     .sort((a,b)=>toJsDate(b.start)-toJsDate(a.start));
 
@@ -246,7 +307,6 @@ export default function ClientHistory(){
                 <h3>Budući termini</h3>
                 {upcoming.length===0? <div>Nema zakazanih termina.</div> :
                   upcoming.map(a=>{
-                    const svcs=normalizeServices(a);
                     return(
                       <div key={a.id} className="card">
                         <div className="head">
@@ -255,7 +315,7 @@ export default function ClientHistory(){
                         </div>
                         <div>{a.employeeUsername||"Zaposleni"}</div>
                         <div className="services">
-                          {svcs.map(s=><span key={s.id||s.name} className="chip">{s.name}</span>)}
+                          {a.services.map(s=><span key={s.serviceId||s.name} className="chip">{s.name||s.serviceId}</span>)}
                         </div>
                         <div className="total">{fmtPrice(a.totalAmountRsd||0)} RSD</div>
                         <div className="rowbtns">
@@ -271,7 +331,6 @@ export default function ClientHistory(){
                 <h3>Prošli i otkazani termini</h3>
                 {past.length===0? <div>Nema stavki u istoriji.</div> :
                   past.map(a=>{
-                    const svcs=normalizeServices(a);
                     const canceled=(a.status==="cancelled" || a.__src==="history");
                     return(
                       <div key={a.id} className="card">
@@ -283,7 +342,7 @@ export default function ClientHistory(){
                         </div>
                         <div>{a.employeeUsername||"Zaposleni"}</div>
                         <div className="services">
-                          {svcs.map(s=><span key={s.id||s.name} className="chip">{s.name}</span>)}
+                          {a.services.map(s=><span key={s.serviceId||s.name} className="chip">{s.name||s.serviceId}</span>)}
                         </div>
                         <div className="total">{fmtPrice(a.totalAmountRsd||0)} RSD</div>
                       </div>
