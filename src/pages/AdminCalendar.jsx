@@ -895,9 +895,9 @@ const onTouchMoveHandler = (ev) => {
   const dx = Math.abs(coords.clientX - startX);
   const dy = Math.abs(coords.clientY - startY);
   const distance = Math.sqrt(dx * dx + dy * dy);
-
+ const touchDuration = Date.now() - touchStartTime;
   // Povećan prag na 20 piksela
-  if (distance > 70){
+  if (distance > 70 && touchDuration >= 300) {
     isDragging = true;
     ev.preventDefault();
     onDragTouchMove(ev);
