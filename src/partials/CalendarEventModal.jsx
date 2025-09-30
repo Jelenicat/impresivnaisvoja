@@ -171,6 +171,25 @@ export default function CalendarEventModal({
   }, [value?.id, services]);
 
   const [manualEnd, setManualEnd] = useState(!!value?.manualEnd);
+  // --- original times for edit-confirm ---
+const [originalStart, setOriginalStart] = useState(null);
+const [originalEnd, setOriginalEnd] = useState(null);
+
+// kad se promeni "value" (npr. otvoren drugi termin), zapamti početne vrednosti
+useEffect(() => {
+  setOriginalStart(value?.start || null);
+  setOriginalEnd(value?.end || null);
+}, [value?.id]);
+
+function hasTimeChanged() {
+  if (!originalStart || !originalEnd) return false;        // samo za postojeći termin
+  const a = new Date(originalStart).getTime();
+  const b = new Date(originalEnd).getTime();
+  const c = new Date(form.start).getTime();
+  const d = new Date(form.end).getTime();
+  return a !== c || b !== d;
+}
+
   const [svcQuery, setSvcQuery] = useState("");
   const [clientQuery, setClientQuery] = useState("");
   const [clientListOpen, setClientListOpen] = useState(false);
@@ -331,6 +350,14 @@ export default function CalendarEventModal({
     // Ako edituješ postojeći doc, zadrži postojeći behavior (jedan doc)
     // – da ne bismo neočekivano brisali i kreirali više novih.
     const editingExisting = !!form.id;
+// ako je edit postojećeg termina i vreme je promenjeno -> pitaj korisnika
+if (editingExisting && hasTimeChanged()) {
+  const ok = window.confirm("Da li želite da pomerite termin?");
+  if (!ok) { 
+    setSaving(false);
+    return; // prekini čuvanje
+  }
+}
 
     const pickedClient = (clients || []).find(c => c.id === form.clientId);
     if (pickedClient?.blocked) {
