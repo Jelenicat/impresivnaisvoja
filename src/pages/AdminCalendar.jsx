@@ -210,6 +210,7 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
   const [dragGhost, setDragGhost] = useState(null); // { id, emp, topMin }
   const dragGhostRef = useRef(null);
   const justDraggedRef = useRef(false);
+  // privremeno čuvamo podatke dok ne potvrdi
 
   // optimistic end override
   const [overrideEndMap, setOverrideEndMap] = useState(new Map());
@@ -896,7 +897,7 @@ const onTouchMoveHandler = (ev) => {
   const distance = Math.sqrt(dx * dx + dy * dy);
 
   // Povećan prag na 20 piksela
-  if (distance > 20) {
+  if (distance > 4) {
     isDragging = true;
     ev.preventDefault();
     onDragTouchMove(ev);
