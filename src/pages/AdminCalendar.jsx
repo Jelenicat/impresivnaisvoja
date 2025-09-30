@@ -822,6 +822,16 @@ document.body.classList.remove("is-dnd");
     const newStart = new Date(dayStart);
     newStart.setMinutes(ghost.topMin);
     const newEnd = new Date(newStart.getTime() + d.durationMin * 60000);
+  // 🔔 PITANJE PRE SNIMANJA (i telefon i računar)
+  const movedToAnotherEmp = ghost.emp !== d.empFrom;
+  const msg = movedToAnotherEmp
+    ? "Želite li da pomerite termin na drugu radnicu?"
+    : "Želite li da pomerite ovaj termin?";
+  const ok = window.confirm(msg);
+  if (!ok) {
+    console.log("Drag canceled by user – not saving.");
+    return; // ništa ne snimamo → termin ostaje na starom mestu
+  }
 
     // No collision check anymore - allow overlaps
 
