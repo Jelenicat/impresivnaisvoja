@@ -296,7 +296,8 @@ export default function AdminFinance({
     align-self: center;
     height: 36px;
     padding: 0 14px;
-    margin: 10px 0 6px;
+    margin: 10px 0 16px;
+    color:#000;
   }
   .fin-title{
     display:inline-block;
