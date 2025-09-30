@@ -861,7 +861,12 @@ function startDrag(ev, appt, top) {
   if (!body) return;
 
   ev.stopPropagation();
-document.body.classList.add("is-dnd");
+ // Ako je na telefonu (touch event) pitaj da li želi da pomeri
+  if (ev.type.startsWith("touch")) {
+    const ok = window.confirm("Želite li da pomerite ovaj termin?");
+    if (!ok) return; // prekini ako odustane
+  }
+  document.body.classList.add("is-dnd");
 
   const startMin = Math.max(DAY_START_MIN, minsInDay(appt.start, dayStart));
   const endMin = Math.min(DAY_END_MIN, minsInDay(appt.end, dayStart));
