@@ -249,7 +249,7 @@ export default function AdminFinance({
   display:inline-flex;
   align-items:center;
   gap:6px;
-
+color:#fff;
   height:38px;
   padding:0 14px;
   border-radius:999px;
@@ -980,7 +980,7 @@ export default function AdminFinance({
     </svg>
     Nazad
   </button>
-  <div className="fin-title">Finansijski pregled</div>
+  
 </div>
 
 
