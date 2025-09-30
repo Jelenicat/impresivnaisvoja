@@ -902,6 +902,7 @@ export default function AdminFinance({
     flex: 1 1 calc(50% - var(--bar-gap)/2);
     height: 40px;
     border-radius: 10px;
+     color: #1f1f1f;
   }
 
   /* izgled date polja kao dugmeta + naša ikona */
@@ -911,6 +912,7 @@ export default function AdminFinance({
     padding-right: 34px !important;
     font-weight: 600;
     border: 1px solid #e0d9cf;
+    color: #1f1f1f;
   }
 }
 
