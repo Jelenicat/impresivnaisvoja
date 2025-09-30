@@ -18,7 +18,7 @@ function initAdmin() {
 
 /* --- helper za CORS i debug --- */
 function ok(res, data) { res.setHeader("Access-Control-Allow-Origin", "*"); return res.status(200).json({ ok: true, ...data }); }
-function err(res, e) { res.setHeader("Access-Control-Allow-Origin", "*"); return res.status(500).json({ ok: false, error: String(e?.message || e) }); }
+function err(res, e)  { res.setHeader("Access-Control-Allow-Origin", "*"); return res.status(500).json({ ok: false, error: String(e?.message || e) }); }
 
 /* --- util --- */
 const dedup = (arr) => [...new Set(arr.filter(Boolean))];
@@ -48,14 +48,14 @@ export default async function handler(req, res) {
     }
 
     const isPreview = String(req.query?.preview || "") === "1";
-    const force = String(req.query?.force || "") === "1";
+    const force     = String(req.query?.force   || "") === "1";
 
     /* ===== prozor: 24h ± padMin ===== */
-    const now = new Date();
+    const now    = new Date();
     const center = new Date(now.getTime() + 24 * 60 * 60 * 1000);
     const padMin = Number(req.query?.padMin ?? process.env.REM24_PAD_MIN ?? 30);
-    const from = new Date(center.getTime() - padMin * 60 * 1000);
-    const to   = new Date(center.getTime() + padMin * 60 * 1000);
+    const from   = new Date(center.getTime() - padMin * 60 * 1000);
+    const to     = new Date(center.getTime() + padMin * 60 * 1000);
 
     // Uhvati i online i manual (bez filtera po "type"/"bookedVia"), status booked/confirmed
     let snap;
@@ -102,7 +102,6 @@ export default async function handler(req, res) {
       let clientTokensSnap = await db.collection("fcmTokens")
         .where("ownerId", "==", appt.clientId || "__none__")
         .get();
-
       if (clientTokensSnap.empty && appt.clientPhoneNorm) {
         clientTokensSnap = await db.collection("fcmTokens")
           .where("ownerPhone", "==", appt.clientPhoneNorm)
@@ -146,10 +145,13 @@ export default async function handler(req, res) {
       const dFmt = (d0) => new Intl.DateTimeFormat("en-CA", {
         timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit"
       }).format(d0);
-      const todayStr = dFmt(now);
+      const todayStr    = dFmt(now);
       const tomorrowStr = dFmt(new Date(new Date(todayStr).getTime() + 24*60*60*1000));
       const apptDateStr = dFmt(start);
-      const whenText = (apptDateStr === tomorrowStr) ? "Sutra" : apptDateStr;
+      const whenText    = (apptDateStr === tomorrowStr) ? "Sutra" : apptDateStr;
+
+      // iOS/Android collapse id da se ne dupliraju obaveštenja
+      const collapseId = `appt-${d.id}-24h`;
 
       const payload = {
         notification: {
@@ -160,43 +162,60 @@ export default async function handler(req, res) {
           click_action: "FLUTTER_NOTIFICATION_CLICK",
           appointmentId: String(appt.id),
           employeeId: appt.employeeId ? String(appt.employeeId) : "",
+          type: "h24"
         },
+        android: { collapseKey: collapseId, ttl: 3_600_000 * 6 }, // ~6h
+        apns:    { headers: { "apns-collapse-id": collapseId } }
       };
 
       if (isPreview) {
-        // samo prikaži šta bismo poslali
         inspected.push({
           id: d.id,
           startISO: start.toISOString(),
-          who: {
-            client: clientTokens.length,
-            employee: employeeTokens.length,
-            admin: adminTokens.length
-          },
-          wouldSend: {
-            title: payload.notification.title,
-            body:  payload.notification.body,
-            tokens
-          }
+          who: { client: clientTokens.length, employee: employeeTokens.length, admin: adminTokens.length },
+          wouldSend: { title: payload.notification.title, body: payload.notification.body, tokens }
         });
-        continue; // u preview modu ne šaljemo i ne diramo flag
+        continue; // preview: ne šalji
       }
 
-      // ===== CLAIM & SEND: zaštita od duplikata =====
-      const claimed = await db.runTransaction(async (tx) => {
-        const fresh = await tx.get(d.ref);
-        const already = !!fresh.get("remind24hSent");
-        if (already && !force) return false; // drugi proces je već poslao
+      // ===== CLAIM & SEND: dupe-protection + FINALNA PROVERA =====
+      const claim = await db.runTransaction(async (tx) => {
+        const freshSnap = await tx.get(d.ref);
+
+        // 1) obrisan? STOP
+        if (!freshSnap.exists) return { ok: false, reason: "deleted" };
+
+        const fresh = freshSnap.data();
+
+        // 2) soft delete / status nije aktivan? STOP
+        if (fresh.deleted === true) return { ok: false, reason: "soft-deleted" };
+        if (!["booked", "confirmed"].includes(fresh.status)) {
+          return { ok: false, reason: "status-not-active" };
+        }
+
+        // 3) i dalje u 24h prozoru?
+        const start2 = fresh.start?.toDate?.() || new Date(fresh.start);
+        if (!(start2 >= from && start2 < to)) {
+          return { ok: false, reason: "out-of-window" };
+        }
+
+        // 4) idempotencija
+        if (fresh.remind24hSent && !force) {
+          return { ok: false, reason: "already-sent" };
+        }
+
+        // 5) claim
         tx.set(d.ref, {
           remind24hSent: true,
-          remind24hAt: FieldValue.serverTimestamp()
+          remind24hAt: FieldValue.serverTimestamp(),
         }, { merge: true });
-        return true;
+
+        return { ok: true };
       });
 
-      if (!claimed) {
-        inspected.push({ id: d.id, reason: "race: already claimed" });
-        continue; // ne šalji drugi put
+      if (!claim.ok) {
+        inspected.push({ id: d.id, reason: claim.reason });
+        continue;
       }
 
       // stvarno slanje
@@ -228,11 +247,7 @@ export default async function handler(req, res) {
         fail: resp.failureCount,
         messageIds: (resp.responses || []).map(r => r.messageId).filter(Boolean),
         startISO: start.toISOString(),
-        who: {
-          client: clientTokens.length,
-          employee: employeeTokens.length,
-          admin: adminTokens.length
-        }
+        who: { client: clientTokens.length, employee: employeeTokens.length, admin: adminTokens.length }
       });
     }
 

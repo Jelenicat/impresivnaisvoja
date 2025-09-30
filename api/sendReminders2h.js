@@ -3,6 +3,7 @@ import { initializeApp, getApps, cert } from "firebase-admin/app";
 import { getFirestore, Timestamp, FieldValue } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
 
+/* ---------------- init admin ---------------- */
 function initAdmin() {
   if (getApps().length) return;
   const projectId   = process.env.FIREBASE_PROJECT_ID;
@@ -19,6 +20,7 @@ function err(res, e)   { res.setHeader("Access-Control-Allow-Origin","*"); retur
 const dedup = (arr) => [...new Set(arr.filter(Boolean))];
 const TZ = "Europe/Belgrade";
 
+/* ---------------- handler ---------------- */
 export default async function handler(req, res) {
   try {
     if (req.method === "OPTIONS") {
@@ -50,7 +52,7 @@ export default async function handler(req, res) {
     const from   = new Date(center.getTime() - padMin * 60 * 1000);
     const to     = new Date(center.getTime() + padMin * 60 * 1000);
 
-    // Dohvati termine (bez filtera po "type"/"bookedVia"), status booked/confirmed
+    // Dohvati termine statusa booked/confirmed u prozoru
     let snap;
     try {
       snap = await db.collection("appointments")
@@ -126,13 +128,14 @@ export default async function handler(req, res) {
       }
 
       const start = (appt.start?.toDate?.() || new Date(appt.start));
-
-      // tačno vreme u Beogradu
       const bodyTime = new Intl.DateTimeFormat("sr-RS", {
         hour: "2-digit",
         minute: "2-digit",
         timeZone: TZ,
       }).format(start);
+
+      // iOS/Android collapse id da se ne dupliraju obaveštenja
+      const collapseId = `appt-${d.id}-2h`;
 
       const payload = {
         notification: {
@@ -141,43 +144,66 @@ export default async function handler(req, res) {
         },
         data: {
           click_action: "FLUTTER_NOTIFICATION_CLICK",
-          appointmentId: String(appt.id),
+          appointmentId: String(d.id),
           employeeId: appt.employeeId ? String(appt.employeeId) : "",
+          type: "h120"
         },
+        android: {
+          collapseKey: collapseId,
+          ttl: 3_600_000 // 1h
+        },
+        apns: {
+          headers: { "apns-collapse-id": collapseId }
+        }
       };
 
       if (isPreview) {
         inspected.push({
           id: d.id,
           startISO: start.toISOString(),
-          who: {
-            client: clientTokens.length,
-            employee: employeeTokens.length,
-            admin: adminTokens.length
-          },
-          wouldSend: {
-            title: payload.notification.title,
-            body:  payload.notification.body,
-            tokens
-          }
+          who: { client: clientTokens.length, employee: employeeTokens.length, admin: adminTokens.length },
+          wouldSend: { title: payload.notification.title, body: payload.notification.body, tokens }
         });
-        continue; // u preview modu ne šaljemo i ne diramo flag
+        continue; // preview: ne šalji
       }
 
-      // ===== CLAIM & SEND (sprečava duplikate) =====
-      const claimed = await db.runTransaction(async (tx) => {
-        const fresh = await tx.get(d.ref);
-        const already = !!fresh.get("remind2hSent");
-        if (already && !force) return false;
+      // ===== CLAIM & SEND (dupe-protection + FINALNA PROVERA) =====
+      const claim = await db.runTransaction(async (tx) => {
+        const freshSnap = await tx.get(d.ref);
+
+        // 1) obrisan? STOP
+        if (!freshSnap.exists) return { ok: false, reason: "deleted" };
+
+        const fresh = freshSnap.data();
+
+        // 2) soft delete / status
+        if (fresh.deleted === true)        return { ok: false, reason: "soft-deleted" };
+        if (!["booked", "confirmed"].includes(fresh.status)) {
+          return { ok: false, reason: "status-not-active" };
+        }
+
+        // 3) i dalje u prozoru?
+        const start2 = fresh.start?.toDate?.() || new Date(fresh.start);
+        if (!(start2 >= from && start2 < to)) {
+          return { ok: false, reason: "out-of-window" };
+        }
+
+        // 4) idempotencija
+        if (fresh.remind2hSent && !force) {
+          return { ok: false, reason: "already-sent" };
+        }
+
+        // 5) claim
         tx.set(d.ref, {
           remind2hSent: true,
-          remind2hAt: FieldValue.serverTimestamp()
+          remind2hAt: FieldValue.serverTimestamp(),
         }, { merge: true });
-        return true;
+
+        return { ok: true };
       });
 
-      if (!claimed) {
-        inspected.push({ id: d.id, reason: "race: already claimed" });
+      if (!claim.ok) {
+        inspected.push({ id: d.id, reason: claim.reason });
         continue;
       }
 
@@ -210,11 +236,7 @@ export default async function handler(req, res) {
         fail: resp.failureCount,
         messageIds: (resp.responses || []).map(r => r.messageId).filter(Boolean),
         startISO: start.toISOString(),
-        who: {
-          client: clientTokens.length,
-          employee: employeeTokens.length,
-          admin: adminTokens.length
-        }
+        who: { client: clientTokens.length, employee: employeeTokens.length, admin: adminTokens.length }
       });
     }
 

@@ -8,6 +8,7 @@ import { db } from "../firebase";
 import Flatpickr from "react-flatpickr";
 import "flatpickr/dist/flatpickr.min.css";
 import { Serbian } from "flatpickr/dist/l10n/sr.js";
+import { useNavigate } from "react-router-dom";
 
 /* ---- helpers ---- */
 const toJsDate = (x) =>
@@ -23,6 +24,8 @@ export default function AdminFinance({
   role = localStorage.getItem("role") || "admin",
   currentUsername = localStorage.getItem("employeeId") || null
 }){
+  const nav = useNavigate();   // ⬅️ OVO OVDE
+
   /* State */
   const today = startOfDay(new Date());
   const [from, setFrom] = useState(role==="salon" ? today : startOfDay(new Date()));
@@ -231,6 +234,112 @@ export default function AdminFinance({
           border-radius: 12px;
           box-shadow: 0 2px 8px rgba(0,0,0,0.08);
         }
+/* ========== BASE (važi svuda) ========== */
+.fin-header{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+  position:relative;
+}
+
+.back-btn{
+  /* poravnanje strelice i teksta */
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+
+  height:38px;
+  padding:0 14px;
+  border-radius:999px;
+  font-size:14px;
+  font-weight:700;
+  cursor:pointer;
+
+  background: linear-gradient(180deg, rgba(255,255,255,.9), rgba(255,255,255,.7));
+  border:1px solid #e5ded7;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 2px 6px rgba(0,0,0,.06);
+  -webkit-tap-highlight-color: transparent;
+  transition: background .2s ease;
+}
+.back-btn:hover{ background:#f7f3ef; }
+
+/* SVG ikonica – uvek u ravni sa tekstom */
+.back-btn .chev,
+.back-btn svg{
+  width:18px; height:18px;
+  line-height:1;
+  display:block;
+  flex-shrink:0;
+}
+
+.fin-title{
+  font-weight:900;
+  text-align:center;
+}
+
+/* ========== MOBILE (≤760px): Nazad iznad naslova, sve centrirano ========== */
+@media (max-width: 760px){
+  .fin-header{
+    position: sticky;
+    top: calc(env(safe-area-inset-top, 0px) + 6px);
+    z-index: 120;
+    padding: 0 12px;
+    flex-direction: column;  /* Nazad gore, naslov ispod */
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .back-btn{
+    position: static;
+    align-self: center;
+    height: 36px;
+    padding: 0 14px;
+    margin: 10px 0 6px;
+  }
+  .fin-title{
+    display:inline-block;
+    padding:8px 12px;
+    font-size:17px;
+    line-height:1.1;
+    background: rgba(255,255,255,.92);
+    border: 1px solid #efe9e2;
+    border-radius:12px;
+    box-shadow:0 2px 8px rgba(0,0,0,.05);
+    margin:0;
+  }
+}
+
+/* ========== DESKTOP (≥641px): isti raspored kao mobilni, veće mere ========== */
+@media (min-width: 641px){
+  .fin-header{
+    flex-direction: column;   /* Nazad gore, naslov ispod */
+    align-items: center;      /* centrirano */
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .back-btn{
+    position: static;
+    height: 40px;
+    padding: 0 16px;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .fin-title{
+    display:inline-block;
+    padding: 20px 20px;
+    background:#fff;
+    border:1px solid #efe9e2;
+    border-radius:12px;
+    box-shadow:0 2px 8px rgba(0,0,0,.06);
+    font-size:24px;
+    font-weight:900;
+    margin:0;
+  }
+}
+
+/* Desktop ostaje kako je — ništa ne menjamo */
 
         .bar{
           display:flex; gap:8px; justify-content:center; align-items:center; margin-bottom:16px; flex-wrap:wrap;
@@ -861,7 +970,17 @@ export default function AdminFinance({
       `}</style>
 
       <div className="fin-container">
-        <div className="fin-title">Finansijski pregled</div>
+      <div className="fin-header">
+  <button className="back-btn" onClick={()=>nav(-1)} aria-label="Nazad">
+    <svg className="chev" width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+    Nazad
+  </button>
+  
+</div>
+
+
 
         {/* Kontrole opsega - MOBILNI (NE DIRAJ) */}
       <div className="bar mobile-only">
