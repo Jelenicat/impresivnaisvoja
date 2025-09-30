@@ -174,11 +174,12 @@ export default function CalendarEventModal({
   // --- original times for edit-confirm ---
 const [originalStart, setOriginalStart] = useState(null);
 const [originalEnd, setOriginalEnd] = useState(null);
-
+const [originalEmployee, setOriginalEmployee] = useState(null);
 // kad se promeni "value" (npr. otvoren drugi termin), zapamti početne vrednosti
 useEffect(() => {
   setOriginalStart(value?.start || null);
   setOriginalEnd(value?.end || null);
+  setOriginalEmployee(value?.employeeUsername || null);
 }, [value?.id]);
 
 function hasTimeChanged() {
@@ -189,7 +190,11 @@ function hasTimeChanged() {
   const d = new Date(form.end).getTime();
   return a !== c || b !== d;
 }
-
+function hasEmployeeChanged() {
+  // ako je novi termin, originalEmployee je null i ne pitamo
+  if (!value?.id) return false;
+  return (originalEmployee ?? null) !== (form.employeeUsername ?? null);
+}
   const [svcQuery, setSvcQuery] = useState("");
   const [clientQuery, setClientQuery] = useState("");
   const [clientListOpen, setClientListOpen] = useState(false);
@@ -350,14 +355,20 @@ function hasTimeChanged() {
     // Ako edituješ postojeći doc, zadrži postojeći behavior (jedan doc)
     // – da ne bismo neočekivano brisali i kreirali više novih.
     const editingExisting = !!form.id;
-// ako je edit postojećeg termina i vreme je promenjeno -> pitaj korisnika
-if (editingExisting && hasTimeChanged()) {
-  const ok = window.confirm("Da li želite da pomerite termin?");
-  if (!ok) { 
-    setSaving(false);
-    return; // prekini čuvanje
-  }
-}
+ // ako je edit i promenjeno je vreme I/ILI radnica -> pitaj korisnika
+ if (editingExisting && (hasTimeChanged() || hasEmployeeChanged())) {
+   const both = hasTimeChanged() && hasEmployeeChanged();
+   const msg = both
+     ? "Promenili ste vreme i radnicu. Da li želite da sačuvate ove promene?"
+     : hasEmployeeChanged()
+         ? "Promenili ste radnicu. Da li želite da sačuvate ovu promenu?"
+         : "Promenili ste vreme. Da li želite da sačuvate ovu promenu?";
+   const ok = window.confirm(msg);
+   if (!ok) {
+     setSaving(false);
+     return; // prekini čuvanje
+   }
+ }
 
     const pickedClient = (clients || []).find(c => c.id === form.clientId);
     if (pickedClient?.blocked) {
