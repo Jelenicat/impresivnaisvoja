@@ -104,26 +104,11 @@ export default async function handler(req, res) {
       }
       const clientTokens = clientTokensSnap.docs.map(x => x.get("token"));
 
-      // --- tokens: zaposleni (ako postoji) ---
-      let employeeTokens = [];
-      if (appt.employeeId) {
-        const empTokSnap = await db.collection("fcmTokens")
-          .where("ownerId", "==", appt.employeeId)
-          .get();
-        employeeTokens = empTokSnap.docs.map(x => x.get("token"));
-      }
-
-      // --- tokens: admin/salon ---
-      const adminTokSnap = await db.collection("fcmTokens")
-        .where("role", "in", ["admin", "salon"])
-        .get();
-      const adminTokens = adminTokSnap.docs.map(x => x.get("token"));
-
-      // ukupno (bez duplikata)
-      const tokens = dedup([...clientTokens, ...employeeTokens, ...adminTokens]);
+      // ukupno (samo klijent)
+      const tokens = dedup([...clientTokens]);
 
       if (!tokens.length) {
-        inspected.push({ id: d.id, reason: "no tokens (client/emp/admin)" });
+        inspected.push({ id: d.id, reason: "no client tokens" });
         continue;
       }
 
@@ -161,7 +146,7 @@ export default async function handler(req, res) {
         inspected.push({
           id: d.id,
           startISO: start.toISOString(),
-          who: { client: clientTokens.length, employee: employeeTokens.length, admin: adminTokens.length },
+          who: { client: clientTokens.length },
           wouldSend: { title: payload.notification.title, body: payload.notification.body, tokens }
         });
         continue; // preview: ne šalji
@@ -236,7 +221,7 @@ export default async function handler(req, res) {
         fail: resp.failureCount,
         messageIds: (resp.responses || []).map(r => r.messageId).filter(Boolean),
         startISO: start.toISOString(),
-        who: { client: clientTokens.length, employee: employeeTokens.length, admin: adminTokens.length }
+        who: { client: clientTokens.length }
       });
     }
 

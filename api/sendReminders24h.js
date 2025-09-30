@@ -57,7 +57,7 @@ export default async function handler(req, res) {
     const from   = new Date(center.getTime() - padMin * 60 * 1000);
     const to     = new Date(center.getTime() + padMin * 60 * 1000);
 
-    // Uhvati i online i manual (bez filtera po "type"/"bookedVia"), status booked/confirmed
+    // Uhvati statuse booked/confirmed u prozoru
     let snap;
     try {
       snap = await db.collection("appointments")
@@ -98,7 +98,7 @@ export default async function handler(req, res) {
         continue;
       }
 
-      // --- tokens: klijent ---
+      // --- tokens: samo klijent ---
       let clientTokensSnap = await db.collection("fcmTokens")
         .where("ownerId", "==", appt.clientId || "__none__")
         .get();
@@ -109,26 +109,11 @@ export default async function handler(req, res) {
       }
       const clientTokens = clientTokensSnap.docs.map(x => x.get("token"));
 
-      // --- tokens: zaposleni (ako je dodeljen) ---
-      let employeeTokens = [];
-      if (appt.employeeId) {
-        const empTokSnap = await db.collection("fcmTokens")
-          .where("ownerId", "==", appt.employeeId)
-          .get();
-        employeeTokens = empTokSnap.docs.map(x => x.get("token"));
-      }
-
-      // --- tokens: admin/salon ---
-      const adminTokSnap = await db.collection("fcmTokens")
-        .where("role", "in", ["admin", "salon"])
-        .get();
-      const adminTokens = adminTokSnap.docs.map(x => x.get("token"));
-
-      // ukupno (bez duplikata)
-      const tokens = dedup([...clientTokens, ...employeeTokens, ...adminTokens]);
+      // ukupno (SAMO klijent)
+      const tokens = dedup([...clientTokens]);
 
       if (!tokens.length) {
-        inspected.push({ id: d.id, reason: "no tokens (client/emp/admin)" });
+        inspected.push({ id: d.id, reason: "no client tokens" });
         continue;
       }
 
@@ -141,7 +126,7 @@ export default async function handler(req, res) {
         timeZone: TZ,
       }).format(start);
 
-      // preciznije "Sutra"
+      // "Sutra" ili datum
       const dFmt = (d0) => new Intl.DateTimeFormat("en-CA", {
         timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit"
       }).format(d0);
@@ -150,7 +135,7 @@ export default async function handler(req, res) {
       const apptDateStr = dFmt(start);
       const whenText    = (apptDateStr === tomorrowStr) ? "Sutra" : apptDateStr;
 
-      // iOS/Android collapse id da se ne dupliraju obaveštenja
+      // iOS/Android collapse id
       const collapseId = `appt-${d.id}-24h`;
 
       const payload = {
@@ -172,7 +157,7 @@ export default async function handler(req, res) {
         inspected.push({
           id: d.id,
           startISO: start.toISOString(),
-          who: { client: clientTokens.length, employee: employeeTokens.length, admin: adminTokens.length },
+          who: { client: clientTokens.length },
           wouldSend: { title: payload.notification.title, body: payload.notification.body, tokens }
         });
         continue; // preview: ne šalji
@@ -247,7 +232,7 @@ export default async function handler(req, res) {
         fail: resp.failureCount,
         messageIds: (resp.responses || []).map(r => r.messageId).filter(Boolean),
         startISO: start.toISOString(),
-        who: { client: clientTokens.length, employee: employeeTokens.length, admin: adminTokens.length }
+        who: { client: clientTokens.length }
       });
     }
 
