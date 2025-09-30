@@ -983,7 +983,7 @@ export default function AdminFinance({
     </svg>
     Nazad
   </button>
-  <div className="fin-title">Finansijski pregled</div>
+  <div className="fin-title"></div>
 </div>
 
 
