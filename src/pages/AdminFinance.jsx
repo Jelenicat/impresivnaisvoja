@@ -249,7 +249,7 @@ export default function AdminFinance({
   display:inline-flex;
   align-items:center;
   gap:6px;
-color:#fff;
+color:#000;
   height:38px;
   padding:0 14px;
   border-radius:999px;
@@ -257,7 +257,7 @@ color:#fff;
   font-weight:700;
   cursor:pointer;
 
-  background: linear-gradient(180deg, rgba(255,255,255,.9), rgba(255,255,255,.7));
+  
   border:1px solid #e5ded7;
   backdrop-filter: blur(8px);
   box-shadow: 0 2px 6px rgba(0,0,0,.06);
@@ -281,32 +281,37 @@ color:#fff;
 }
 
 /* ========== MOBILE (≤760px): Nazad iznad naslova, sve centrirano ========== */
-@media (max-width: 760px){
-  .fin-header{
+@media (max-width: 760px) {
+  .back-btn {
+    flex: 1 1 calc(50% - 6px); /* Ista širina kao ostala dugmad u .bar */
+    height: 40px; /* Uskladi sa visinom ostalih dugmadi */
+    border-radius: 10px; /* Uskladi sa ostalim dugmadima */
+    background: #fff;
+    border: 1px solid #e0d9cf;
+    color: #1f1f1f;
+    font-weight: 600;
     display: flex;
-    flex-direction: column;   /* redosled: Nazad pa naslov */
-    align-items: center;      /* centriraj naslov */
-    gap: 8px;
-    margin-bottom: 12px;
-
-    position: sticky;         /* uvek pri vrhu pri scrollu */
-    top: calc(env(safe-area-inset-top, 0px) + 6px);
-    z-index: 120;
-    background: #fdfdfd;      /* ista boja kao pozadina da ne preklapa */
-    padding-top: 6px;
-    padding-bottom: 6px;
-  }
-
-  .back-btn{
-    align-self: flex-start;   /* dugme levo */
+    align-items: center;
+    justify-content: center; /* Centriraj sadržaj */
     margin-left: 12px;
-    color:#fff;
+    -webkit-tap-highlight-color: transparent;
+    outline: none !important;
+    box-shadow: none !important ;
+    width: 100%;
+    margin:20px 10px;
   }
 
-  .fin-title{
-    font-size: 18px;
-    font-weight: 800;
-    text-align: center;
+  .back-btn:hover {
+    background: #f6f2ed;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+
+  .back-btn .chev,
+  .back-btn svg {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
   }
 }
 
@@ -324,6 +329,7 @@ color:#fff;
     padding: 0 16px;
     font-size: 15px;
     font-weight: 600;
+    color:#000;
   }
   .fin-title{
     display:inline-block;
@@ -974,12 +980,18 @@ color:#fff;
 
       <div className="fin-container">
       <div className="fin-header">
-  <button className="back-btn" onClick={()=>nav(-1)} aria-label="Nazad">
+  <button 
+    className="back-btn" 
+    onClick={() => nav(-1)} 
+    aria-label="Nazad"
+    style={{ display: 'flex', alignItems: 'center', gap: '6px' }} // Osigurava konzistentan izgled
+  >
     <svg className="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
     Nazad
   </button>
+
   
 </div>
 
