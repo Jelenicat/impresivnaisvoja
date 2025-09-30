@@ -283,33 +283,30 @@ export default function AdminFinance({
 /* ========== MOBILE (≤760px): Nazad iznad naslova, sve centrirano ========== */
 @media (max-width: 760px){
   .fin-header{
-    position: sticky;
+    display: flex;
+    flex-direction: column;   /* redosled: Nazad pa naslov */
+    align-items: center;      /* centriraj naslov */
+    gap: 8px;
+    margin-bottom: 12px;
+
+    position: sticky;         /* uvek pri vrhu pri scrollu */
     top: calc(env(safe-area-inset-top, 0px) + 6px);
     z-index: 120;
-    padding: 0 12px;
-    flex-direction: column;  /* Nazad gore, naslov ispod */
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 10px;
+    background: #fdfdfd;      /* ista boja kao pozadina da ne preklapa */
+    padding-top: 6px;
+    padding-bottom: 6px;
   }
+
   .back-btn{
-    position: static;
-    align-self: center;
-    height: 36px;
-    padding: 0 14px;
-    margin: 10px 0 6px;
-    color:#000;
+    align-self: flex-start;   /* dugme levo */
+    margin-left: 12px;
+    color:#fff;
   }
+
   .fin-title{
-    display:inline-block;
-    padding:8px 12px;
-    font-size:17px;
-    line-height:1.1;
-    background: rgba(255,255,255,.92);
-    border: 1px solid #efe9e2;
-    border-radius:12px;
-    box-shadow:0 2px 8px rgba(0,0,0,.05);
-    margin:0;
+    font-size: 18px;
+    font-weight: 800;
+    text-align: center;
   }
 }
 
@@ -983,7 +980,7 @@ export default function AdminFinance({
     </svg>
     Nazad
   </button>
-  <div className="fin-title"></div>
+  <div className="fin-title">Finansijski pregled</div>
 </div>
 
 
