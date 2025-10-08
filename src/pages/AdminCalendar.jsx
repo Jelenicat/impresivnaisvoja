@@ -535,27 +535,98 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
     setTempEndMap(m => { const nm = new Map(m); nm.set(r.id, proposedEndMin); tempEndRef.current = nm; return nm; });
   }, 16);
 
-  async function onResizingMouseUp() {
-    const r = resizingRef.current; if (!r) return cleanupResize();
-    justResizedRef.current = true;
-    setTimeout(() => { justResizedRef.current = false; }, 300);
-    setTimeout(() => { window.removeEventListener("click", swallowNextClick, true); }, 0);
-    const newEndMin = tempEndRef.current.get(r.id) ?? null;
-    if (newEndMin && newEndMin > r.startMin) {
-      const newEndDate = new Date(dayStart); newEndDate.setMinutes(newEndMin);
+async function onResizingMouseUp() {
+  const r = resizingRef.current;
+  if (!r) return cleanupResize();
+
+  justResizedRef.current = true;
+  setTimeout(() => { justResizedRef.current = false; }, 300);
+  setTimeout(() => { window.removeEventListener("click", swallowNextClick, true); }, 0);
+
+  const newEndMin = tempEndRef.current.get(r.id) ?? null;
+
+  if (newEndMin && newEndMin > r.startMin) {
+    const newEndDate = new Date(dayStart); 
+    newEndDate.setMinutes(newEndMin);
+
+    try {
+      // Optimistic UI dok Firestore ne potvrdi
+      setOverrideEndMap(prev => { const nm = new Map(prev); nm.set(r.id, newEndMin); return nm; });
+
+      await updateDoc(doc(db, "appointments", r.id), { 
+        end: newEndDate, 
+        updatedAt: serverTimestamp() 
+      });
+
+      // === NOTIFIKACIJA (resize) ===
       try {
-        setOverrideEndMap(prev => { const nm = new Map(prev); nm.set(r.id, newEndMin); return nm; });
-        await updateDoc(doc(db, "appointments", r.id), { end: newEndDate, updatedAt: serverTimestamp() });
-      } catch (err) {
-        console.error("Failed to save resized end:", err);
-        alert("Greška pri čuvanju promena.");
-        setOverrideEndMap(prev => { const nm = new Map(prev); nm.delete(r.id); return nm; });
-        const t = overrideTimersRef.current.get(r.id);
-        if (t) { clearTimeout(t); overrideTimersRef.current.delete(r.id); }
+        const actorRole = role; // "admin" | "salon" | "worker"
+        const empU = r.emp;     // postavljeno u startResize()
+
+        // vreme: originalni start (iz resize ref-a) -> novi end
+        const startDate = new Date(dayStart); 
+        startDate.setMinutes(r.startMin);
+
+        const fmt = (d) => {
+          const x = new Date(d);
+          const dd = String(x.getDate()).padStart(2, "0");
+          const mm = String(x.getMonth() + 1).padStart(2, "0");
+          const yyyy = x.getFullYear();
+          const hh = String(x.getHours()).padStart(2, "0");
+          const mi = String(x.getMinutes()).padStart(2, "0");
+          return `${dd}.${mm}.${yyyy}. ${hh}:${mi}`;
+        };
+        const titleDate = `${fmt(startDate)}–${fmt(newEndDate)}`;
+
+        let payloadNotif = null;
+
+        if (actorRole === "admin" || actorRole === "salon") {
+          // Admin/salon je promenio trajanje – obavesti radnicu
+          payloadNotif = {
+            kind: "toEmployee",
+            employeeUsername: empU,
+            title: "Vaš termin je pomeren",
+            body: titleDate,
+            screen: "/admin",
+            reason: "ADMIN_RESIZED"
+          };
+        } else if (actorRole === "worker") {
+          // Radnica je promenila – obavesti admina
+          const empObj = (employees || []).find(e => e.username === empU);
+          const empName = empObj ? `${empObj.firstName || ""} ${empObj.lastName || ""}`.trim() : (empU || "radnica");
+          payloadNotif = {
+            kind: "toAdmin",
+            title: "Radnica je pomerila termin",
+            body: `${empName} • ${titleDate}`,
+            screen: "/admin",
+            reason: "WORKER_RESIZED"
+          };
+        }
+
+        if (payloadNotif) {
+          await fetch("/api/pushMoveNotif", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payloadNotif)
+          });
+        }
+      } catch (e) {
+        console.warn("pushMoveNotif (resize) error:", e);
       }
+      // === /NOTIFIKACIJA ===
+
+    } catch (err) {
+      console.error("Failed to save resized end:", err);
+      alert("Greška pri čuvanju promena.");
+      setOverrideEndMap(prev => { const nm = new Map(prev); nm.delete(r.id); return nm; });
+      const t = overrideTimersRef.current.get(r.id);
+      if (t) { clearTimeout(t); overrideTimersRef.current.delete(r.id); }
     }
-    cleanupResize();
   }
+
+  cleanupResize();
+}
+
   function onResizingTouchEnd(ev) {
     ev.preventDefault();
     onResizingMouseUp();
@@ -635,50 +706,132 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
     dragGhostRef.current = g;
   }, 16);
 
-  async function onDragEnd() {
-    const d = draggingRef.current;
-    const ghost = dragGhostRef.current;
-    window.removeEventListener("mousemove", onDragMove);
-    window.removeEventListener("mouseup", onDragEnd);
-    window.removeEventListener("touchmove", onDragTouchMove);
-    window.removeEventListener("touchend", onDragTouchEnd);
-    window.removeEventListener("click", swallowNextClick, true);
-    document.body.style.userSelect = "";
-    document.body.style.touchAction = "";
-    document.body.classList.remove("is-dnd");
-    setDragGhost(null);
-    draggingRef.current = null;
-    dragGhostRef.current = null;
-    if (!d || !ghost) {
-      console.log("Drag aborted: missing draggingRef or dragGhostRef", { d, ghost });
-      return;
-    }
-    if (ghost.emp === d.empFrom && ghost.topMin === d.startMinInit) {
-      console.log("Drag aborted: no change in position or employee", { emp: ghost.emp, topMin: ghost.topMin });
-      return;
-    }
-    const newStart = new Date(dayStart);
-    newStart.setMinutes(ghost.topMin);
-    const newEnd = new Date(newStart.getTime() + d.durationMin * 60000);
-    const movedToAnotherEmp = ghost.emp !== d.empFrom;
-    const msg = movedToAnotherEmp ? "Želite li da pomerite termin na drugu radnicu?" : "Želite li da pomerite ovaj termin?";
-    const ok = window.confirm(msg);
-    if (!ok) {
-      console.log("Drag canceled by user – not saving.");
-      return;
-    }
-    justDraggedRef.current = true;
-    setTimeout(() => { justDraggedRef.current = false; }, 300);
-    try {
-      console.log("Saving drag changes:", { id: d.id, start: newStart.toISOString(), end: newEnd.toISOString(), employeeUsername: ghost.emp });
-      await updateDoc(doc(db, "appointments", d.id), { start: newStart, end: newEnd, employeeUsername: ghost.emp, updatedAt: serverTimestamp() });
-      console.log("Drag saved successfully");
-    } catch (err) {
-      console.error("Drag save failed:", err);
-      alert("Greška pri pomeranju termina: " + err.message);
-    }
+ async function onDragEnd() {
+  const d = draggingRef.current;
+  const ghost = dragGhostRef.current;
+
+  window.removeEventListener("mousemove", onDragMove);
+  window.removeEventListener("mouseup", onDragEnd);
+  window.removeEventListener("touchmove", onDragTouchMove);
+  window.removeEventListener("touchend", onDragTouchEnd);
+  window.removeEventListener("click", swallowNextClick, true);
+  document.body.style.userSelect = "";
+  document.body.style.touchAction = "";
+  document.body.classList.remove("is-dnd");
+  setDragGhost(null);
+  draggingRef.current = null;
+  dragGhostRef.current = null;
+
+  if (!d || !ghost) {
+    console.log("Drag aborted: missing draggingRef or dragGhostRef", { d, ghost });
+    return;
   }
-  function onDragTouchEnd(ev) {
+
+  if (ghost.emp === d.empFrom && ghost.topMin === d.startMinInit) {
+    console.log("Drag aborted: no change in position or employee", { emp: ghost.emp, topMin: ghost.topMin });
+    return;
+  }
+
+  const newStart = new Date(dayStart);
+  newStart.setMinutes(ghost.topMin);
+  const newEnd = new Date(newStart.getTime() + d.durationMin * 60000);
+  const movedToAnotherEmp = ghost.emp !== d.empFrom;
+  const msg = movedToAnotherEmp
+    ? "Želite li da pomerite termin na drugu radnicu?"
+    : "Želite li da pomerite ovaj termin?";
+  const ok = window.confirm(msg);
+  if (!ok) {
+    console.log("Drag canceled by user – not saving.");
+    return;
+  }
+
+  justDraggedRef.current = true;
+  setTimeout(() => { justDraggedRef.current = false; }, 300);
+
+  try {
+    console.log("Saving drag changes:", {
+      id: d.id,
+      start: newStart.toISOString(),
+      end: newEnd.toISOString(),
+      employeeUsername: ghost.emp
+    });
+
+    await updateDoc(doc(db, "appointments", d.id), {
+      start: newStart,
+      end: newEnd,
+      employeeUsername: ghost.emp,
+      updatedAt: serverTimestamp()
+    });
+
+    console.log("Drag saved successfully");
+
+    // === NOTIF nakon drag&drop-a ===
+    try {
+      const actorRole = role; // "admin" | "salon" | "worker"
+      const fmt = (x) => {
+        const z = new Date(x);
+        const dd = String(z.getDate()).padStart(2, "0");
+        const mm = String(z.getMonth() + 1).padStart(2, "0");
+        const yyyy = z.getFullYear();
+        const hh = String(z.getHours()).padStart(2, "0");
+        const mi = String(z.getMinutes()).padStart(2, "0");
+        return `${dd}.${mm}.${yyyy}. ${hh}:${mi}`;
+      };
+      const titleDate = `${fmt(newStart)}–${fmt(newEnd)}`;
+
+      const empObj = (employees || []).find(e => e.username === (ghost.emp || d.empFrom));
+      const empName = empObj
+        ? `${empObj.firstName || ""} ${empObj.lastName || ""}`.trim()
+        : (ghost.emp || "radnica");
+
+      let payloadNotif = null;
+
+      if (actorRole === "admin" || actorRole === "salon") {
+        payloadNotif = movedToAnotherEmp
+          ? {
+              kind: "toEmployee",
+              employeeUsername: ghost.emp,
+              title: "Dodeljen vam je novi termin",
+              body: titleDate,
+              screen: "/admin",
+              reason: "ADMIN_MOVED_TO_NEW_EMP"
+            }
+          : {
+              kind: "toEmployee",
+              employeeUsername: ghost.emp,
+              title: "Vaš termin je pomeren",
+              body: titleDate,
+              screen: "/admin",
+              reason: "ADMIN_RESCHEDULED"
+            };
+      } else if (actorRole === "worker") {
+        payloadNotif = {
+          kind: "toAdmin",
+          title: "Radnica je pomerila termin",
+          body: `${empName} • ${titleDate}`,
+          screen: "/admin",
+          reason: "WORKER_RESCHEDULED"
+        };
+      }
+
+      if (payloadNotif) {
+        await fetch("/api/pushMoveNotif", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payloadNotif)
+        });
+      }
+    } catch (e) {
+      console.warn("pushMoveNotif (drag) error:", e);
+    }
+    // === /NOTIF ===
+
+  } catch (err) {
+    console.error("Drag save failed:", err);
+    alert("Greška pri pomeranju termina: " + err.message);
+  }
+}
+ function onDragTouchEnd(ev) {
     ev.preventDefault();
     onDragEnd();
   }

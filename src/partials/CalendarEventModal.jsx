@@ -397,38 +397,119 @@ function hasEmployeeChanged() {
 
     // === Ako je EDIT -> jedan doc kao i do sada ===
     if (editingExisting) {
-      const servicesLabel = makeServicesLabel(services, form.services);
-      const totalDurationMin =
-        (form.services || [])
-          .map(id => (services.find(s=>s.id===id)?.durationMin)||0)
-          .reduce((a,b)=>a+b,0) || 15;
+  const servicesLabel = makeServicesLabel(services, form.services);
+  const totalDurationMin =
+    (form.services || [])
+      .map(id => (services.find(s=>s.id===id)?.durationMin)||0)
+      .reduce((a,b)=>a+b,0) || 15;
 
-      const payload = {
-        type: "appointment",
-        employeeUsername: form.employeeUsername || (employees[0]?.username || ""),
-        clientId: clientId || null,
-        services: Array.isArray(form.services) ? form.services : [],
-        start: form.start,
-        end: form.end,
-        priceRsd: Number(form.priceRsd)||0,
-        source: "manual",
-        pickedEmployee: false,
-        paid: _canSetPayment ? (form.paid ?? null) : null,
-        note: form.note || "",
-        updatedAt: serverTimestamp(),
-        noShow: !!form.noShow,
-        isOnline, bookedVia: form.bookedVia ?? value?.bookedVia ?? null, status,
-        totalAmountRsd: Number(form.priceRsd) || 0,
-        totalDurationMin: Math.max(15, totalDurationMin),
-        servicesLabel,
-        paymentStatus, paymentMethod, isPaid,
-      };
+  const payload = {
+    type: "appointment",
+    employeeUsername: form.employeeUsername || (employees[0]?.username || ""),
+    clientId: clientId || null,
+    services: Array.isArray(form.services) ? form.services : [],
+    start: form.start,
+    end: form.end,
+    priceRsd: Number(form.priceRsd)||0,
+    source: "manual",
+    pickedEmployee: false,
+    paid: (role === "admin" || role === "salon") ? (form.paid ?? null) : null,
+    note: form.note || "",
+    updatedAt: serverTimestamp(),
+    noShow: !!form.noShow,
+    isOnline,
+    bookedVia: form.bookedVia ?? value?.bookedVia ?? null,
+    status,
+    totalAmountRsd: Number(form.priceRsd) || 0,
+    totalDurationMin: Math.max(15, totalDurationMin),
+    servicesLabel,
+    paymentStatus, paymentMethod, isPaid,
+  };
 
-      await setDoc(doc(db,"appointments", form.id), payload, { merge:true });
-      onSaved?.();
-      return;
+  await setDoc(doc(db,"appointments", form.id), payload, { merge:true });
+
+  /* ====== OVDJE UBACI NOTIF BLOK ====== */
+  try {
+    const actorRole = role; // "admin" | "salon" | "worker"
+    const oldEmp = originalEmployee ?? null;
+    const newEmp = form.employeeUsername ?? null;
+    const timeChanged = hasTimeChanged();
+    const empChanged  = hasEmployeeChanged();
+
+    const fmt = (d)=>{
+      try{
+        const x = new Date(d);
+        const dd = String(x.getDate()).padStart(2,"0");
+        const mm = String(x.getMonth()+1).padStart(2,"0");
+        const yyyy = x.getFullYear();
+        const hh = String(x.getHours()).padStart(2,"0");
+        const min = String(x.getMinutes()).padStart(2,"0");
+        return `${dd}.${mm}.${yyyy}. ${hh}:${min}`;
+      }catch{ return ""; }
+    };
+    const titleDate = `${fmt(form.start)}–${fmt(form.end)}`;
+
+    // ime radnice za poruku ka adminu
+    const empObj = (employees||[]).find(e=>e.username===newEmp || e.username===oldEmp);
+    const empName = empObj ? `${empObj.firstName||""} ${empObj.lastName||""}`.trim() : (newEmp || "radnica");
+
+    // ime klijenta (lepši body)
+    const clientName =
+      (clientForUI?.firstName || value?.clientName || "")
+      + (clientForUI?.lastName ? ` ${clientForUI.lastName}` : "");
+
+    let payloadNotif = null;
+
+    if (actorRole === "admin" || actorRole === "salon") {
+      if (empChanged) {
+        // premešteno drugoj radnici -> samo novoj radnici
+        payloadNotif = {
+          kind: "toEmployee",
+          employeeUsername: newEmp,
+          title: "Dodeljen vam je novi termin",
+          body: clientName ? `${clientName} • ${titleDate}` : `${titleDate}`,
+          screen: "/admin",
+          reason: "ADMIN_MOVED_TO_NEW_EMP"
+        };
+      } else if (timeChanged) {
+        // istoj radnici pomereno vreme
+        payloadNotif = {
+          kind: "toEmployee",
+          employeeUsername: newEmp,
+          title: "Vaš termin je pomeren",
+          body: clientName ? `${clientName} • ${titleDate}` : `${titleDate}`,
+          screen: "/admin",
+          reason: "ADMIN_RESCHEDULED"
+        };
+      }
+    } else if (actorRole === "worker") {
+      if (timeChanged || empChanged) {
+        // radnica je pomerila -> ide adminu
+        payloadNotif = {
+          kind: "toAdmin",
+          title: "Radnica je pomerila termin",
+          body: `${empName} • ${titleDate}`,
+          screen: "/admin",
+          reason: "WORKER_RESCHEDULED"
+        };
+      }
     }
 
+    if (payloadNotif) {
+      await fetch("/api/pushMoveNotif", {
+        method: "POST",
+        headers: { "Content-Type":"application/json" },
+        body: JSON.stringify(payloadNotif)
+      });
+    }
+  } catch (e) {
+    console.warn("pushMoveNotif error:", e);
+  }
+  /* ====== /NOTIF BLOK ====== */
+
+  onSaved?.();
+  return;
+}
     // === NOV TERMIN -> RAZDVOJI PO KATEGORIJAMA ===
     const groups = groupServicesByCategory(form.services, services);
 
