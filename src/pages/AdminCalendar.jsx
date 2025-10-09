@@ -9,6 +9,8 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase";
 import CalendarEventModal from "../partials/CalendarEventModal";
+// jezik za formatiranje datuma (srpski latinica)
+const LOCALE = "sr-Latn-RS";
 
 function toJsDate(x) { if (!x) return null; if (x instanceof Date) return x; if (typeof x?.toDate === "function") return x.toDate(); return new Date(x); }
 function parseLocalYmd(ymd) {
@@ -27,10 +29,17 @@ function localYmd(d) {
 function endOfDay(d) { const x = new Date(toJsDate(d) || new Date()); x.setHours(23, 59, 59, 999); return x; }
 function isSameDay(a, b) { const x = startOfDay(a), y = startOfDay(b); return x.getTime() === y.getTime(); }
 function fmtTime(d) { const x = toJsDate(d); if (!x) return ""; const hh = String(x.getHours()).padStart(2, "0"); const mm = String(x.getMinutes()).padStart(2, "0"); return `${hh}:${mm}`; }
+const fmtDate = (d) => {
+  const x = d?.toDate ? d.toDate() : new Date(d);
+  if (isNaN(x)) return "—";
+  return x.toLocaleDateString(LOCALE, { day:"2-digit", month:"2-digit", year:"numeric" });
+};
+
+
 function minsInDay(dt, dayStart) { const t = toJsDate(dt)?.getTime?.() ?? 0; return Math.round((t - dayStart.getTime()) / 60000); }
 const fmtPrice = (n) => (Number(n) || 0).toLocaleString("sr-RS");
 
-const DAY_START_MIN = 8 * 60, DAY_END_MIN = 22 * 60, PX_PER_MIN = 1.1;
+const DAY_START_MIN = 7 * 60, DAY_END_MIN = 22 * 60, PX_PER_MIN = 1.1;
 const yFromMinutes = (m) => (m - DAY_START_MIN) * PX_PER_MIN;
 const weekdayIndex = (d) => (toJsDate(d).getDay() + 6) % 7;
 function getPhone(c) { return (c?.phone ?? c?.phoneNumber ?? c?.mobile ?? "").toString(); }
@@ -1174,7 +1183,10 @@ async function onResizingMouseUp() {
                 const items = normalizeServices(a, services);
                 const total = (a?.totalAmountRsd ?? a?.priceRsd ?? 0) || items.reduce((s, x) => s + (+x.priceRsd || 0), 0);
                 const emp = (employees || []).find(e => e.username === a?.employeeUsername);
-                const when = it.ts ? it.ts.toLocaleString("sr-RS", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit", year: "numeric" }) : "—";
+               const when = it.ts
+  ? it.ts.toLocaleString(LOCALE, { hour:"2-digit", minute:"2-digit", day:"2-digit", month:"2-digit", year:"numeric" })
+  : "—";
+
                 const isCanceled = isCanceledAppt(a);
                 
           const title = it.type === "booked" ? "Zakazano online" : "Otkazano online";
@@ -1201,7 +1213,9 @@ async function onResizingMouseUp() {
                   {emp ? `${emp.firstName} ${emp.lastName || ""}`.trim() : (a?.employeeUsername || "—")}
                 </div>
                 <div className="notif-row">
-                  <b>Termin:</b> {fmtTime(a?.start)}–{fmtTime(a?.end)}
+                <b>Termin:</b> {fmtDate(a?.start)} {fmtTime(a?.start)}–{fmtTime(a?.end)}
+
+
                 </div>
 
                 {Array.isArray(items) && items.length > 0 && (
@@ -1261,12 +1275,10 @@ async function onResizingMouseUp() {
 
   {/* Datum (lepa “pilula” na mobilnom) */}
   <div className="title date-chip">
-    {dayStart.toLocaleDateString("sr-RS",{
-      weekday:"long",
-      day:"2-digit",
-      month:"long",
-      year:"numeric"
-    })}
+  {dayStart.toLocaleDateString(LOCALE, {
+  weekday:"long", day:"2-digit", month:"long", year:"numeric"
+})}
+
   </div>
 
   {/* Strelice + Danas – kompaktan red na mobilnom */}

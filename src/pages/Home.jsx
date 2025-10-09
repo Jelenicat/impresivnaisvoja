@@ -459,7 +459,8 @@ export default function Home() {
       <section className="section">
         <h2>O Nama</h2>
         <p>
-          Leote je salon u kojem lepota znači biti svoja. Naš tim posvećen je tome
+          Impresivna i svoja je salon lepote posvećen negovanju autentične 
+          ženstvenosti i samopouzdanja. Naš tim posvećen je tome
           da svaka žena oseti pažnju, negu i luksuz u svakom trenutku. Kod nas ne
           postoje univerzalni standardi — verujemo da je prava lepota u tome da
           budete impresivni i svoji, baš na svoj način.

@@ -200,6 +200,18 @@ function hasEmployeeChanged() {
   const [clientListOpen, setClientListOpen] = useState(false);
 
   const isMobile = typeof window !== "undefined" ? window.innerWidth <= 480 : false;
+useEffect(() => {
+  if (!isMobile) {
+    const hasSelected = Array.isArray(form.services) && form.services.length > 0;
+    setDesktopSvcsOpen(!hasSelected);
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [isMobile, value?.id]);
+useEffect(() => {
+  if (!isMobile && (!form.services || form.services.length === 0)) {
+    setDesktopSvcsOpen(true);
+  }
+}, [isMobile, form.services?.length]);
 
   const normalized = (s="") => s.toString().toLowerCase().trim();
 
@@ -693,6 +705,8 @@ function hasEmployeeChanged() {
   const [openPrice, setOpenPrice] = useState(false);
   const [openPay, setOpenPay] = useState(false);
   const [openNote, setOpenNote] = useState(false);
+// Desktop: da li je otvoren kompletan meni za usluge
+const [desktopSvcsOpen, setDesktopSvcsOpen] = useState(false);
 
   function SelectedServiceCards() {
     if (!selectedServiceObjs.length) return null;
@@ -731,26 +745,27 @@ function hasEmployeeChanged() {
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
       <style>{`
-        :root{
-          --ink:#1f1f1f; --muted:#6b6b6b; --bg:#fff; --border:#e6e0d7; --soft:#faf6f0; --focus: rgba(199,178,153,.35);
-          --chip:#f5f7ff; --chip-border:#dbe3ff;
-        }
-        * { -webkit-tap-highlight-color: transparent; }
-        .cal-modal input:not([type="radio"]):not([type="checkbox"]),
-        .cal-modal select, .cal-modal textarea, .cal-modal button{
-          color:var(--ink)!important; -webkit-text-fill-color:var(--ink)!important; appearance:none; -webkit-appearance:none; outline:none;
-        }
-        .cal-modal input[type="checkbox"], .cal-modal input[type="radio"]{
-          appearance:auto; -webkit-appearance:auto; accent-color:#1f1f1f; width:18px; height:18px; outline:none;
-        }
-        .cal-modal :is(input,select,textarea):focus{ box-shadow:0 0 0 3px var(--focus); border-color:#c7b299; }
-        ::selection{ background:#f3e8d7; color:#000; }
+:root{
+  --ink:#1f1f1f; --muted:#6b6b6b; --bg:#fff; --border:#e6e0d7; --soft:#faf6f0; --focus: rgba(199,178,153,.35);
+  --chip:#f5f7ff; --chip-border:#dbe3ff;
+}
+* { -webkit-tap-highlight-color: transparent; }
+
+/* --- GLOBAL --- */
+.cal-modal input:not([type="radio"]):not([type="checkbox"]),
+.cal-modal select, .cal-modal textarea, .cal-modal button{
+  color:var(--ink)!important; -webkit-text-fill-color:var(--ink)!important; appearance:none; -webkit-appearance:none; outline:none;
+}
+.cal-modal input[type="checkbox"], .cal-modal input[type="radio"]{
+  appearance:auto; -webkit-appearance:auto; accent-color:#1f1f1f; width:18px; height:18px; outline:none;
+}
+.cal-modal :is(input,select,textarea):focus{ box-shadow:0 0 0 3px var(--focus); border-color:#c7b299; }
+::selection{ background:#f3e8d7; color:#000; }
+
+/* --- SERVICES --- */
 .svc-groups{ display:grid; gap:10px; margin-top:10px; }
 .svc-card{ border:1px solid var(--border); border-radius:12px; background:#fff; overflow:hidden; }
-.svc-card__head{
-  display:flex; justify-content:space-between; align-items:center;
-  padding:10px 12px; background:#faf6f0; border-bottom:1px solid #f1eee8; font-weight:700;
-}
+.svc-card__head{ display:flex; justify-content:space-between; align-items:center; padding:10px 12px; background:#faf6f0; border-bottom:1px solid #f1eee8; font-weight:700; }
 .svc-card__title{ font-weight:800; }
 .svc-card__sum{ font-weight:800; }
 .svc-card__body{ padding:8px 12px; display:grid; gap:8px; }
@@ -758,121 +773,107 @@ function hasEmployeeChanged() {
 .svc-row__name{ font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .svc-row__meta{ opacity:.8; white-space:nowrap; }
 
-        .modal-backdrop{ position:fixed; inset:0; background:#0007; display:flex; align-items:stretch; justify-content:flex-end; padding:0; z-index:1000; }
-        .cal-modal.modal{ background:var(--bg); width:100%; max-width:900px; height:100%; border-left:1px solid var(--border); box-shadow:-14px 0 40px rgba(0,0,0,.18); display:flex; flex-direction:column; }
+.modal-backdrop{ position:fixed; inset:0; background:#0007; display:flex; align-items:stretch; justify-content:flex-end; padding:0; z-index:1000; }
+.cal-modal.modal{ background:var(--bg); width:100%; max-width:900px; height:100%; border-left:1px solid var(--border); box-shadow:-14px 0 40px rgba(0,0,0,.18); display:flex; flex-direction:column; }
 
-        .cal-modal .h{ position:sticky; top:0; z-index:5; display:flex; gap:10px; justify-content:space-between; align-items:center; padding:12px 14px; background:var(--bg); border-bottom:1px solid #efeae3; }
-        .cal-modal .title-left{ display:flex; flex-direction:column; gap:6px; flex:1; }
-        .cal-modal .client-chip{ display:inline-flex; align-items:center; gap:8px; padding:7px 10px; background:var(--chip); border:1px solid var(--chip-border); border-radius:999px; font-size:14px; max-width:220px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-        .cal-modal .client-info-row{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-        .cal-modal .icon-btn{ display:none; align-items:center; justify-content:center; width:36px; height:36px; border:1px solid var(--border); border-radius:10px; background:#fff; font-size:18px; }
+/* --- HEADER --- */
+.cal-modal .h{ position:sticky; top:0; z-index:5; display:flex; gap:10px; justify-content:space-between; align-items:center; padding:12px 14px; background:var(--bg); border-bottom:1px solid #efeae3; }
+.cal-modal .title-left{ display:flex; flex-direction:column; gap:6px; flex:1; }
+.cal-modal .client-chip{ display:inline-flex; align-items:center; gap:8px; padding:7px 10px; background:var(--chip); border:1px solid var(--chip-border); border-radius:999px; font-size:18px; max-width:320px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cal-modal .client-info-row{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.cal-modal .icon-btn{ display:none; align-items:center; justify-content:center; width:36px; height:36px; border:1px solid var(--border); border-radius:10px; background:#fff; font-size:18px; }
 
-        .cal-modal .content{ flex:1 1 auto; overflow-y:auto; overflow-x:hidden; padding:14px; }
-        .cal-modal .grid{ display:grid; gap:10px; grid-template-columns:1fr 1fr; }
-        .cal-modal .label{ font-size:12px; color:#706a61; margin-bottom:4px; font-weight:600; }
-        .cal-modal .row{ display:grid; gap:6px; }
-        .muted{ color:#6b7280; font-size:12px; }
+/* --- CONTENT --- */
+.cal-modal .content{ flex:1 1 auto; overflow-y:auto; overflow-x:hidden; padding:14px; }
+.cal-modal .grid{ display:grid; gap:10px; grid-template-columns:1fr 1fr; }
+.cal-modal .label{ font-size:12px; color:#706a61; margin-bottom:4px; font-weight:600; }
+.cal-modal .row{ display:grid; gap:6px; }
+.muted{ color:#6b7280; font-size:12px; }
 
-        .cal-modal .input, .cal-modal .select, .cal-modal .textarea{
-          width:100%; padding:10px 12px; border-radius:12px; border:1px solid var(--border); background:#fff; font-size:14px; min-height:40px; box-sizing:border-box;
-        }
-        .cal-modal .textarea{ min-height:84px; resize:vertical; }
+.cal-modal .input, .cal-modal .select, .cal-modal .textarea{
+  width:100%; padding:10px 12px; border-radius:12px; border:1px solid var(--border); background:#fff; font-size:14px; min-height:40px; box-sizing:border-box;
+}
+.cal-modal .textarea{ min-height:84px; resize:vertical; }
 
-        .cal-modal .pill{ display:inline-flex; align-items:center; gap:6px; background:var(--soft); border:1px solid var(--border); padding:6px 10px; border-radius:999px; font-size:13px; cursor:pointer; }
-        .cal-modal .danger{ border-color:#ef4444; color:#ef4444; background:#fff; }
-        .cal-modal .btn{ padding:10px 12px; border-radius:12px; border:1px solid var(--border); background:#fff; cursor:pointer; min-width:110px; font-weight:700; }
-        .cal-modal .btn-primary{ color:#fff; border-color:#1f1f1f; }
-        .cal-modal .btn-ghost{ background:#fff; color:#1f1f1f; }
+.cal-modal .pill{ display:inline-flex; align-items:center; gap:6px; background:var(--soft); border:1px solid var(--border); padding:6px 10px; border-radius:999px; font-size:13px; cursor:pointer; }
+.cal-modal .danger{ border-color:#ef4444; color:#ef4444; background:#fff; }
+.cal-modal .btn{ padding:10px 12px; border-radius:12px; border:1px solid var(--border); background:#fff; cursor:pointer; min-width:110px; font-weight:700; }
+.cal-modal .btn-primary{ color:#fff; border-color:#1f1f1f; }
+.cal-modal .btn-ghost{ background:#fff; color:#1f1f1f; }
 
-        .cal-modal .svc-search{ position:relative; display:flex; align-items:center; gap:8px; margin-bottom:8px; }
-        .cal-modal .svc-search .icon{ position:absolute; left:12px; pointer-events:none; }
-        .cal-modal .svc-search .input-plain{ padding-left:34px; }
-        .cal-modal .svc-totals{ position:sticky; top:0; z-index:2; background:#fff; border:1px solid var(--border); border-radius:10px; padding:8px 10px; display:flex; align-items:center; justify-content:space-between; font-size:13px; margin-bottom:8px; }
+/* --- SERVICE LIST --- */
+.cal-modal .svc-search{ position:relative; display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+.cal-modal .svc-search .icon{ position:absolute; left:12px; pointer-events:none; }
+.cal-modal .svc-search .input-plain{ padding-left:34px; }
+.cal-modal .svc-totals{ position:sticky; top:0; z-index:2; background:#fff; border:1px solid var(--border); border-radius:10px; padding:8px 10px; display:flex; align-items:center; justify-content:space-between; font-size:13px; margin-bottom:8px; }
 
-        .cal-modal .services{ display:grid; grid-template-columns:1fr; gap:8px; }
-        .cal-modal .svc{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px; border:1px solid #eee; border-radius:12px; background:#fff; }
-        .cal-modal .svc-title{ display:flex; align-items:center; gap:10px; flex:1; min-width:0; }
-        .cal-modal .color-dot{ width:10px; height:10px; border-radius:50%; flex:0 0 auto; }
-        .cal-modal .svc-name{ font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-        .cal-modal .svc-meta{ color:#6b7280; font-size:12px; white-space:nowrap; }
+.svc-summary{ display:flex; align-items:center; justify-content:space-between; gap:12px; border:1px solid var(--border); background:#fff; border-radius:12px; padding:10px 12px; flex-wrap:wrap; }
+.svc-summary__names{ font-weight:700; min-width:180px; }
+.svc-summary__meta{ color:#6b7280; font-size:13px; }
 
-        .cal-modal .client-search-wrap{ position:relative; }
-        .cal-modal .dropdown{
-          position:absolute; top:100%; left:0; right:0; z-index:20; background:#fff; border:1px solid var(--border); border-radius:12px; box-shadow:0 12px 30px rgba(0,0,0,.12); margin-top:6px; max-height:45vh; overflow:auto;
-        }
-        .cal-modal .drop-item{ padding:12px 14px; cursor:pointer; border-bottom:1px solid #f7f3ed; display:flex; flex-direction:column; gap:4px; }
-        .cal-modal .drop-item:first-child{ font-weight:700; border-bottom:1px solid #f1ebe4; background:#faf6f0; }
-        .cal-modal .drop-item:hover{ background:#faf6f0; }
+.cal-modal .services{ display:grid; grid-template-columns:1fr; gap:8px; }
+.cal-modal .svc{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px; border:1px solid #eee; border-radius:12px; background:#fff; }
+.cal-modal .svc-title{ display:flex; align-items:center; gap:10px; flex:1; min-width:0; }
+.cal-modal .color-dot{ width:10px; height:10px; border-radius:50%; flex:0 0 auto; }
+.cal-modal .svc-name{ font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cal-modal .svc-meta{ color:#6b7280; font-size:12px; white-space:nowrap; }
 
-        .cal-modal .footer{ position:sticky; bottom:0; z-index:5; background:linear-gradient(0deg,#fff 80%, #ffffffcc 100%); border-top:1px solid #efeae3; padding:10px 14px; display:flex; gap:10px; justify-content:space-between; align-items:center; flex-wrap:wrap; }
-        .cal-modal .footer-right{ display:flex; gap:8px; min-width:200px; }
-.cal-modal .h-actions{
-    display:flex;
-    gap:14px;
-    align-items:center;
-    flex-wrap:nowrap;
-    overflow-x:visible;
-    padding:4px 0;
-  }
+/* --- FOOTER --- */
+.cal-modal .footer{ position:sticky; bottom:0; z-index:5; background:linear-gradient(0deg,#fff 80%, #ffffffcc 100%); border-top:1px solid #efeae3; padding:10px 14px; display:flex; gap:10px; justify-content:space-between; align-items:center; flex-wrap:wrap; }
+.cal-modal .footer-right{ display:flex; gap:8px; min-width:200px; }
 
-  .cal-modal .h-actions .pill,
-  .cal-modal .h-actions .danger{
-    padding:8px 12px;
-    font-size:14px;
-  }
-}@media(max-width:480px){
-  .cal-modal .grid{
-    grid-template-columns:1fr !important;
-    gap:14px;
-  }
+/* --- HEADER ACTIONS --- */
+.cal-modal .h-actions{ display:flex; gap:14px; align-items:center; flex-wrap:nowrap; overflow-x:visible; padding:4px 0; }
+.cal-modal .h-actions .pill, .cal-modal .h-actions .danger{ padding:8px 12px; font-size:14px; }
+.cal-modal .h-actions .icon-btn{ flex:0 0 auto; }
+
+/* --- RESPONSIVE --- */
+@media(max-width:820px){
+  .cal-modal .grid{ grid-template-columns:1fr; gap:12px; }
 }
 
-        @media(max-width:820px){ .cal-modal .grid{ grid-template-columns:1fr; gap:12px; } }
-        @media(max-width:480px){
-.cal-modal .h-actions{
-    display:flex;
-    gap:12px;
-    row-gap:8px;
-    align-items:center;
-    flex-wrap:wrap;
-    overflow-x:visible;
-    padding-bottom:2px;
-    padding-top:2px;
-    justify-content:flex-start;
-  }
-  .cal-modal .h-actions > *{ margin-right: 12px; }
-  .cal-modal .h-actions > *:last-child{ margin-right: 0; }
-  .cal-modal .h-actions .pill,
-  .cal-modal .h-actions .danger{
-    padding:8px 10px;
-    font-size:13px;
-    line-height:1.1;
-  }
-  .cal-modal .client-chip{ margin-right:8px; }
-  .cal-modal .client-chip{ cursor: pointer; }
+/* --- MOBILE (max 480px) --- */
+@media(max-width:480px){
+  .cal-modal .grid{ grid-template-columns:1fr !important; gap:14px; }
 
-}.cal-modal .h-actions .icon-btn{
-  flex:0 0 auto;
+  .cal-modal .h-actions{ display:flex; gap:12px; row-gap:8px; align-items:center; flex-wrap:wrap; overflow-x:visible; padding-bottom:2px; padding-top:2px; justify-content:flex-start; }
+  .cal-modal .h-actions > *{ margin-right:12px; }
+  .cal-modal .h-actions > *:last-child{ margin-right:0; }
+  .cal-modal .h-actions .pill, .cal-modal .h-actions .danger{ padding:8px 10px; font-size:13px; line-height:1.1; }
+
+  .cal-modal .client-chip{ margin-right:8px; cursor:pointer; font-size:20px; padding:6px 9px; }
+
+  .cal-modal .h{ padding:10px 12px; }
+  .cal-modal .icon-btn{ display:inline-flex; }
+  .cal-modal .pill{ padding:5px 8px; font-size:12px; }
+  .cal-modal .content{ padding:10px 12px; }
+  .cal-modal .input, .cal-modal .select{ padding:12px; font-size:15px; min-height:40px; }
+  .cal-modal .textarea{ padding:12px; font-size:15px; }
+
+  /* Veća cena */
+  .cal-modal .expander-price .expander-sub{ font-size:20px; font-weight:800; }
+  .cal-modal .price-input{ font-size:22px; font-weight:700; padding:14px 12px; }
+
+  /* Prelamanje naziva usluge */
+  .cal-modal .svc-name{
+    white-space:normal;
+    overflow:visible;
+    text-overflow:clip;
+    line-height:1.25;
+  }
+  .cal-modal .svc{ align-items:flex-start; }
+  .cal-modal .svc-title{ align-items:flex-start; min-width:0; }
+  .cal-modal .color-dot{ margin-top:2px; }
+
+  /* expandable sekcije */
+  .cal-modal .expander{
+    width:100%; text-align:left; padding:12px; border:1px solid var(--border);
+    background:#fff; border-radius:12px; font-weight:700; display:flex; justify-content:space-between; align-items:center;
+  }
+  .cal-modal .expander-sub{ display:block; font-size:15px; color:#6b7280; margin-top:4px; font-weight:500; }
+  .cal-modal .section{ border:1px solid var(--border); border-radius:12px; padding:10px; background:#fff; }
 }
-
-          .cal-modal .h{ padding:10px 12px; }
-          .cal-modal .client-chip{ max-width:100%; padding:6px 9px; font-size:13px; }
-          .cal-modal .icon-btn{ display:inline-flex; }
-          .cal-modal .pill{ padding:5px 8px; font-size:12px; }
-          .cal-modal .content{ padding:10px 12px; }
-          .cal-modal .input, .cal-modal .select{ padding:12px; font-size:15px; min-height:40px; }
-          .cal-modal .textarea{ padding:12px; font-size:15px; }
-
-          /* expandable header dugme */
-          .cal-modal .expander{
-            width:100%; text-align:left; padding:12px; border:1px solid var(--border);
-            background:#fff; border-radius:12px; font-weight:700; display:flex; justify-content:space-between; align-items:center;
-          }
-          .cal-modal .expander-sub{ display:block; font-size:12px; color:#6b7280; margin-top:4px; font-weight:500; }
-          .cal-modal .section{ border:1px solid var(--border); border-radius:12px; padding:10px; background:#fff; }
-        }
-        
-      `}</style>
+`}</style>
 
       <div className="modal cal-modal" onMouseDown={(e)=>e.stopPropagation()}>
 
@@ -883,7 +884,7 @@ function hasEmployeeChanged() {
               {isBlock ? (form.id ? "Blokada" : "Nova blokada") : (form.id ? "Termin" : "Novi termin")}
             </div>
 
-            {/* === MOBILNI: client chip ispod akcija === */}
+            {/* === MOBILNI: client chip ispod akcicl === */}
             {isMobile ? (
               <>
                 <div className="h-actions">
@@ -1213,28 +1214,8 @@ function hasEmployeeChanged() {
 
               {/* Cena */}
               {!isBlock && (
-                <div className="row">
-                  <button className="expander" onClick={()=>setOpenPrice(v=>!v)}>
-                    <span>
-                      Cena
-                      <span className="expander-sub">{Number(form.priceRsd||0)} RSD</span>
-                    </span>
-                    <span>{openPrice ? "▴" : "▾"}</span>
-                  </button>
-                  {openPrice && (
-                    <div className="section">
-                      <div className="label">Cena (RSD)</div>
-                      <input
-                        className="input" type="number" value={form.priceRsd}
-                        onChange={(e)=>{ setForm(f=>({...f, priceRsd:e.target.value})); setCustomPrice(true); }}
-                        disabled={!canEditPrice}
-                      />
-                      <div className="muted" style={{marginTop:6}}>
-                        Ručno menjana cena ostaje (ne prepisujemo auto-ukupnom).
-                      </div>
-                    </div>
-                  )}
-                </div>
+ <div className="row"> <button className="expander" onClick={()=>setOpenPrice(v=>!v)}> <span> Cena <span className="expander-sub">{Number(form.priceRsd||0)} RSD</span> </span> <span>{openPrice ? "▴" : "▾"}</span> </button> {openPrice && ( <div className="section"> <div className="label">Cena (RSD)</div> <input className="input" type="number" value={form.priceRsd} onChange={(e)=>{ setForm(f=>({...f, priceRsd:e.target.value})); setCustomPrice(true); }} disabled={!canEditPrice} /> <div className="muted" style={{marginTop:6}}> Ručno menjana cena ostaje (ne prepisujemo auto-ukupnom). </div> </div> )} </div>
+
               )}
 
               {/* Plaćanje — jedino mesto */}
@@ -1275,8 +1256,7 @@ function hasEmployeeChanged() {
                 </div>
               )}
 
-              {/* Beleška
-eška */}
+              {/* Beleškaeška */}
               <div className="row">
                 <button className="expander" onClick={()=>setOpenNote(v=>!v)}>
                   <span>
@@ -1425,68 +1405,105 @@ eška */}
               </div>
 
               {/* Usluge */}
-              {!isBlock && (
-                <div className="row" style={{gridColumn:"1 / -1"}}>
-                  <div className="label">Usluge</div>
+             {/* Usluge (DESKTOP: sažetak -> klik -> kompletan meni) */}
+{!isBlock && (
+  <div className="row" style={{gridColumn:"1 / -1"}}>
+    <div className="label">Usluge</div>
 
-                  <div className="svc-totals">
-                    <span>💰 Ukupno (auto): <b>{autoTotal} RSD</b></span>
-                    <span>⏱️ Trajanje (auto): <b>{autoDurationMin} min</b></span>
-                  </div>
+    {/* Ako je meni zatvoren i postoje izabrane usluge -> prikaži sažetak */}
+    {!desktopSvcsOpen && (form.services?.length > 0) ? (
+      <div className="svc-summary">
+        <div className="svc-summary__names">
+          {makeServicesLabel(services, form.services)}
+        </div>
+        <div className="svc-summary__meta">
+          ⏱️ {autoDurationMin} min · 💰 {autoTotal} RSD
+        </div>
+        <button className="pill" onClick={()=>setDesktopSvcsOpen(true)}>
+          Promeni
+        </button>
+      </div>
+    ) : (
+      <>
+        {/* Kompletan postojeći meni za usluge */}
+        <div className="svc-totals">
+          <span>💰 Ukupno (auto): <b>{autoTotal} RSD</b></span>
+          <span>⏱️ Trajanje (auto): <b>{autoDurationMin} min</b></span>
+        </div>
 
-                  <div className="svc-search">
-                    <span className="icon">🔍</span>
-                    <input
-                      className="input input-plain"
-                      placeholder="Pretraži usluge… (naziv ili kategorija)"
-                      value={svcQuery}
-                      onChange={(e)=>setSvcQuery(e.target.value)}
-                    />
-                    {svcQuery && (
-                      <button className="pill" onClick={()=>setSvcQuery("")} title="Obriši pretragu" style={{position:"absolute", right:8}}>
-                        ✕
-                      </button>
-                    )}
-                  </div>
+        <div className="svc-search">
+          <span className="icon">🔍</span>
+          <input
+            className="input input-plain"
+            placeholder="Pretraži usluge… (naziv ili kategorija)"
+            value={svcQuery}
+            onChange={(e)=>setSvcQuery(e.target.value)}
+          />
+          {svcQuery && (
+            <button
+              className="pill"
+              onClick={()=>setSvcQuery("")}
+              title="Obriši pretragu"
+              style={{position:"absolute", right:8}}
+            >
+              ✕
+            </button>
+          )}
+        </div>
 
-                  <div className="services">
-                    {filteredServices.map(s=>{
-                      const color = (categoriesMap?.get?.(s.categoryId)?.color) || "#ddd";
-                      const checked = (form.services||[]).includes(s.id);
-                      return (
-                        <label key={s.id} className="svc">
-                          <span className="svc-title">
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={(e)=>onServiceToggle(s.id, e.target.checked)}
-                              style={{ width:18, height:18, marginRight:6 }}
-                            />
-                            <span className="color-dot" style={{background:color}}/>
-                            <span className="svc-name">{s.name}</span>
-                          </span>
-                          <span className="svc-meta">{s.durationMin}min · {s.priceRsd} RSD</span>
-                        </label>
-                      );
-                    })}
-                    {filteredServices.length===0 && (
-                      <div className="muted" style={{padding:"16px", textAlign:"center"}}>
-                        Nema definisanih usluga za ovu radnicu.
-                      </div>
-                    )}
+        <div className="services">
+          {filteredServices.map(s=>{
+            const color = (categoriesMap?.get?.(s.categoryId)?.color) || "#ddd";
+            const checked = (form.services||[]).includes(s.id);
+            return (
+              <label key={s.id} className="svc">
+                <span className="svc-title">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(e)=>onServiceToggle(s.id, e.target.checked)}
+                    style={{ width:18, height:18, marginRight:6 }}
+                  />
+                  <span className="color-dot" style={{background:color}}/>
+                  <span className="svc-name">{s.name}</span>
+                </span>
+                <span className="svc-meta">{s.durationMin}min · {s.priceRsd} RSD</span>
+              </label>
+            );
+          })}
+          {filteredServices.length===0 && (
+            <div className="muted" style={{padding:"16px", textAlign:"center"}}>
+              Nema definisanih usluga za ovu radnicu.
+            </div>
+          )}
 
-                    {ghostServices.length>0 && (
-                      <div className="note-inline" style={{ marginTop:8 }}>
-                        Ovaj termin sadrži usluge koje nisu u trenutnom katalogu:{" "}
-                        {ghostServices.map(g => g?.name || sid(g)).filter(Boolean).join(", ")}
-                      </div>
-                    )}
-                    <SelectedServiceCards />
-                  </div>
-                </div>
-              )}
+          {ghostServices.length>0 && (
+            <div className="note-inline" style={{ marginTop:8 }}>
+              Ovaj termin sadrži usluge koje nisu u trenutnom katalogu:{" "}
+              {ghostServices.map(g => g?.name || sid(g)).filter(Boolean).join(", ")}
+            </div>
+          )}
 
-              {/* Cena / plaćanje */}
+          {/* Prikaz kartica izabranih usluga po kategorijama (već imaš komponentu) */}
+          <SelectedServiceCards />
+        </div>
+
+        {/* Dugme "Gotovo" – zatvara meni nazad u sažetak ako ima izabranih */}
+        <div style={{display:"flex", justifyContent:"flex-end", marginTop:8}}>
+          <button
+            type="button"
+            className="pill"
+            onClick={()=> setDesktopSvcsOpen(!(form.services?.length > 0))}
+            title="Zatvori meni usluga"
+          >
+            Gotovo
+          </button>
+        </div>
+      </>
+    )}
+  </div>
+)}
+ {/* Cena / plaćanje */}
               {!isBlock && (
                 <>
                   <div className="row">
@@ -1526,7 +1543,7 @@ eška */}
 
               {/* Beleška */}
               <div className="row" style={{gridColumn:"1 / -1"}}>
-                <div className="label">Beleška (vidi ko ima pristup)</div>
+                <div className="label">Beleška</div>
                 <textarea className="textarea" value={form.note||""} onChange={(e)=>setForm(f=>({...f, note:e.target.value}))}/>
               </div>
             </div>
