@@ -31,26 +31,23 @@ async function getTokensForEmployee(db, username) {
 }
 
 async function getTokensForAdmins(db) {
-  // Sve admin uređaje (role == "admin"), plus fallback na username == "admin"
   const out = new Set();
+  const byRole = await db.collection("fcmTokens").where("role", "==", "admin").get();
+  byRole.forEach(d => { const t = d.data()?.token; if (t) out.add(t); });
 
-  const byRole = await db.collection("fcmTokens")
-    .where("role", "==", "admin")
-    .get();
-  byRole.forEach(d => {
-    const t = d.data()?.token;
-    if (t) out.add(t);
-  });
-
-  const byUname = await db.collection("fcmTokens")
-    .where("username", "==", "admin")
-    .get();
-  byUname.forEach(d => {
-    const t = d.data()?.token;
-    if (t) out.add(t);
-  });
+  const byUname = await db.collection("fcmTokens").where("username", "==", "admin").get();
+  byUname.forEach(d => { const t = d.data()?.token; if (t) out.add(t); });
 
   return [...out];
+}
+
+/* --- util: sve vrednosti u string --- */
+function stringifyData(obj = {}) {
+  const flat = {};
+  for (const [k, v] of Object.entries(obj)) {
+    flat[k] = typeof v === "string" ? v : JSON.stringify(v);
+  }
+  return flat;
 }
 
 /* --- handler --- */
@@ -63,13 +60,12 @@ export default async function handler(req, res) {
   try {
     initAdmin();
     const db = getFirestore();
-    const msg = req.body || {}; // { kind, title, body, screen, reason, employeeUsername? }
+    const msg = req.body || {}; 
+    // očekuje: { kind: "toEmployee"|"toAdmin", title, body, screen, reason, employeeUsername?, info? }
 
     let targetTokens = [];
-
     if (msg.kind === "toEmployee") {
-      const uname = (msg.employeeUsername || "").trim();
-      targetTokens = await getTokensForEmployee(db, uname);
+      targetTokens = await getTokensForEmployee(db, (msg.employeeUsername || "").trim());
     } else if (msg.kind === "toAdmin") {
       targetTokens = await getTokensForAdmins(db);
     }
@@ -79,21 +75,34 @@ export default async function handler(req, res) {
       return;
     }
 
-    const payload = {
-      notification: {
-        title: msg.title || "Obaveštenje",
-        body:  msg.body  || "",
-      },
-      data: {
-        screen: msg.screen || "/admin",
-        reason: msg.reason || "APPT_MOVED",
-        ts: String(Date.now()),
-      },
+    // === DATA-ONLY poruka (nema 'notification' da izbegnemo duple) ===
+    const baseData = {
+      title:  msg.title  || "Obaveštenje",
+      body:   msg.body   || "",
+      screen: msg.screen || "/admin",
+      reason: msg.reason || "APPT_MOVED",
+      ts: String(Date.now()),
     };
+
+    // Bogatije info o terminu (sve mora u string)
+    // npr. { apptId, startIso, endIso, employeeUsername, employeeName, clientName, serviceNames, priceRsd }
+    const infoData = stringifyData(msg.info || {});
+    const dataPayload = { ...baseData, ...infoData };
 
     const r = await getMessaging().sendEachForMulticast({
       tokens: targetTokens,
-      ...payload,
+      data: dataPayload,
+      // Dodatni webpush "tag" da se poruke sa istim kontekstom grupišu
+      webpush: {
+        notification: {
+          // tag će spojiti obaveštenja istog termina/radnice/razloga
+          tag: `${msg.reason || "GEN"}:${msg.info?.apptId || ""}:${msg.employeeUsername || ""}`,
+          renotify: false,
+        },
+        fcmOptions: {
+          link: msg.screen || "/admin",
+        },
+      },
     });
 
     res.status(200).json({
