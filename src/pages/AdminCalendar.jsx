@@ -568,61 +568,81 @@ async function onResizingMouseUp() {
       });
 
       // === NOTIFIKACIJA (resize) ===
-      try {
-        const actorRole = role; // "admin" | "salon" | "worker"
-        const empU = r.emp;     // postavljeno u startResize()
+try {
+  const actorRole = role; // "admin" | "salon" | "worker"
+  const empU = r.emp;     // postavljeno u startResize()
 
-        // vreme: originalni start (iz resize ref-a) -> novi end
-        const startDate = new Date(dayStart); 
-        startDate.setMinutes(r.startMin);
+  // vreme: originalni start (iz resize ref-a) -> novi end
+  const startDate = new Date(dayStart);
+  startDate.setMinutes(r.startMin);
 
-        const fmt = (d) => {
-          const x = new Date(d);
-          const dd = String(x.getDate()).padStart(2, "0");
-          const mm = String(x.getMonth() + 1).padStart(2, "0");
-          const yyyy = x.getFullYear();
-          const hh = String(x.getHours()).padStart(2, "0");
-          const mi = String(x.getMinutes()).padStart(2, "0");
-          return `${dd}.${mm}.${yyyy}. ${hh}:${mi}`;
-        };
-        const titleDate = `${fmt(startDate)}–${fmt(newEndDate)}`;
+  const fmt = (d) => {
+    const x = new Date(d);
+    const dd = String(x.getDate()).padStart(2, "0");
+    const mm = String(x.getMonth() + 1).padStart(2, "0");
+    const yyyy = x.getFullYear();
+    const hh = String(x.getHours()).padStart(2, "0");
+    const mi = String(x.getMinutes()).padStart(2, "0");
+    return `${dd}.${mm}.${yyyy}. ${hh}:${mi}`;
+  };
+  const titleDate = `${fmt(startDate)}–${fmt(newEndDate)}`;
 
-        let payloadNotif = null;
+  // ---- dopunske info o terminu ----
+  const appt = (appointments || []).find(x => x.id === r.id) || {};
+  const empObj = (employees || []).find(e => e.username === empU);
+  const empName = empObj ? `${empObj.firstName || ""} ${empObj.lastName || ""}`.trim() : (empU || "radnica");
+  const client = (clients || []).find(c => c?.id === appt?.clientId);
+  const items = normalizeServices(appt, services);
+  const total = (appt?.totalAmountRsd ?? appt?.priceRsd ?? 0) || items.reduce((s, x) => s + (+x.priceRsd || 0), 0);
 
-        if (actorRole === "admin" || actorRole === "salon") {
-          // Admin/salon je promenio trajanje – obavesti radnicu
-          payloadNotif = {
-            kind: "toEmployee",
-            employeeUsername: empU,
-            title: "Vaš termin je pomeren",
-            body: titleDate,
-            screen: "/admin",
-            reason: "ADMIN_RESIZED"
-          };
-        } else if (actorRole === "worker") {
-          // Radnica je promenila – obavesti admina
-          const empObj = (employees || []).find(e => e.username === empU);
-          const empName = empObj ? `${empObj.firstName || ""} ${empObj.lastName || ""}`.trim() : (empU || "radnica");
-          payloadNotif = {
-            kind: "toAdmin",
-            title: "Radnica je pomerila termin",
-            body: `${empName} • ${titleDate}`,
-            screen: "/admin",
-            reason: "WORKER_RESIZED"
-          };
-        }
+  const info = {
+    apptId: r.id,
+    startIso: startDate.toISOString(),
+    endIso: newEndDate.toISOString(),
+    employeeUsername: empU,
+    employeeName: empName,
+    clientName: client ? `${client.firstName || ""} ${client.lastName || ""}`.trim() : (appt?.clientName || ""),
+    clientPhone: client ? (client.phone || client.phoneNumber || "") : (appt?.clientPhone || ""),
+    serviceNames: items.map(s => s.name),
+    priceRsd: String(total || 0),
+    changeType: "RESIZE"
+  };
 
-        if (payloadNotif) {
-          await fetch("/api/pushMoveNotif", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payloadNotif)
-          });
-        }
-      } catch (e) {
-        console.warn("pushMoveNotif (resize) error:", e);
-      }
-      // === /NOTIFIKACIJA ===
+  let payloadNotif = null;
+  if (actorRole === "admin" || actorRole === "salon") {
+    // Admin/salon promenio trajanje – obavesti radnicu
+    payloadNotif = {
+      kind: "toEmployee",
+      employeeUsername: empU,
+      title: "Vaš termin je pomeren",
+      body: titleDate,
+      screen: "/admin",
+      reason: "ADMIN_RESIZED",
+      info
+    };
+  } else if (actorRole === "worker") {
+    // Radnica promenila – obavesti admina
+    payloadNotif = {
+      kind: "toAdmin",
+      title: "Radnica je pomerila termin",
+      body: `${empName} • ${titleDate}`,
+      screen: "/admin",
+      reason: "WORKER_RESIZED",
+      info
+    };
+  }
+
+  if (payloadNotif) {
+    await fetch("/api/pushMoveNotif", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payloadNotif)
+    });
+  }
+} catch (e) {
+  console.warn("pushMoveNotif (resize) error:", e);
+}
+// === /NOTIFIKACIJA ===
 
     } catch (err) {
       console.error("Failed to save resized end:", err);
@@ -775,65 +795,90 @@ async function onResizingMouseUp() {
     console.log("Drag saved successfully");
 
     // === NOTIF nakon drag&drop-a ===
-    try {
-      const actorRole = role; // "admin" | "salon" | "worker"
-      const fmt = (x) => {
-        const z = new Date(x);
-        const dd = String(z.getDate()).padStart(2, "0");
-        const mm = String(z.getMonth() + 1).padStart(2, "0");
-        const yyyy = z.getFullYear();
-        const hh = String(z.getHours()).padStart(2, "0");
-        const mi = String(z.getMinutes()).padStart(2, "0");
-        return `${dd}.${mm}.${yyyy}. ${hh}:${mi}`;
-      };
-      const titleDate = `${fmt(newStart)}–${fmt(newEnd)}`;
+try {
+  const actorRole = role; // "admin" | "salon" | "worker"
+  const fmt = (x) => {
+    const z = new Date(x);
+    const dd = String(z.getDate()).padStart(2, "0");
+    const mm = String(z.getMonth() + 1).padStart(2, "0");
+    const yyyy = z.getFullYear();
+    const hh = String(z.getHours()).padStart(2, "0");
+    const mi = String(z.getMinutes()).padStart(2, "0");
+    return `${dd}.${mm}.${yyyy}. ${hh}:${mi}`;
+  };
+  const titleDate = `${fmt(newStart)}–${fmt(newEnd)}`;
 
-      const empObj = (employees || []).find(e => e.username === (ghost.emp || d.empFrom));
-      const empName = empObj
-        ? `${empObj.firstName || ""} ${empObj.lastName || ""}`.trim()
-        : (ghost.emp || "radnica");
+  const empObj = (employees || []).find(e => e.username === (ghost.emp || d.empFrom));
+  const empName = empObj
+    ? `${empObj.firstName || ""} ${empObj.lastName || ""}`.trim()
+    : (ghost.emp || "radnica");
 
-      let payloadNotif = null;
+  // ---- dopunske info o terminu ----
+  const appt = (appointments || []).find(x => x.id === d.id) || {};
+  const client = (clients || []).find(c => c?.id === appt?.clientId);
+  const items = normalizeServices(appt, services);
+  const total = (appt?.totalAmountRsd ?? appt?.priceRsd ?? 0) || items.reduce((s, x) => s + (+x.priceRsd || 0), 0);
 
-      if (actorRole === "admin" || actorRole === "salon") {
-        payloadNotif = movedToAnotherEmp
-          ? {
-              kind: "toEmployee",
-              employeeUsername: ghost.emp,
-              title: "Dodeljen vam je novi termin",
-              body: titleDate,
-              screen: "/admin",
-              reason: "ADMIN_MOVED_TO_NEW_EMP"
-            }
-          : {
-              kind: "toEmployee",
-              employeeUsername: ghost.emp,
-              title: "Vaš termin je pomeren",
-              body: titleDate,
-              screen: "/admin",
-              reason: "ADMIN_RESCHEDULED"
-            };
-      } else if (actorRole === "worker") {
-        payloadNotif = {
-          kind: "toAdmin",
-          title: "Radnica je pomerila termin",
-          body: `${empName} • ${titleDate}`,
+  const info = {
+    apptId: d.id,
+    startIso: newStart.toISOString(),
+    endIso: newEnd.toISOString(),
+    previousEmployeeUsername: d.empFrom,
+    newEmployeeUsername: ghost.emp,
+    employeeUsername: ghost.emp,          // radi kompatibilnosti
+    employeeName: empName,
+    movedToAnotherEmp: movedToAnotherEmp ? "true" : "false",
+    clientName: client ? `${client.firstName || ""} ${client.lastName || ""}`.trim() : (appt?.clientName || ""),
+    clientPhone: client ? (client.phone || client.phoneNumber || "") : (appt?.clientPhone || ""),
+    serviceNames: items.map(s => s.name),
+    priceRsd: String(total || 0),
+    changeType: movedToAnotherEmp ? "MOVE_TO_ANOTHER_EMP" : "MOVE_SAME_EMP"
+  };
+
+  let payloadNotif = null;
+
+  if (actorRole === "admin" || actorRole === "salon") {
+    payloadNotif = movedToAnotherEmp
+      ? {
+          kind: "toEmployee",
+          employeeUsername: ghost.emp,
+          title: "Dodeljen vam je novi termin",
+          body: titleDate,
           screen: "/admin",
-          reason: "WORKER_RESCHEDULED"
+          reason: "ADMIN_MOVED_TO_NEW_EMP",
+          info
+        }
+      : {
+          kind: "toEmployee",
+          employeeUsername: ghost.emp,
+          title: "Vaš termin je pomeren",
+          body: titleDate,
+          screen: "/admin",
+          reason: "ADMIN_RESCHEDULED",
+          info
         };
-      }
+  } else if (actorRole === "worker") {
+    payloadNotif = {
+      kind: "toAdmin",
+      title: "Radnica je pomerila termin",
+      body: `${empName} • ${titleDate}`,
+      screen: "/admin",
+      reason: "WORKER_RESCHEDULED",
+      info
+    };
+  }
 
-      if (payloadNotif) {
-        await fetch("/api/pushMoveNotif", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payloadNotif)
-        });
-      }
-    } catch (e) {
-      console.warn("pushMoveNotif (drag) error:", e);
-    }
-    // === /NOTIF ===
+  if (payloadNotif) {
+    await fetch("/api/pushMoveNotif", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payloadNotif)
+    });
+  }
+} catch (e) {
+  console.warn("pushMoveNotif (drag) error:", e);
+}
+// === /NOTIF ===
 
   } catch (err) {
     console.error("Drag save failed:", err);
