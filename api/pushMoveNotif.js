@@ -32,12 +32,9 @@ async function getTokensForEmployee(db, username) {
 
 async function getTokensForAdmins(db) {
   const out = new Set();
-
-  // role == admin
   const byRole = await db.collection("fcmTokens").where("role", "==", "admin").get();
   byRole.forEach(d => { const t = d.data()?.token; if (t) out.add(t); });
 
-  // username == admin (radi unazad kompatibilnosti)
   const byUname = await db.collection("fcmTokens").where("username", "==", "admin").get();
   byUname.forEach(d => { const t = d.data()?.token; if (t) out.add(t); });
 
@@ -55,28 +52,27 @@ function stringifyData(obj = {}) {
 
 /* --- util: formatiranje tela poruke --- */
 function buildRichBody(msg) {
-  // Ako je body već poslat iz fronta, bogati ga samo ako ima dodatne podatke.
   const info = msg.info || {};
   const line = (s) => (s && String(s).trim()) ? String(s).trim() : null;
 
-  // Ljudsko ime klijenta (ako postoji)
-  const clientName = info.clientName && info.clientName.trim() ? `Klijent: ${info.clientName.trim()}` : null;
+  const clientName = info.clientName && info.clientName.trim()
+    ? `Klijent: ${info.clientName.trim()}`
+    : null;
 
-  // Usluge: niz imena -> "Usluga: A, B"
   let servicesLine = null;
   try {
     const names = Array.isArray(info.serviceNames) ? info.serviceNames : [];
     if (names.length) servicesLine = `Usluga: ${names.join(", ")}`;
-  } catch { /* ignore */ }
+  } catch {}
 
-  // Cena
-  const price = info.priceRsd && Number(info.priceRsd) > 0 ? `Cena: ${Number(info.priceRsd)} RSD` : null;
+  const price = info.priceRsd && Number(info.priceRsd) > 0
+    ? `Cena: ${Number(info.priceRsd)} RSD`
+    : null;
 
-  // Radnica (korisno kad admin dobija obaveštenje)
-  const emp = info.employeeName && info.employeeName.trim() ? `Radnica: ${info.employeeName.trim()}` : null;
+  const emp = info.employeeName && info.employeeName.trim()
+    ? `Radnica: ${info.employeeName.trim()}`
+    : null;
 
-  // Datum-vreme: koristi već formatiran body ako je stigao (npr. "dd.mm.yyyy. HH:MM–HH:MM"),
-  // a ako nije, pokušaj sam da sastaviš iz startIso/endIso
   let when = msg.body && msg.body.trim() ? msg.body.trim() : null;
   if (!when) {
     try {
@@ -87,7 +83,7 @@ function buildRichBody(msg) {
         const fmt = (d) => `${dd(d.getDate())}.${dd(d.getMonth()+1)}.${d.getFullYear()}. ${dd(d.getHours())}:${dd(d.getMinutes())}`;
         when = `${fmt(s)}–${fmt(e)}`;
       }
-    } catch { /* ignore */ }
+    } catch {}
   }
 
   const parts = [line(when), line(clientName), line(servicesLine), line(price), line(emp)].filter(Boolean);
@@ -99,7 +95,6 @@ const LAST_TAGS = globalThis.__notif_last_tags__ || new Map();
 globalThis.__notif_last_tags__ = LAST_TAGS;
 
 function makeTag(msg) {
-  // Grupisanje po razlogu + ID termina + radnica, isto kao i u prethodnoj verziji
   const reason = msg.reason || "GEN";
   const apptId = msg?.info?.apptId || "";
   const empU   = msg.employeeUsername || "";
@@ -118,7 +113,7 @@ export default async function handler(req, res) {
     const db  = getFirestore();
     const msg = req.body || {};
     // očekuje: { kind: "toEmployee"|"toAdmin", title, body?, screen, reason, employeeUsername?, info? }
-    // referenca na tvoju postojeću implementaciju i očekivani payload sa fronta :contentReference[oaicite:2]{index=2}:contentReference[oaicite:3]{index=3}
+    // frontend payload dolazi iz AdminCalendar akcija (drag/resize) :contentReference[oaicite:2]{index=2}
 
     // Odredi mete
     let targetTokens = [];
@@ -134,21 +129,20 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, sent: 0, note: "no tokens (from fcmTokens)" });
     }
 
-    // Napravi tag i sprovedi soft dedupe (2s prozor)
+    // Dedupe po tag-u u kratkom intervalu
     const tag = makeTag(msg);
     const last = LAST_TAGS.get(tag);
     const now  = Date.now();
     if (last && (now - last) < 2000) {
-      // preskoči duplikat istog konteksta u kratkom intervalu
       return res.status(200).json({ ok: true, skipped: "duplicate tag", tag });
     }
     LAST_TAGS.set(tag, now);
 
     // Naslov i bogato telo poruke
-    const title = msg.title || "Obaveštenje";
+    const title    = msg.title || "Obaveštenje";
     const richBody = buildRichBody(msg);
 
-    // DATA sekcija (za app logiku i klik navigaciju)
+    // DATA payload (za SW/app logiku i navigaciju)
     const baseData = {
       title,
       body: richBody,
@@ -156,45 +150,32 @@ export default async function handler(req, res) {
       reason: msg.reason || "APPT_MOVED",
       ts: String(Date.now()),
     };
-    const infoData = stringifyData(msg.info || {});
+    const infoData    = stringifyData(msg.info || {});
     const dataPayload = { ...baseData, ...infoData };
 
-    // Slanje – kombinujemo data + webpush.notification:
-    // - data: za service worker / onMessage logiku u app-u
-    // - webpush.notification: da browser prikaže notifikaciju čak i kad SW ne presretne (i da se spoje po tag-u)
+    // DATA-only slanje (bez webpush.notification da ne duplira prikaz)
     const r = await getMessaging().sendEachForMulticast({
       tokens: targetTokens,
       data: dataPayload,
       webpush: {
-        notification: {
-          title,
-          body: richBody,
-          tag,
-          renotify: false, // ako stigne ista poruka sa istim tag-om, ne „blinkuje“ ponovo
-        },
-        fcmOptions: {
-          link: msg.screen || "/admin",
-        },
+        // ostavimo samo link za klik-navigaciju
+        fcmOptions: { link: msg.screen || "/admin" },
       },
-      // Android / iOS opcioni hintovi za grupisanje (ne smetaju webu)
       android: {
         collapseKey: tag,
         priority: "high",
-        notification: { tag }
+        notification: { tag },
       },
       apns: {
         headers: { "apns-collapse-id": tag }
       }
     });
 
-    // Opcionalno: možeš čistiti nevažeće tokene (410/NotRegistered) – ovde samo prijavljujemo
-    const result = {
+    return res.status(200).json({
       ok: true,
       successCount: r.successCount,
       failureCount: r.failureCount,
-    };
-
-    return res.status(200).json(result);
+    });
   } catch (e) {
     console.error(e);
     return res.status(500).json({ ok: false, error: e.message || String(e) });
