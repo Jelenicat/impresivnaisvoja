@@ -7,6 +7,10 @@ import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
 // u suprotnom biramo sliku po nazivu (fallback).
 const IMG_BY_NAME = (name = "") => {
   const n = name.toLowerCase();
+
+  if (n.includes("trepavic") || n.includes("obrve") || n === "trepavice i obrve") {
+    return "/trepavice1.webp"; // stavi u /public/ kao trepavice1.webp
+  }
   if (n.includes("šećer") || n.includes("secer")) return "/depilacijapasta.webp";
   if (n.includes("depil")) return "/depilacija.webp";
   if (n.includes("manik")) return "/manikir.webp";

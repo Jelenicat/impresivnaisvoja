@@ -60,7 +60,7 @@ function imagesForCategory(name = "") {
     return ["/depilacijapasta.webp"];
   }
   if (n.includes("depil")) {
-    return ["/depilacija1.webp"];
+    return ["/depilacija.webp"];
   }
   return ["/usluge1.webp"];
 }
