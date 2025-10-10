@@ -3,6 +3,7 @@ import { initializeApp, getApps, cert } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
 
+/* --- init firebase-admin --- */
 function initAdmin() {
   if (getApps().length) return;
   const projectId   = process.env.FIREBASE_PROJECT_ID;
@@ -15,39 +16,66 @@ function initAdmin() {
   initializeApp({ credential: cert({ projectId, clientEmail, privateKey }) });
 }
 
-function tokensFromDoc(data) {
-  if (!data) return [];
-  const one = data.fcmToken ? [data.fcmToken] : [];
-  const many = Array.isArray(data.fcmTokens) ? data.fcmTokens : [];
-  return [...new Set([...one, ...many])].filter(Boolean);
+/* --- helpers: čitanje iz fcmTokens --- */
+async function getTokensForEmployee(db, username) {
+  if (!username) return [];
+  const qs = await db.collection("fcmTokens")
+    .where("username", "==", username)
+    .get();
+  const out = new Set();
+  qs.forEach(d => {
+    const t = d.data()?.token;
+    if (t) out.add(t);
+  });
+  return [...out];
 }
 
+async function getTokensForAdmins(db) {
+  // Sve admin uređaje (role == "admin"), plus fallback na username == "admin"
+  const out = new Set();
+
+  const byRole = await db.collection("fcmTokens")
+    .where("role", "==", "admin")
+    .get();
+  byRole.forEach(d => {
+    const t = d.data()?.token;
+    if (t) out.add(t);
+  });
+
+  const byUname = await db.collection("fcmTokens")
+    .where("username", "==", "admin")
+    .get();
+  byUname.forEach(d => {
+    const t = d.data()?.token;
+    if (t) out.add(t);
+  });
+
+  return [...out];
+}
+
+/* --- handler --- */
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-    res.status(405).json({ ok:false, error:"Method not allowed" });
+    res.status(405).json({ ok: false, error: "Method not allowed" });
     return;
   }
+
   try {
     initAdmin();
     const db = getFirestore();
-    const msg = await req.body; // kind, title, body, screen, reason, employeeUsername?
+    const msg = req.body || {}; // { kind, title, body, screen, reason, employeeUsername? }
 
     let targetTokens = [];
 
     if (msg.kind === "toEmployee") {
       const uname = (msg.employeeUsername || "").trim();
-      if (uname) {
-        const s = await db.collection("employees").doc(uname).get();
-        targetTokens = tokensFromDoc(s.data());
-      }
+      targetTokens = await getTokensForEmployee(db, uname);
     } else if (msg.kind === "toAdmin") {
-      // po zahtevu: admin. Ako želiš i salon, dodaš i "salon" doc ovde.
-      const a = await db.collection("admins").doc("admin").get();
-      targetTokens = tokensFromDoc(a.data());
+      targetTokens = await getTokensForAdmins(db);
     }
 
     if (!targetTokens.length) {
-      res.status(200).json({ ok:true, sent:0, note:"no tokens" });
+      res.status(200).json({ ok: true, sent: 0, note: "no tokens (from fcmTokens)" });
       return;
     }
 
@@ -60,18 +88,21 @@ export default async function handler(req, res) {
         screen: msg.screen || "/admin",
         reason: msg.reason || "APPT_MOVED",
         ts: String(Date.now()),
-      }
+      },
     };
 
-    // multicast
     const r = await getMessaging().sendEachForMulticast({
       tokens: targetTokens,
-      ...payload
+      ...payload,
     });
 
-    res.status(200).json({ ok:true, successCount: r.successCount, failureCount: r.failureCount });
+    res.status(200).json({
+      ok: true,
+      successCount: r.successCount,
+      failureCount: r.failureCount,
+    });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ ok:false, error: e.message || String(e) });
+    res.status(500).json({ ok: false, error: e.message || String(e) });
   }
 }
