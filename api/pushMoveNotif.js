@@ -3,6 +3,9 @@ import { initializeApp, getApps, cert } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
 
+/* === konfiguracija domena za apsolutne linkove === */
+const ORIGIN = process.env.PUBLIC_WEB_ORIGIN || "https://tvoj-domen.rs"; // npr. https://abeauty.vercel.app
+
 /* --- init firebase-admin --- */
 function initAdmin() {
   if (getApps().length) return;
@@ -90,7 +93,7 @@ function buildRichBody(msg) {
   return parts.join("\n");
 }
 
-/* --- dedupe prozor (2 sekunde) da sprečimo brze duple isporuke sa istim tag-om --- */
+/* --- dedupe prozor (2 sekunde) da sprečimo brze duple sa istim tag-om --- */
 const LAST_TAGS = globalThis.__notif_last_tags__ || new Map();
 globalThis.__notif_last_tags__ = LAST_TAGS;
 
@@ -101,39 +104,26 @@ function makeTag(msg) {
   return `${reason}:${apptId}:${empU}`;
 }
 
-/* --- util: napravi URL koji vodi baš na termin --- */
+/* --- util: napravi REL i ABS URL koji vode baš na termin --- */
 function buildTargetUrl(msg = {}) {
-  // default ruta po primaocu
   const defBase = msg.kind === "toEmployee" ? "/worker" : "/admin";
   let base = (msg.screen || defBase).trim();
 
-  // polja iz info/payload-a
   const info   = msg.info || {};
   const apptId = info.apptId || "";
   const emp    = info.newEmployeeUsername || info.employeeUsername || msg.employeeUsername || "";
 
-  try {
-    // podrži relativan i apsolutan URL
-    const abs = base.startsWith("http")
-      ? base
-      : new URL(base, (typeof self !== "undefined" && self.location?.origin) || "https://example.com").toString();
+  const isAbs = /^https?:\/\//i.test(base);
+  const absBase = isAbs ? base : new URL(base, ORIGIN).toString();
 
-    const u = new URL(abs);
-    if (apptId) u.searchParams.set("appointmentId", apptId);
-    if (emp)    u.searchParams.set("employeeId", emp);
+  const u = new URL(absBase);
+  if (apptId) u.searchParams.set("appointmentId", apptId);
+  if (emp)    u.searchParams.set("employeeId", emp);
 
-    // vrati relativu ako je i ulaz bila relativa
-    if (!base.startsWith("http")) {
-      return u.pathname + (u.search ? u.search : "") + (u.hash || "");
-    }
-    return u.toString();
-  } catch {
-    // fallback: ručno dodaj query string
-    const qs = [];
-    if (apptId) qs.push(`appointmentId=${encodeURIComponent(apptId)}`);
-    if (emp)    qs.push(`employeeId=${encodeURIComponent(emp)}`);
-    return base + (qs.length ? (base.includes("?") ? "&" : "?") + qs.join("&") : "");
-  }
+  const absoluteLink = u.toString();
+  const relativeLink = u.pathname + (u.search || "") + (u.hash || "");
+
+  return { absoluteLink, relativeLink };
 }
 
 /* --- handler --- */
@@ -176,38 +166,41 @@ export default async function handler(req, res) {
     const title    = msg.title || "Obaveštenje";
     const richBody = buildRichBody(msg);
 
-    // URL koji će otvoriti baš taj termin
-    const targetUrl = buildTargetUrl(msg);
+    // URL-ovi koji vode baš na termin
+    const { absoluteLink, relativeLink } = buildTargetUrl(msg);
 
     // DATA payload (za SW/app logiku i navigaciju)
-    const info      = msg.info || {};
-    const empId     = info.newEmployeeUsername || info.employeeUsername || msg.employeeUsername || "";
+    const info  = msg.info || {};
+    const empId = info.newEmployeeUsername || info.employeeUsername || msg.employeeUsername || "";
 
     const baseData = {
       title,
       body: richBody,
-      screen: targetUrl,                    // ⬅️ kompletan URL ka terminu
+      screen: relativeLink,          // relativni – koristan za internu navigaciju
+      url: absoluteLink,             // apsolutni – koristi se u fcmOptions.link i direktnom otvaranju
       reason: msg.reason || "APPT_MOVED",
       ts: String(Date.now()),
-      // eksplicitno dodaj ID-eve da SW ima i pojedinačno polje
       appointmentId: info.apptId || "",
-      employeeId: empId,
+      employeeId: empId
     };
     const infoData    = stringifyData(info);
     const dataPayload = { ...baseData, ...infoData };
 
-    // DATA-only slanje (bez webpush.notification da ne duplira prikaz)
+    // Slanje – uz webpush.notification + fcmOptions.link (apsolutni)
     const r = await getMessaging().sendEachForMulticast({
       tokens: targetTokens,
       data: dataPayload,
       webpush: {
-        // fallback link u slučaju da SW ne presretne klik
-        fcmOptions: { link: targetUrl },   // ⬅️ isto ovde
+        fcmOptions: { link: absoluteLink },
+        notification: {
+          title,
+          body: richBody
+        }
       },
       android: {
         collapseKey: tag,
         priority: "high",
-        notification: { tag },
+        notification: { tag }
       },
       apns: {
         headers: { "apns-collapse-id": tag }
@@ -217,7 +210,7 @@ export default async function handler(req, res) {
     return res.status(200).json({
       ok: true,
       successCount: r.successCount,
-      failureCount: r.failureCount,
+      failureCount: r.failureCount
     });
   } catch (e) {
     console.error(e);
