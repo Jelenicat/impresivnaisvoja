@@ -48,8 +48,8 @@ function imagesForCategory(name = "") {
   }
   if (n.includes("manik")) {
     return [
-      "/manikir1.webp", "/manikir2.webp", "/manikir4.webp",
-      "/manikir5.webp", "/manikir6.webp", "/manikir7.webp",
+      "/manikir.webp", "/manikir2.webp", "/manikir4.webp",
+       "/manikir6.webp", "/manikir7.webp",
       "/manikir8.webp", "/manikir9.webp", "/manikir10.webp"
     ];
   }

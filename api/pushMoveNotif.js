@@ -101,6 +101,40 @@ function makeTag(msg) {
   return `${reason}:${apptId}:${empU}`;
 }
 
+/* --- util: napravi URL koji vodi baš na termin --- */
+function buildTargetUrl(msg = {}) {
+  // osnovni path (može da bude i apsolutni URL)
+  let base = (msg.screen || "/admin").trim();
+
+  // polja iz info/payload-a
+  const info   = msg.info || {};
+  const apptId = info.apptId || "";
+  const emp    = info.newEmployeeUsername || info.employeeUsername || msg.employeeUsername || "";
+
+  try {
+    // podrži relativan i apsolutan URL
+    const abs = base.startsWith("http")
+      ? base
+      : new URL(base, (typeof self !== "undefined" && self.location?.origin) || "https://example.com").toString();
+
+    const u = new URL(abs);
+    if (apptId) u.searchParams.set("appointmentId", apptId);
+    if (emp)    u.searchParams.set("employeeId", emp);
+
+    // vrati relativu ako je i ulaz bila relativa
+    if (!base.startsWith("http")) {
+      return u.pathname + (u.search ? u.search : "") + (u.hash || "");
+    }
+    return u.toString();
+  } catch {
+    // fallback: ručno dodaj query string
+    const qs = [];
+    if (apptId) qs.push(`appointmentId=${encodeURIComponent(apptId)}`);
+    if (emp)    qs.push(`employeeId=${encodeURIComponent(emp)}`);
+    return base + (qs.length ? (base.includes("?") ? "&" : "?") + qs.join("&") : "");
+  }
+}
+
 /* --- handler --- */
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -113,7 +147,6 @@ export default async function handler(req, res) {
     const db  = getFirestore();
     const msg = req.body || {};
     // očekuje: { kind: "toEmployee"|"toAdmin", title, body?, screen, reason, employeeUsername?, info? }
-    // frontend payload dolazi iz AdminCalendar akcija (drag/resize) :contentReference[oaicite:2]{index=2}
 
     // Odredi mete
     let targetTokens = [];
@@ -142,11 +175,14 @@ export default async function handler(req, res) {
     const title    = msg.title || "Obaveštenje";
     const richBody = buildRichBody(msg);
 
+    // URL koji će otvoriti baš taj termin
+    const targetUrl = buildTargetUrl(msg);
+
     // DATA payload (za SW/app logiku i navigaciju)
     const baseData = {
       title,
       body: richBody,
-      screen: msg.screen || "/admin",
+      screen: targetUrl,                    // ⬅️ postavi kompletan URL
       reason: msg.reason || "APPT_MOVED",
       ts: String(Date.now()),
     };
@@ -158,8 +194,8 @@ export default async function handler(req, res) {
       tokens: targetTokens,
       data: dataPayload,
       webpush: {
-        // ostavimo samo link za klik-navigaciju
-        fcmOptions: { link: msg.screen || "/admin" },
+        // fallback link u slučaju da SW ne presretne klik
+        fcmOptions: { link: targetUrl },   // ⬅️ isto ovde
       },
       android: {
         collapseKey: tag,

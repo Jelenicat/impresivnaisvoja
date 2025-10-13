@@ -14,7 +14,7 @@ const IMG_BY_NAME = (name = "") => {
   if (n.includes("šećer") || n.includes("secer")) return "/depilacijapasta.webp";
   if (n.includes("depil")) return "/depilacija.webp";
   if (n.includes("manik")) return "/manikir.webp";
-  if (n.includes("pedik")) return "/pedikir.webp";
+  if (n.includes("pedik")) return "/pedikir3.webp";
   return "/depilacija.webp";
 };
 
