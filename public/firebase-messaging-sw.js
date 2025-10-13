@@ -51,20 +51,16 @@ self.addEventListener("fetch", (event) => {
   const isHTML = req.headers.get("accept")?.includes("text/html");
 
   if (isHTML) {
-    event.respondWith(
-      fetch(req).catch(() => caches.match("/index.html"))
-    );
+    event.respondWith(fetch(req).catch(() => caches.match("/index.html")));
   } else {
-    event.respondWith(
-      caches.match(req).then((res) => res || fetch(req))
-    );
+    event.respondWith(caches.match(req).then((res) => res || fetch(req)));
   }
 });
 
 /* ----------------- FCM background notifikacije ----------------- */
 /*
    Data-only pristup:
-   - Backend šalje SVE u `data` (title, body, url/screen, appointmentId, employeeId…)
+   - Backend šalje SVE u `data` (title, body, url/screen, appointmentId/apptId, employeeId/employeeUsername…)
    - Ovdje sami prikazujemo notifikaciju (tačno jedna)
    - Ako stigne i `notification`, fallback-ujemo na njega (kompatibilnost)
 */
@@ -87,10 +83,12 @@ if (messaging && messaging.onBackgroundMessage) {
         Object.entries(rawData).map(([k, v]) => [k, String(v ?? "")])
       );
 
-      // Normalize: ako je backend poslao employeeUsername, setuj i employeeId radi URL-a
-      data.employeeId = data.employeeId || data.employeeUsername || "";
+      // Normalizacije – da klik handler uvek ima iste ključeve
+      data.employeeId    = data.employeeId || data.employeeUsername || "";
+      data.appointmentId = data.appointmentId || data.apptId || data.apptID || "";
+      data.url           = data.url || data.screen || "";
 
-      // Prikaži notifikaciju
+      // Prikaži notifikaciju (uvek jedna)
       self.registration.showNotification(title, {
         body,
         icon: "/icons/icon-192.png",
@@ -109,17 +107,22 @@ self.addEventListener("notificationclick", (event) => {
 
   const d = event.notification?.data || {};
 
-  // Prioritet: eksplicitni d.url, pa d.screen, pa fallback
-  let url = d.url || d.screen || "/me/history";
+  // Prioritet: eksplicitni d.url, pa d.screen, pa sigurni fallback na kalendar
+  let url = d.url || d.screen || "/admin/calendar";
 
   // Ako nije kompletan URL – pretvori u apsolutni na istom originu
   if (!/^https?:\/\//i.test(url)) {
     const u = new URL(url, self.location.origin);
-    // Ako nismo dobili eksplicitni d.url, dopuni query parametrima
+
+    // Ako url nije eksplicitno prosleđen kao `d.url`,
+    // dopuni query sa appointmentId/employeeId (uzima i apptId/employeeUsername fallback)
     if (!d.url) {
-      if (d.appointmentId) u.searchParams.set("appointmentId", d.appointmentId);
-      if (d.employeeId) u.searchParams.set("employeeId", d.employeeId);
+      const appt = d.appointmentId || d.apptId || d.apptID || "";
+      const emp  = d.employeeId || d.employeeUsername || "";
+      if (appt) u.searchParams.set("appointmentId", appt);
+      if (emp)  u.searchParams.set("employeeId", emp);
     }
+
     url = u.toString();
   }
 
@@ -132,7 +135,8 @@ self.addEventListener("notificationclick", (event) => {
         for (const client of list) {
           try {
             await client.focus();
-            await client.navigate(url); // isto porijeklo → dozvoljeno
+            // isto porijeklo → dozvoljeno; ako ne uspe, probaće se sledeći
+            await client.navigate(url);
             return;
           } catch (_) {
             // ako ne uspe, probaj sledeći ili padni na openWindow
