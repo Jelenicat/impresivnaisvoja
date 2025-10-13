@@ -447,15 +447,17 @@ useEffect(() => {
           changeType: "ADMIN_CREATED"
         };
 
-        const payloadNotif = {
-          kind: "toEmployee",
-          employeeUsername: a.employeeUsername,
-          title: "Dodeljen vam je novi termin",
-          body: titleDate,
-          screen: "/admin",
-          reason: "ADMIN_CREATED_APPOINTMENT",
-          info
-        };
+    const url = `/admin?appointmentId=${info.apptId}&employeeId=${info.employeeUsername}`;
+const payloadNotif = {
+  kind: "toEmployee",
+  employeeUsername: a.employeeUsername,
+  title: "Dodeljen vam je novi termin",
+  body: titleDate,
+  screen: url,
+  reason: "ADMIN_CREATED_APPOINTMENT",
+  info
+};
+
 
         await fetch("/api/pushMoveNotif", {
           method: "POST",
@@ -690,29 +692,32 @@ try {
     changeType: "RESIZE"
   };
 
-  let payloadNotif = null;
-  if (actorRole === "admin" || actorRole === "salon") {
-    // Admin/salon promenio trajanje – obavesti radnicu
-    payloadNotif = {
-      kind: "toEmployee",
-      employeeUsername: empU,
-      title: "Vaš termin je pomeren",
-      body: titleDate,
-      screen: "/admin",
-      reason: "ADMIN_RESIZED",
-      info
-    };
-  } else if (actorRole === "worker") {
-    // Radnica promenila – obavesti admina
-    payloadNotif = {
-      kind: "toAdmin",
-      title: "Radnica je pomerila termin",
-      body: `${empName} • ${titleDate}`,
-      screen: "/admin",
-      reason: "WORKER_RESIZED",
-      info
-    };
-  }
+const url = `/admin?appointmentId=${info.apptId}&employeeId=${info.employeeUsername}`;
+let payloadNotif = null;
+
+if (actorRole === "admin" || actorRole === "salon") {
+  // Admin/salon promenio trajanje – obavesti radnicu
+  payloadNotif = {
+    kind: "toEmployee",
+    employeeUsername: empU,
+    title: "Vaš termin je pomeren",
+    body: titleDate,
+    screen: url, // ⬅️ zamena
+    reason: "ADMIN_RESIZED",
+    info
+  };
+} else if (actorRole === "worker") {
+  // Radnica promenila – obavesti admina
+  payloadNotif = {
+    kind: "toAdmin",
+    title: "Radnica je pomerila termin",
+    body: `${empName} • ${titleDate}`,
+    screen: url, // ⬅️ zamena
+    reason: "WORKER_RESIZED",
+    info
+  };
+}
+
 
   if (payloadNotif) {
     await fetch("/api/pushMoveNotif", {
@@ -917,38 +922,39 @@ try {
     changeType: movedToAnotherEmp ? "MOVE_TO_ANOTHER_EMP" : "MOVE_SAME_EMP"
   };
 
-  let payloadNotif = null;
+const url = `/admin?appointmentId=${info.apptId}&employeeId=${info.employeeUsername}`;
+let payloadNotif = null;
 
-  if (actorRole === "admin" || actorRole === "salon") {
-    payloadNotif = movedToAnotherEmp
-      ? {
-          kind: "toEmployee",
-          employeeUsername: ghost.emp,
-          title: "Dodeljen vam je novi termin",
-          body: titleDate,
-          screen: "/admin",
-          reason: "ADMIN_MOVED_TO_NEW_EMP",
-          info
-        }
-      : {
-          kind: "toEmployee",
-          employeeUsername: ghost.emp,
-          title: "Vaš termin je pomeren",
-          body: titleDate,
-          screen: "/admin",
-          reason: "ADMIN_RESCHEDULED",
-          info
-        };
-  } else if (actorRole === "worker") {
-    payloadNotif = {
-      kind: "toAdmin",
-      title: "Radnica je pomerila termin",
-      body: `${empName} • ${titleDate}`,
-      screen: "/admin",
-      reason: "WORKER_RESCHEDULED",
-      info
-    };
-  }
+if (actorRole === "admin" || actorRole === "salon") {
+  payloadNotif = movedToAnotherEmp
+    ? {
+        kind: "toEmployee",
+        employeeUsername: ghost.emp,
+        title: "Dodeljen vam je novi termin",
+        body: titleDate,
+        screen: url, // ⬅️ zamena
+        reason: "ADMIN_MOVED_TO_NEW_EMP",
+        info
+      }
+    : {
+        kind: "toEmployee",
+        employeeUsername: ghost.emp,
+        title: "Vaš termin je pomeren",
+        body: titleDate,
+        screen: url, // ⬅️ zamena
+        reason: "ADMIN_RESCHEDULED",
+        info
+      };
+} else if (actorRole === "worker") {
+  payloadNotif = {
+    kind: "toAdmin",
+    title: "Radnica je pomerila termin",
+    body: `${empName} • ${titleDate}`,
+    screen: url, // ⬅️ zamena
+    reason: "WORKER_RESCHEDULED",
+    info
+  };
+}
 
   if (payloadNotif) {
     await fetch("/api/pushMoveNotif", {
