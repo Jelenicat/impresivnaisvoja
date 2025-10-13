@@ -62,11 +62,14 @@ self.addEventListener("fetch", (event) => {
    Data-only pristup:
    - Backend šalje SVE u `data` (title, body, url/screen, appointmentId/apptId, employeeId/employeeUsername…)
    - Ovdje sami prikazujemo notifikaciju (tačno jedna)
-   - Ako stigne i `notification`, fallback-ujemo na njega (kompatibilnost)
+   - Ako stigne i `notification`, ignorišemo (browser je već prikazuje)
 */
 if (messaging && messaging.onBackgroundMessage) {
   messaging.onBackgroundMessage((payload) => {
     try {
+      // 🚫 spreči duplo ako server već šalje webpush.notification
+      if (payload && payload.notification) return;
+
       const title =
         payload?.data?.title ||
         payload?.notification?.title ||
@@ -94,6 +97,8 @@ if (messaging && messaging.onBackgroundMessage) {
         icon: "/icons/icon-192.png",
         badge: "/icons/icon-192.png",
         data,
+        tag: data.reason || data.tag || "",
+        renotify: false,
       });
     } catch (_) {
       // swallow
@@ -104,7 +109,6 @@ if (messaging && messaging.onBackgroundMessage) {
 /* --------------- Klik na notifikaciju -> deep-link --------------- */
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-
   const d = event.notification?.data || {};
 
   // Prioritet: eksplicitni d.url, pa d.screen, pa sigurni fallback na kalendar
@@ -135,12 +139,9 @@ self.addEventListener("notificationclick", (event) => {
         for (const client of list) {
           try {
             await client.focus();
-            // isto porijeklo → dozvoljeno; ako ne uspe, probaće se sledeći
             await client.navigate(url);
             return;
-          } catch (_) {
-            // ako ne uspe, probaj sledeći ili padni na openWindow
-          }
+          } catch (_) {}
         }
       }
 

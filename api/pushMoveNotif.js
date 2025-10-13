@@ -1,10 +1,12 @@
-// api/pushMoveNotif.js
+// ==========================================
+// api/pushMoveNotif.js  (FINAL, no-dupes, deep-link OK)
+// ==========================================
 import { initializeApp, getApps, cert } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
 
 /* === konfiguracija domena za apsolutne linkove === */
-const ORIGIN = process.env.PUBLIC_WEB_ORIGIN || "https://tvoj-domen.rs"; // npr. https://abeauty.vercel.app
+const ORIGIN = process.env.PUBLIC_WEB_ORIGIN || "https://impresivnaisvoja.vercel.app";
 
 /* --- init firebase-admin --- */
 function initAdmin() {
@@ -22,34 +24,25 @@ function initAdmin() {
 /* --- helpers: čitanje iz fcmTokens --- */
 async function getTokensForEmployee(db, username) {
   if (!username) return [];
-  const qs = await db.collection("fcmTokens")
-    .where("username", "==", username)
-    .get();
+  const qs = await db.collection("fcmTokens").where("username", "==", username).get();
   const out = new Set();
-  qs.forEach(d => {
-    const t = d.data()?.token;
-    if (t) out.add(t);
-  });
+  qs.forEach(d => { const t = d.data()?.token; if (t) out.add(t); });
   return [...out];
 }
 
 async function getTokensForAdmins(db) {
   const out = new Set();
-  const byRole = await db.collection("fcmTokens").where("role", "==", "admin").get();
+  const byRole  = await db.collection("fcmTokens").where("role", "==", "admin").get();
   byRole.forEach(d => { const t = d.data()?.token; if (t) out.add(t); });
-
   const byUname = await db.collection("fcmTokens").where("username", "==", "admin").get();
   byUname.forEach(d => { const t = d.data()?.token; if (t) out.add(t); });
-
   return [...out];
 }
 
 /* --- util: sve vrednosti u string --- */
 function stringifyData(obj = {}) {
   const flat = {};
-  for (const [k, v] of Object.entries(obj)) {
-    flat[k] = typeof v === "string" ? v : JSON.stringify(v);
-  }
+  for (const [k, v] of Object.entries(obj)) flat[k] = typeof v === "string" ? v : JSON.stringify(v);
   return flat;
 }
 
@@ -58,9 +51,7 @@ function buildRichBody(msg) {
   const info = msg.info || {};
   const line = (s) => (s && String(s).trim()) ? String(s).trim() : null;
 
-  const clientName = info.clientName && info.clientName.trim()
-    ? `Klijent: ${info.clientName.trim()}`
-    : null;
+  const clientName = info.clientName && info.clientName.trim() ? `Klijent: ${info.clientName.trim()}` : null;
 
   let servicesLine = null;
   try {
@@ -68,13 +59,8 @@ function buildRichBody(msg) {
     if (names.length) servicesLine = `Usluga: ${names.join(", ")}`;
   } catch {}
 
-  const price = info.priceRsd && Number(info.priceRsd) > 0
-    ? `Cena: ${Number(info.priceRsd)} RSD`
-    : null;
-
-  const emp = info.employeeName && info.employeeName.trim()
-    ? `Radnica: ${info.employeeName.trim()}`
-    : null;
+  const price = info.priceRsd && Number(info.priceRsd) > 0 ? `Cena: ${Number(info.priceRsd)} RSD` : null;
+  const emp   = info.employeeName && info.employeeName.trim() ? `Radnica: ${info.employeeName.trim()}` : null;
 
   let when = msg.body && msg.body.trim() ? msg.body.trim() : null;
   if (!when) {
@@ -113,7 +99,7 @@ function buildTargetUrl(msg = {}) {
   const apptId = info.apptId || "";
   const emp    = info.newEmployeeUsername || info.employeeUsername || msg.employeeUsername || "";
 
-  const isAbs = /^https?:\/\//i.test(base);
+  const isAbs   = /^https?:\/\//i.test(base);
   const absBase = isAbs ? base : new URL(base, ORIGIN).toString();
 
   const u = new URL(absBase);
@@ -128,10 +114,7 @@ function buildTargetUrl(msg = {}) {
 
 /* --- handler --- */
 export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    res.status(405).json({ ok: false, error: "Method not allowed" });
-    return;
-  }
+  if (req.method !== "POST") return res.status(405).json({ ok: false, error: "Method not allowed" });
 
   try {
     initAdmin();
@@ -149,17 +132,13 @@ export default async function handler(req, res) {
       return res.status(400).json({ ok: false, error: "Invalid 'kind' (expected toEmployee|toAdmin)" });
     }
 
-    if (!targetTokens.length) {
-      return res.status(200).json({ ok: true, sent: 0, note: "no tokens (from fcmTokens)" });
-    }
+    if (!targetTokens.length) return res.status(200).json({ ok: true, sent: 0, note: "no tokens (from fcmTokens)" });
 
     // Dedupe po tag-u u kratkom intervalu
     const tag = makeTag(msg);
     const last = LAST_TAGS.get(tag);
     const now  = Date.now();
-    if (last && (now - last) < 2000) {
-      return res.status(200).json({ ok: true, skipped: "duplicate tag", tag });
-    }
+    if (last && (now - last) < 2000) return res.status(200).json({ ok: true, skipped: "duplicate tag", tag });
     LAST_TAGS.set(tag, now);
 
     // Naslov i bogato telo poruke
@@ -176,8 +155,8 @@ export default async function handler(req, res) {
     const baseData = {
       title,
       body: richBody,
-      screen: relativeLink,          // relativni – koristan za internu navigaciju
-      url: absoluteLink,             // apsolutni – koristi se u fcmOptions.link i direktnom otvaranju
+      screen: relativeLink,   // relativni – za internu navigaciju
+      url: absoluteLink,      // apsolutni – za fcmOptions.link i direktno otvaranje
       reason: msg.reason || "APPT_MOVED",
       ts: String(Date.now()),
       appointmentId: info.apptId || "",
@@ -194,7 +173,9 @@ export default async function handler(req, res) {
         fcmOptions: { link: absoluteLink },
         notification: {
           title,
-          body: richBody
+          body: richBody,
+          tag,          // konsoliduje istu notifikaciju
+          renotify: false
         }
       },
       android: {
@@ -202,18 +183,27 @@ export default async function handler(req, res) {
         priority: "high",
         notification: { tag }
       },
-      apns: {
-        headers: { "apns-collapse-id": tag }
-      }
+      apns: { headers: { "apns-collapse-id": tag } }
     });
 
-    return res.status(200).json({
-      ok: true,
-      successCount: r.successCount,
-      failureCount: r.failureCount
-    });
+    // --- Čišćenje loših tokena (sprečava "duple" sa više starih tokena) ---
+    const responses = r.responses || [];
+    await Promise.all(responses.map(async (resp, i) => {
+      if (!resp.success) {
+        const code = resp.error?.code || "";
+        if (code.includes('registration-token-not-registered') || code.includes('invalid-argument')) {
+          const badToken = targetTokens[i];
+          const qs = await db.collection('fcmTokens').where('token','==',badToken).get();
+          await Promise.all(qs.docs.map(d => d.ref.delete()));
+        }
+      }
+    }));
+
+    return res.status(200).json({ ok: true, successCount: r.successCount, failureCount: r.failureCount });
   } catch (e) {
     console.error(e);
     return res.status(500).json({ ok: false, error: e.message || String(e) });
   }
 }
+
+
