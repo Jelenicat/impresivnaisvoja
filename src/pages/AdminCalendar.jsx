@@ -388,6 +388,88 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
     unsubs.push(unsubHist);
     return () => unsubs.forEach(u => u && u());
   }, [role, currentUsername, dayStart]);
+// === Notifikacija radnici kad admin/salon KREIRA novi termin (ručno) ===
+useEffect(() => {
+  const FIVE_MIN = 5 * 60 * 1000;
+  const since = new Date(Date.now() - FIVE_MIN);
+
+  const qNew = query(
+    collection(db, "appointments"),
+    where("createdAt", ">=", since),
+    orderBy("createdAt", "desc")
+  );
+
+  const unsub = onSnapshot(qNew, (snap) => {
+    snap.docChanges().forEach(async (chg) => {
+      if (chg.type !== "added") return;
+
+      const a = { id: chg.doc.id, ...chg.doc.data() };
+
+      // samo kad ADMIN/SLON dodaju ručno
+      const addedByAdmin = role === "admin" || role === "salon";
+      const isManual =
+        a?.source === "manual" ||
+        a?.createdBy === "admin" ||
+        a?.createdBy === "salon";
+
+      if (!addedByAdmin || !isManual) return;
+
+      try {
+        const fmt = (d) => {
+          const x = d?.toDate ? d.toDate() : new Date(d);
+          const dd = String(x.getDate()).padStart(2, "0");
+          const mm = String(x.getMonth() + 1).padStart(2, "0");
+          const yyyy = x.getFullYear();
+          const hh = String(x.getHours()).padStart(2, "0");
+          const mi = String(x.getMinutes()).padStart(2, "0");
+          return `${dd}.${mm}.${yyyy}. ${hh}:${mi}`;
+        };
+        const titleDate = `${fmt(a.start)}–${fmt(a.end)}`;
+
+        const empObj = (employees || []).find(e => e.username === a.employeeUsername);
+        const empName = empObj ? `${empObj.firstName || ""} ${empObj.lastName || ""}`.trim() : (a.employeeUsername || "radnica");
+
+        const client = (clients || []).find(c => c?.id === a?.clientId);
+        const items = normalizeServices(a, services);
+        const total = (a?.totalAmountRsd ?? a?.priceRsd ?? 0)
+          || items.reduce((s, x) => s + (+x.priceRsd || 0), 0);
+
+        const info = {
+          apptId: a.id,
+          startIso: (a.start?.toDate?.() || new Date(a.start))?.toISOString?.(),
+          endIso: (a.end?.toDate?.() || new Date(a.end))?.toISOString?.(),
+          employeeUsername: a.employeeUsername,
+          employeeName: empName,
+          clientName: client ? `${client.firstName || ""} ${client.lastName || ""}`.trim() : (a?.clientName || ""),
+          clientPhone: client ? (client.phone || client.phoneNumber || "") : (a?.clientPhone || ""),
+          serviceNames: items.map(s => s.name),
+          priceRsd: String(total || 0),
+          changeType: "ADMIN_CREATED"
+        };
+
+        const payloadNotif = {
+          kind: "toEmployee",
+          employeeUsername: a.employeeUsername,
+          title: "Dodeljen vam je novi termin",
+          body: titleDate,
+          screen: "/admin",
+          reason: "ADMIN_CREATED_APPOINTMENT",
+          info
+        };
+
+        await fetch("/api/pushMoveNotif", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payloadNotif)
+        });
+      } catch (e) {
+        console.warn("pushMoveNotif (create) error:", e);
+      }
+    });
+  });
+
+  return () => unsub && unsub();
+}, [role, employees, services, clients]);
 
   function openCreateAt(date, employeeUsername) {
     const s = toJsDate(date) || new Date();
