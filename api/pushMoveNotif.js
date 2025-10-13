@@ -103,8 +103,9 @@ function makeTag(msg) {
 
 /* --- util: napravi URL koji vodi baš na termin --- */
 function buildTargetUrl(msg = {}) {
-  // osnovni path (može da bude i apsolutni URL)
-  let base = (msg.screen || "/admin").trim();
+  // default ruta po primaocu
+  const defBase = msg.kind === "toEmployee" ? "/worker" : "/admin";
+  let base = (msg.screen || defBase).trim();
 
   // polja iz info/payload-a
   const info   = msg.info || {};
@@ -179,14 +180,20 @@ export default async function handler(req, res) {
     const targetUrl = buildTargetUrl(msg);
 
     // DATA payload (za SW/app logiku i navigaciju)
+    const info      = msg.info || {};
+    const empId     = info.newEmployeeUsername || info.employeeUsername || msg.employeeUsername || "";
+
     const baseData = {
       title,
       body: richBody,
-      screen: targetUrl,                    // ⬅️ postavi kompletan URL
+      screen: targetUrl,                    // ⬅️ kompletan URL ka terminu
       reason: msg.reason || "APPT_MOVED",
       ts: String(Date.now()),
+      // eksplicitno dodaj ID-eve da SW ima i pojedinačno polje
+      appointmentId: info.apptId || "",
+      employeeId: empId,
     };
-    const infoData    = stringifyData(msg.info || {});
+    const infoData    = stringifyData(info);
     const dataPayload = { ...baseData, ...infoData };
 
     // DATA-only slanje (bez webpush.notification da ne duplira prikaz)
