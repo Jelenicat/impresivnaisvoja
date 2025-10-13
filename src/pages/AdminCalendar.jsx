@@ -172,6 +172,8 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
   const gridWrapRef = useRef(null);
   const [scrollY, setScrollY] = useState(0);
   const colBodyRefs = useRef(new Map());
+  const deepLinkOpenedRef = useRef({ id: null }); // sprečava ponovna otvaranja istog termina
+
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifItems, setNotifItems] = useState([]);
   const [hasUnread, setHasUnread] = useState(false);
@@ -341,6 +343,28 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
     }, 0);
     return () => clearTimeout(t);
   }, [focusApptId, appointments]);
+// Auto-open modal kada URL ima ?appointmentId=...
+useEffect(() => {
+  if (!focusApptId || !appointments?.length) return;
+
+  // već otvoren za isti id? ne otvaraj ponovo
+  if (deepLinkOpenedRef.current.id === focusApptId) return;
+
+  const appt = appointments.find(a => a.id === focusApptId);
+  if (!appt) return;
+
+  // otvori modal za taj termin
+  openEdit(appt);
+  deepLinkOpenedRef.current.id = focusApptId;
+
+  // opciono: očisti query da se modal ne otvara opet na re-render/refresh
+  try {
+    const u = new URL(window.location.href);
+    u.searchParams.delete("appointmentId");
+    u.searchParams.delete("employeeId");
+    window.history.replaceState({}, "", u.toString());
+  } catch {}
+}, [focusApptId, appointments]);
 
   useEffect(() => {
     const now = new Date();
