@@ -22,7 +22,7 @@ try {
 }
 
 /* --------------- PWA: jednostavan offline cache --------------- */
-const CACHE_NAME = "impresivna-v1";
+const CACHE_NAME = "impresivna-v2";
 const APP_SHELL = [
   "/", // SPA entry
   "/index.html",
@@ -112,7 +112,7 @@ self.addEventListener("notificationclick", (event) => {
   const d = event.notification?.data || {};
 
   // Prioritet: eksplicitni d.url, pa d.screen, pa sigurni fallback na kalendar
-  let url = d.url || d.screen || "/admin/calendar";
+  let url = d.url || d.screen || "/admin/kalendar";
 
   // Ako nije kompletan URL – pretvori u apsolutni na istom originu
   if (!/^https?:\/\//i.test(url)) {

@@ -92,7 +92,7 @@ function makeTag(msg) {
 
 /* --- util: napravi REL i ABS URL koji vode baš na termin --- */
 function buildTargetUrl(msg = {}) {
-  const defBase = msg.kind === "toEmployee" ? "/worker" : "/admin";
+  const defBase = msg.kind === "toEmployee" ? "/worker" : "/admin/kalendar";
   let base = (msg.screen || defBase).trim();
 
   const info   = msg.info || {};

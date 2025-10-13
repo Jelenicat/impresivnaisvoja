@@ -721,8 +721,9 @@ try {
 // Prvo definiši bazu URL-a zavisno od primaoca
 const base =
   actorRole === "admin" || actorRole === "salon"
-    ? "/worker"  // admin šalje radnici
-    : "/admin";  // radnica šalje adminu
+    ? "/worker"            // admin/salon → radnica
+    : "/admin/kalendar";   // radnica → admin
+
 
 const url = `${base}?appointmentId=${info.apptId}&employeeId=${info.employeeUsername}`;
 
@@ -958,8 +959,9 @@ try {
 // definiši bazu linka zavisno od primaoca
 const base =
   actorRole === "admin" || actorRole === "salon"
-    ? "/worker"  // admin šalje radnici
-    : "/admin";  // radnica šalje adminu
+    ? "/worker"            // admin/salon → radnica
+    : "/admin/kalendar";   // radnica → admin
+
 
 const url = `${base}?appointmentId=${info.apptId}&employeeId=${info.employeeUsername}`;
 
