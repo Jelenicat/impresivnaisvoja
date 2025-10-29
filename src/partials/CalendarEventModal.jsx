@@ -305,13 +305,39 @@ useEffect(() => {
   }, [selectedServiceObjs]);
 
   /* ---------- actions ---------- */
-  function onServiceToggle(id, checked){
-    setForm(f=>{
+function onServiceToggle(id, checked) {
+  setForm((f) => {
+    let nextServices;
+    if (serviceMode === "replace") {
+      nextServices = checked ? [id] : [];
+    } else {
       const set = new Set(f.services || []);
-      if (checked) set.add(id); else set.delete(id);
-      return { ...f, services: Array.from(set) };
-    });
-  }
+      if (checked) set.add(id);
+      else set.delete(id);
+      nextServices = Array.from(set);
+    }
+
+    // preračunaj sumu za nove usluge
+    const map = new Map((services || []).map(s => [s.id, s]));
+    const nextSum = (nextServices || []).reduce((sum, sid) => sum + (Number(map.get(sid)?.priceRsd) || 0), 0);
+
+    return {
+      ...f,
+      services: nextServices,
+      // u "replace" modu prepiši cenu na automatsku i otključaj auto trajanje
+      ...(serviceMode === "replace" ? { priceRsd: nextSum, } : {}),
+    };
+  });
+
+  // uvek vrati auto-kraj da se vreme prilagodi izboru usluga
+  if (manualEnd) setManualEnd(false);
+  // ako želiš da i u "replace" režimu uvek ide auto-cena:
+  if (serviceMode === "replace") setCustomPrice(false);
+}
+
+
+
+
 
   async function ensureNewClientIfNeeded(){
     if (isBlock) return null;
@@ -703,6 +729,61 @@ useEffect(() => {
   const [openTime, setOpenTime] = useState(false);
   const [openSvcs, setOpenSvcs] = useState(false);
   const [openPrice, setOpenPrice] = useState(false);
+  // Režim rada za izbor usluga: "add" (dodaj) ili "replace" (promeni)
+const [serviceMode, setServiceMode] = useState(value?.id ? "replace" : "add");
+
+useEffect(() => {
+  // pri otvaranju postojećeg termina: samo podesi režim i auto-kraj, ne diraj usluge
+  setMode(value?.id ? "replace" : "add", { squashSelection: false });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [value?.id]);
+
+
+
+// ⬇️ dodaj odmah iznad ovog bloka
+// ⬇️ REPLACE stari setMode ovim
+function setMode(next, { squashSelection = true } = {}) {
+  setServiceMode(next);
+
+  if (next === "replace") {
+    if (manualEnd) setManualEnd(false);
+    if (squashSelection) {
+      setForm(f => {
+        const arr = Array.isArray(f.services) ? f.services : [];
+        return arr.length <= 1 ? f : { ...f, services: [arr[arr.length - 1]] };
+      });
+    }
+  }
+
+  if (next === "add" && manualEnd) {
+    setManualEnd(false);
+  }
+}
+
+
+
+// ⬇️ ovo zamenjuje tvoj stari toggle
+function ServiceModeToggle() {
+  return (
+    <div className="svc-mode-toggle">
+      <button
+        type="button"
+        className={`svc-mode-btn ${serviceMode === "replace" ? "active" : ""}`}
+        onClick={() => setMode("replace")}   // seče izbor – namerno, jer je user kliknuo
+      >🔄 Promeni</button>
+
+      <button
+        type="button"
+        className={`svc-mode-btn ${serviceMode === "add" ? "active" : ""}`}
+        onClick={() => setMode("add")}
+      >➕ Dodaj</button>
+    </div>
+  );
+}
+
+
+
+
   const [openPay, setOpenPay] = useState(false);
   const [openNote, setOpenNote] = useState(false);
 // Desktop: da li je otvoren kompletan meni za usluge
@@ -806,6 +887,17 @@ const [desktopSvcsOpen, setDesktopSvcsOpen] = useState(false);
 .cal-modal .svc-search .icon{ position:absolute; left:12px; pointer-events:none; }
 .cal-modal .svc-search .input-plain{ padding-left:34px; }
 .cal-modal .svc-totals{ position:sticky; top:0; z-index:2; background:#fff; border:1px solid var(--border); border-radius:10px; padding:8px 10px; display:flex; align-items:center; justify-content:space-between; font-size:13px; margin-bottom:8px; }
+/* --- SERVICE MODE TOGGLE --- */
+.svc-mode-toggle{
+  display:flex; gap:8px; margin:6px 0 10px 0; flex-wrap:wrap;
+}
+.svc-mode-btn{
+  padding:6px 10px; border:1px solid var(--border); border-radius:10px;
+  background:#fff; cursor:pointer; font-weight:700; font-size:13px;
+}
+.svc-mode-btn.active{
+  background:var(--focus); border-color:#c7b299;
+}
 
 .svc-summary{ display:flex; align-items:center; justify-content:space-between; gap:12px; border:1px solid var(--border); background:#fff; border-radius:12px; padding:10px 12px; flex-wrap:wrap; }
 .svc-summary__names{ font-weight:700; min-width:180px; }
@@ -1152,63 +1244,76 @@ const [desktopSvcsOpen, setDesktopSvcsOpen] = useState(false);
                     <span>{openSvcs ? "▴" : "▾"}</span>
                   </button>
 
-                  {openSvcs && (
-                    <div className="section">
-                      <div className="svc-totals">
-                        <span>⏱️ Trajanje (auto): <b>{autoDurationMin} min</b></span>
-                      </div>
+              {openSvcs && (
+  <div className="section">
+    <div className="svc-totals">
+      <span>⏱️ Trajanje (auto): <b>{autoDurationMin} min</b></span>
+    </div>
 
-                      <div className="svc-search">
-                        <span className="icon">🔍</span>
-                        <input
-                          className="input input-plain"
-                          placeholder="Pretraži usluge… (naziv ili kategorija)"
-                          value={svcQuery}
-                          onChange={(e)=>setSvcQuery(e.target.value)}
-                        />
-                        {svcQuery && (
-                          <button className="pill" onClick={()=>setSvcQuery("")} title="Obriši pretragu" style={{position:"absolute", right:8}}>
-                            ✕
-                          </button>
-                        )}
-                      </div>
+    {/* Režim biranja usluga: "Promeni" ili "Dodaj" */}
+    <ServiceModeToggle />
 
-                      <div className="services">
-                        {filteredServices.map(s=>{
-                          const color = (categoriesMap?.get?.(s.categoryId)?.color) || "#ddd";
-                          const checked = (form.services||[]).includes(s.id);
-                          return (
-                            <label key={s.id} className="svc">
-                              <span className="svc-title">
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={(e)=>onServiceToggle(s.id, e.target.checked)}
-                                  style={{ width:18, height:18, marginRight:6 }}
-                                />
-                                <span className="color-dot" style={{background:color}}/>
-                                <span className="svc-name">{s.name}</span>
-                              </span>
-                              <span className="svc-meta">{s.durationMin}min · {s.priceRsd} RSD</span>
-                            </label>
-                          );
-                        })}
-                        {filteredServices.length===0 && (
-                          <div className="muted" style={{padding:"16px", textAlign:"center"}}>
-                            Nema definisanih usluga za ovu radnicu.
-                          </div>
-                        )}
+    <div className="svc-search">
+      <span className="icon">🔍</span>
+      <input
+        className="input input-plain"
+        placeholder="Pretraži usluge… (naziv ili kategorija)"
+        value={svcQuery}
+        onChange={(e)=>setSvcQuery(e.target.value)}
+      />
+      {svcQuery && (
+        <button
+          className="pill"
+          onClick={()=>setSvcQuery("")}
+          title="Obriši pretragu"
+          style={{position:"absolute", right:8}}
+        >
+          ✕
+        </button>
+      )}
+    </div>
 
-                        {ghostServices.length>0 && (
-                          <div className="note-inline" style={{ marginTop:8 }}>
-                            Ovaj termin sadrži usluge koje nisu u trenutnom katalogu:{" "}
-                            {ghostServices.map(g => g?.name || sid(g)).filter(Boolean).join(", ")}
-                          </div>
-                        )}
-                        <SelectedServiceCards />
-                      </div>
-                    </div>
-                  )}
+    <div className="services">
+      {filteredServices.map(s => {
+        const color = (categoriesMap?.get?.(s.categoryId)?.color) || "#ddd";
+        const checked = (form.services || []).includes(s.id);
+        return (
+          <label key={s.id} className="svc">
+            <span className="svc-title">
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={(e)=>onServiceToggle(s.id, e.target.checked)}
+                style={{ width:18, height:18, marginRight:6 }}
+              />
+              <span className="color-dot" style={{ background: color }} />
+              <span className="svc-name">{s.name}</span>
+            </span>
+            <span className="svc-meta">
+              {s.durationMin}min · {s.priceRsd} RSD
+            </span>
+          </label>
+        );
+      })}
+
+      {filteredServices.length === 0 && (
+        <div className="muted" style={{ padding:"16px", textAlign:"center" }}>
+          Nema definisanih usluga za ovu radnicu.
+        </div>
+      )}
+
+      {ghostServices.length > 0 && (
+        <div className="note-inline" style={{ marginTop:8 }}>
+          Ovaj termin sadrži usluge koje nisu u trenutnom katalogu:{" "}
+          {ghostServices.map(g => g?.name || sid(g)).filter(Boolean).join(", ")}
+        </div>
+      )}
+
+      <SelectedServiceCards />
+    </div>
+  </div>
+)}
+
                 </div>
               )}
 
@@ -1430,7 +1535,7 @@ const [desktopSvcsOpen, setDesktopSvcsOpen] = useState(false);
           <span>💰 Ukupno (auto): <b>{autoTotal} RSD</b></span>
           <span>⏱️ Trajanje (auto): <b>{autoDurationMin} min</b></span>
         </div>
-
+<ServiceModeToggle />
         <div className="svc-search">
           <span className="icon">🔍</span>
           <input

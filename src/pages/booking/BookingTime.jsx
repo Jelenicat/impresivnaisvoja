@@ -18,7 +18,7 @@ const SALON_HOURS = {
   7:[]
 };
 
-const MIN_STEP = 15;
+const MIN_STEP = 60;
 
 /* ---------- Utils ---------- */
 const toHM = s => { const [h,m]=String(s||"").split(":").map(Number); return {h:h||0,m:m||0}; };
@@ -30,6 +30,7 @@ const minHM = (a,b)=> cmpHM(a,b)<=0?a:b;
 const wd1to7 = d => (d.getDay()===0?7:d.getDay());
 const dayKey = d => { const x=new Date(d); x.setHours(0,0,0,0); return x.toISOString().slice(0,10); };
 const hhmm = d => d.toLocaleTimeString("sr-RS",{hour:"2-digit",minute:"2-digit"});
+const nice = (d, o={}) => d.toLocaleString("sr-RS", o);
 const niceDate = d => d.toLocaleDateString("sr-RS",{weekday:"short", day:"2-digit", month:"2-digit", year:"numeric"});
 
 // “danas” pomoćnici
@@ -117,7 +118,7 @@ function pickDayFromSchedule(sched, date){
 /* ---------- Skill helpers ---------- */
 function canEmployeeDo(service, employee){
   if (!employee) return true; // "Prvi dostupan" – ne filtriramo
-  const sids = Array.isArray(employee.serviceIds) ? employee.serviceIds : [];
+  const sids = Array.isArray(employee.serviceId) ? employee.serviceId : Array.isArray(employee.serviceIds) ? employee.serviceIds : [];
   const cids = Array.isArray(employee.categoryIds) ? employee.categoryIds : [];
   const sid = service?.serviceId || service?.id || null;
   const cid = service?.categoryId || null;
@@ -157,8 +158,8 @@ function getCartKey(){
     return "bookingCart:anon";
   }
 }
-function splitName(full=""){
-  const parts = String(full||"").trim().split(/\s+/);
+function splitName(full = "") {
+  const parts = String(full || "").trim().split(/\s+/);
   const first = parts.shift() || "";
   const last  = parts.join(" ");
   return { first, last };
@@ -171,6 +172,12 @@ export default function BookingTime(){
   const client = useMemo(()=>getLoggedClient(),[]);
 
   const today0 = startOfToday();
+  /* ✅ OGRANIČENJE: poslednji dozvoljeni dan za izbor (danas + 14 dana, uključivo) */
+  const maxDate = useMemo(() => {
+    const x = new Date(today0);
+    x.setDate(x.getDate() + 14); // poslednji dozvoljeni dan
+    return x;
+  }, [today0]);
 
   // 1) Usluge iz korpe (vezano za korisnika) + migracija sa starog ključa
   const [cart, setCart] = useState(()=>{
@@ -190,12 +197,13 @@ export default function BookingTime(){
 
   // 2) Employees + najnovije smene po useru
   const [employees,setEmployees]=useState([]);
-  useEffect(()=>{
-    const qEmps = query(collection(db,"employees"), orderBy("username"));
-    return onSnapshot(qEmps, snap=>{
-      setEmployees(snap.docs.map(d=>({ id:d.id, ...d.data() })));
-    });
-  },[]);
+ useEffect(() => {
+  const qEmps = query(collection(db, "employees"), orderBy("username"));
+  return onSnapshot(qEmps, snap => {
+    setEmployees(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+  });
+}, []);
+
   const [latestByUser, setLatestByUser] = useState({});
   useEffect(()=>{
     const qSch = query(collection(db,"schedules"), orderBy("employeeUsername"), orderBy("createdAt","desc"));
@@ -235,21 +243,41 @@ export default function BookingTime(){
   const totalAmountRsd    = selectedServices.reduce((a,b)=>a+(Number(b.priceRsd)||0),0);
 
   // 3) Kalendar state
-  const [anchor, setAnchor] = useState(()=>{ const x=new Date(); x.setDate(1); x.setHours(0,0,0,0); return x; });
+  const startOfMonth = (d)=>new Date(d.getFullYear(), d.getMonth(), 1);
+  const [anchor, setAnchor] = useState(()=> startOfMonth(new Date()));
   const [selectedDay, setSelectedDay] = useState(()=> new Date());
+
   const daysInMonth = useMemo(()=>{
-    const first=new Date(anchor);
+    const first=startOfMonth(anchor);
     const arr=[];
     for(const d of iterDays(first, 40)){
       if (d.getMonth()!==anchor.getMonth()) continue;
+      if (d < today0) continue;          // ne prikazuj prošle dane
+      if (d > maxDate) continue;         // ❗ sakrij dane posle 2 nedelje
       arr.push(d);
     }
     return arr;
-  },[anchor]);
+  },[anchor, today0, maxDate]);
+
+  // Prev/Next ograničenja za mesece
+  const canGoPrev = useMemo(()=>{
+    return startOfMonth(anchor) > startOfMonth(today0);
+  }, [anchor, today0]);
+
+  const canGoNext = useMemo(()=>{
+    const nextStart = new Date(anchor.getFullYear(), anchor.getMonth()+1, 1);
+    return nextStart <= maxDate; // ne dozvoli skok u mesec koji počinje posle maxDate
+  }, [anchor, maxDate]);
 
   /* ---------- Busy map po radnici za izabrani dan ---------- */
   const [busyByEmp, setBusyByEmp] = useState(new Map());
   useEffect(()=>{
+    // Ako je izabrani dan izvan dozvoljenog opsega, ne otvaraj subscribe
+    if (selectedDay < today0 || selectedDay > maxDate) {
+      setBusyByEmp(new Map());
+      return;
+    }
+
     const s = new Date(selectedDay); s.setHours(0,0,0,0);
     const e = new Date(selectedDay); e.setHours(23,59,59,999);
 
@@ -278,17 +306,24 @@ export default function BookingTime(){
     });
 
     return ()=> unsubs.forEach(u=>u && u());
-  },[selectedDay, chosenEmployeeId, employees]);
+  },[selectedDay, chosenEmployeeId, employees, today0, maxDate]);
 
   function employeeCanDoAll(services, employee){
     return services.every(s => canEmployeeDo(s, employee));
   }
 
-  // 4) Slotovi za selektovani dan (bez preklapanja) + FILTAR PROŠLOSTI
-  const { slots, anyWork } = useMemo(()=>{
+  // 4) Slotovi za selektovani dan (bez preklapanja) + FILTAR PROŠLOSTI + ❗filtar na 2 nedelje
+  const { slots, anyWork } = useMemo(() => { 
     const d = selectedDay;
+
+    if (d < today0 || d > maxDate) {
+  return { slots: [], anyWork: false };
+}
+
     const salon = SALON_HOURS[wd1to7(d)] || [];
-    if (!salon.length || !totalDurationMin) return { slots:[], anyWork:false };
+    if (!salon.length || !totalDurationMin) {
+  return { slots: [], anyWork: false };
+}
 
     function freeForEmp(empUsername, dayCfg){
       const base = intersectIntervals(salon, [{start:dayCfg.from, end:dayCfg.to}])
@@ -298,14 +333,14 @@ export default function BookingTime(){
       return slotsFromMinuteIntervals(d, free, totalDurationMin);
     }
 
-    let resultSlots=[]; let any=false;
+    let resultSlots=[]; let anyWork=false;
 
     if (chosenEmployeeId !== "firstFree"){
       const sched = latestByUser[chosenEmployeeId];
       const day   = pickDayFromSchedule(sched, d);
-      if (!day || day.closed) return { slots:[], anyWork:false };
+     if (!day || day.closed) return { slots: [], anyWork: false };
       resultSlots = freeForEmp(chosenEmployeeId, day);
-      any = true;
+      anyWork = true;
     } else {
       const all=[];
       for (const e of employees){
@@ -313,7 +348,7 @@ export default function BookingTime(){
         const sched = latestByUser[e.username];
         const day   = pickDayFromSchedule(sched, d);
         if (!day || day.closed) continue;
-        any=true;
+        anyWork=true;
         const ss = freeForEmp(e.username, day).map(s=>({...s, employeeId:e.username}));
         all.push(...ss);
       }
@@ -321,13 +356,15 @@ export default function BookingTime(){
       resultSlots = all;
     }
 
-    if (isSameDay(d, today0)) {
-      const now = new Date();
-      resultSlots = resultSlots.filter(s => s.start >= now);
-    }
+ if (isSameDay(d, today0)) {
+  const now = new Date();
+  const resultImm = resultSlots.filter(s => s.start >= now);
+  return { slots: resultImm, anyWork };
+}
 
-    return { slots: resultSlots, anyWork:any };
-  },[selectedDay, chosenEmployeeId, employees, latestByUser, totalDurationMin, busyByEmp]);
+return { slots: resultSlots, anyWork };
+
+  },[selectedDay, chosenEmployeeId, employees, latestByUser, totalDurationMin, busyByEmp, selectedServices, today0, maxDate]);
 
   /* ---------- Toasts ---------- */
   const [toasts, setToasts] = useState([]); // {id, text}
@@ -341,10 +378,11 @@ export default function BookingTime(){
   function splitByCanDo(list, employee){
     const doable=[], notDoable=[];
     for (const s of list){
-      (canEmployeeDo(s, employee) ? doable : notDoable).push(s);
+      (canDoEmployee(s, employee) ? doable : notDoable).push(s);
     }
     return { doable, notDoable };
   }
+  function canDoEmployee(s, employee){ return canEmployeeDo(s, employee); }
 
   // LEP MODAL (umesto window.confirm)
   const [mismatch, setMismatch] = useState({
@@ -413,6 +451,12 @@ export default function BookingTime(){
       pushToast("Ne možeš izabrati vreme u prošlosti.");
       return;
     }
+    // ❗ Dodatna zaštita na gornju granicu
+    const endOfMax = new Date(maxDate); endOfMax.setHours(23,59,59,999);
+    if (opt?.start > endOfMax) {
+      pushToast("Zakazivanje je moguće najviše 14 dana unapred.");
+      return;
+    }
     if (!selectedServices.length){
       pushToast("Izaberi bar jednu uslugu koju zakazuješ sada.");
       return;
@@ -431,7 +475,7 @@ export default function BookingTime(){
       return;
     }
 
-    // Inače (konkretno izabran zaposleni) koristi postojeću logiku
+    // Inače (konkretno izabran zaposleni)
     ensureValidSelectionForEmployee(() => {
       const employeeId = chosenEmployeeId;
       setConfirmData({ start: opt.start, end: opt.end, employeeId });
@@ -469,19 +513,22 @@ export default function BookingTime(){
   async function confirmBooking(){
     if (!confirmData) return;
 
-    // hard guard za "firstFree" i uopšte
+    // hard guard za opseg datuma
+    const endOfMax = new Date(maxDate); endOfMax.setHours(23,59,59,999);
+    if (confirmData.start < new Date() || confirmData.start > endOfMax){
+      pushToast("Vreme za ovaj termin više nije dostupno.");
+      setConfirmOpen(false);
+      return;
+    }
+
+    // hard guard za skill
     if (confirmData.employeeId){
       const emp = employees.find(e => e.username === confirmData.employeeId);
-      if (!employeeCanDoAll(selectedServices, emp)) {
+      if (!selectedServices.every(s=>canEmployeeDo(s, emp))) {
         pushToast("Ova radnica ne radi sve izabrane usluge. Izaberi drugu ili smanji izbor.");
         setConfirmOpen(false);
         return;
       }
-    }
-    if (confirmData.start < new Date()){
-      pushToast("Vreme je isteklo, izaberi novi termin.");
-      setConfirmOpen(false);
-      return;
     }
 
     try{
@@ -496,7 +543,7 @@ export default function BookingTime(){
 
       const { first: firstName, last: lastName } = splitName(safeClientName);
 
-      // --- Klijent: nadji po phone/email -> kreiraj ako ne postoji -> merge update ---
+      // --- Klijent upsert ---
       let clientId = client?.id || null;
       let foundId = null;
 
@@ -525,7 +572,6 @@ export default function BookingTime(){
 
       clientId = clientId || foundId;
 
-      // merge osveži ime/phone/email ako imamo podatke
       if (clientId){
         await setDoc(
           doc(db,"clients", clientId),
@@ -552,7 +598,7 @@ export default function BookingTime(){
         const gEnd      = addMin(rollingStart, gDuration);
 
         // FINAL RACE GUARD
-        if (await hasConflict(confirmData.employeeId, rollingStart, gEnd)){
+        if (await hasConflict(confirmData.employeeId || "", rollingStart, gEnd)){
           setSaving(false);
           pushToast("Ups, termin je upravo zauzet. Izaberi drugi slobodan.");
           return;
@@ -614,7 +660,7 @@ export default function BookingTime(){
         rollingStart = gEnd;
       }
 
-      // === POŠALJI PUSH NOTIFIKACIJU DIREKTNO PREKO API-JA ===
+      // Notifikacija (ostavljeno kako već imaš)
       try {
         const emp = employees.find(e => e.username === (confirmData.employeeId || ""));
         const employeeDocId = emp?.id || null;
@@ -628,7 +674,7 @@ export default function BookingTime(){
           `${totalAmountRsd.toLocaleString("sr-RS")} RSD`;
 
         const url = `/admin/kalendar?appointmentId=${createdIds?.[0] || ""}${
-          employeeDocId ? `&employeeId=${emp.username}` : ""
+          employeeDocId ? `&employeeId=${emp?.username || ""}` : ""
         }`;
 
         await fetch("/api/sendNotifications", {
@@ -651,9 +697,7 @@ export default function BookingTime(){
             }
           })
         });
-      } catch (e) {
-        console.warn("Slanje notifikacije nije uspelo:", e);
-      }
+      } catch { /* no-op */ }
 
       pushToast(`✅ Rezervacija sačuvana (${createdIds.length} kartica)`);
       setConfirmOpen(false);
@@ -667,9 +711,7 @@ export default function BookingTime(){
       if (remaining.length > 0){
         const left = remaining.length;
         pushToast(`Ostala je još ${left} usluga`);
-        setTimeout(()=>{
-          nav("/booking/employee", { state:{ info:`Ostalo za zakazivanje: ${left} usluga` } });
-        }, 400);
+        setTimeout(()=>{ nav("/booking/employee", { state:{ info:`Ostalo za zakazivanje: ${left} usluga` } }); }, 400);
       } else {
         setTimeout(()=>nav("/home"), 400);
       }
@@ -713,7 +755,7 @@ export default function BookingTime(){
         .btn:focus, .btn:active,
         .btnx:focus, .btnx:active,
         .pill:focus, .pill:active { outline:none !important; box-shadow:none !important; }
-        .d:focus, .d:active { outline:none !important; box-shadow:none !important; }
+      .d:focus, .d:active { outline:none !important; box-shadow:none !important; }
         .d:focus-visible { outline:2px solid #111; }
         .wrap{min-height:100dvh;background:#0f0f10;}
         .sheet{background:#fff;min-height:100dvh;border-top-left-radius:22px;border-top-right-radius:22px;padding:16px 14px 120px;}
@@ -723,9 +765,10 @@ export default function BookingTime(){
         .sub{opacity:.7;font-weight:700;margin-bottom:10px;}
         .hero{width:100%;height:140px;border-radius:18px;overflow:hidden;margin:20px 0 10px;}
         .hero img{width:100%;height:100%;object-fit:cover}
-        .cal{margin-top:6px;border:1px solid #eee;border-radius:16px;padding:12px;}
+        .cal{margin-top:6px;border:1px solid:#eee;border-radius:16px;padding:12px;}
         .cal .mbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
         .btnx{appearance:none;border:1px solid #eee;background:#fafafa;padding:8px 10px;border-radius:10px;font-weight:700;}
+        .btnx[disabled]{opacity:.35}
         .grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;}
         .dow{font-size:12px;opacity:.6;text-align:center;margin-bottom:6px}
         .d{aspect-ratio:1; border:1px solid #eee; border-radius:12px; display:flex;align-items:center;justify-content:center; background:#fff; font-weight:900; font-size:16px; color:#111; user-select:none;}
@@ -754,11 +797,11 @@ export default function BookingTime(){
         .cs-row:last-child{border-bottom:none;}
         .cs-sub{margin-top:12px; font-weight:800;}
         .mm-backdrop{position:fixed; inset:0; background:rgba(0,0,0,.35); display:flex; align-items:center; justify-content:center; z-index:70;}
-        .mm-card{width:min(560px, 92vw); background:#fff; border-radius:18px; border:1px solid #eee; box-shadow:0 16px 44px rgba(0,0,0,.22); padding:18px;}
+        .mm-card{width:min(560px, 92vw); background:#fff; border-radius:18px; border:1px solid:#eee; box-shadow:0 16px 44px rgba(0,0,0,.22); padding:18px;}
         .mm-head{display:flex; align-items:center; gap:10px; margin-bottom:8px;}
         .mm-ico{font-size:22px;}
         .mm-title{font-weight:900; font-size:18px;}
-        .mm-section{background:#fafafa; border:1px solid #eee; border-radius:12px; padding:10px 12px; margin-top:10px;}
+        .mm-section{background:#fafafa; border:1px solid:#eee; border-radius:12px; padding:10px 12px; margin-top:10px;}
         .mm-sub{font-weight:800; margin-bottom:6px;}
         .mm-list{margin:0; padding-left:14px; line-height:1.5;}
         .mm-list.ok li{color:#1f3b1f;}
@@ -783,19 +826,27 @@ export default function BookingTime(){
         {/* Hero slika */}
         <div className="hero"><img src="/usluge1.webp" alt="Usluga" /></div>
         <button className="back" onClick={()=>nav(-1)}>Nazad</button>
-        <div className="title">{anchor.toLocaleString("sr-RS",{month:"long", year:"numeric"})}</div>
+        <div className="title">{nice(anchor,{month:"long", year:"numeric"})}</div>
         <div className="sub">{headerName}</div>
 
         {/* KALENDAR */}
         <div className="cal">
           <div className="mbar">
-            <button className="btnx" onClick={()=>{
-              const x=new Date(anchor); x.setMonth(anchor.getMonth()-1); setAnchor(x);
-            }}>◀︎</button>
-            <div style={{fontWeight:900}}>{anchor.toLocaleString("sr-RS",{month:"long", year:"numeric"})}</div>
-            <button className="btnx" onClick={()=>{
-              const x=new Date(anchor); x.setMonth(anchor.getMonth()+1); setAnchor(x);
-            }}>▶︎</button>
+            <button
+              className="btnx"
+              disabled={!canGoPrev}
+              onClick={()=>{ if(!canGoPrev) return; const x=new Date(anchor); x.setMonth(anchor.getMonth()-1); setAnchor(x); }}
+              title={canGoPrev ? "Prethodni mesec" : "Nije dostupno"}>
+              ◀︎
+            </button>
+            <div style={{fontWeight:900}}>{nice(anchor,{month:"long", year:"numeric"})}</div>
+            <button
+              className="btnx"
+              disabled={!canGoNext}
+              onClick={()=>{ if(!canGoNext) return; const x=new Date(anchor); x.setMonth(anchor.getMonth()+1); setAnchor(x); }}
+              title={canGoNext ? "Sledeći mesec" : "Dostupno je samo 14 dana unapred"}>
+              ▶︎
+            </button>
           </div>
 
           <div className="grid">
@@ -809,7 +860,11 @@ export default function BookingTime(){
                 const sel = dayKey(d)===dayKey(selectedDay);
                 const isOff = (SALON_HOURS[wd1to7(d)]||[]).length===0;
                 const isPastDay = d < today0;
-                const disabled = isOff || isPastDay;
+                const isTooFar  = d > maxDate; // ❗ nova provera
+                const disabled = isOff || isPastDay || isTooFar;
+                const title = disabled
+                  ? (isPastDay ? "Dan je prošao" : (isTooFar ? "Zakazivanje moguće samo 2 nedelje unapred" : "Salon ne radi"))
+                  : "";
                 elems.push(
                   <button
                     key={d.toISOString()}
@@ -817,7 +872,7 @@ export default function BookingTime(){
                     onClick={()=>!disabled && setSelectedDay(d)}
                     disabled={disabled}
                     aria-disabled={disabled}
-                    title={disabled ? (isPastDay ? "Dan je prošao" : "Salon ne radi") : ""}
+                    title={title}
                   >
                     {d.getDate()}
                   </button>
@@ -831,29 +886,34 @@ export default function BookingTime(){
         {/* Poruka ili slotovi */}
         {(!totalDurationMin) ? (
           <div className="msg">Izaberite bar jednu uslugu ispod da biste videli termine.</div>
-        ) : (slots.length===0 ? (
-          <div className="msg">
-            Nema dostupnih termina za odabrani datum.&nbsp;
-            {anyWork ? "Pokušaj drugi dan." : "Zaposleni ne rade taj dan."}
-          </div>
-        ) : (
-          <div className="slots">
-            {slots.map((s,i)=>{
-              const emp = chosenEmployeeId==="firstFree" ? (s.employeeId ? (employees.find(e=>e.username===s.employeeId)?.firstName || s.employeeId) : null) : null;
-              return (
-                <button
-                  key={i}
-                  className={`slot ${emp?"emp":""}`}
-                  onClick={()=>pickSlot(s)}
-                  disabled={s.start < new Date()}
-                  title={s.start < new Date() ? "Vreme je prošlo" : ""}
-                >
-                  {hhmm(s.start)}{emp?` • ${emp}`:""}
-                </button>
-              );
-            })}
-          </div>
-        ))}
+        ) : ( (selectedDay > maxDate)
+              ? <div className="msg">Zakazivanje je moguće samo u naredne dve nedelje.</div>
+              : (slots.length===0 ? (
+                  <div className="msg">
+                    Nema dostupnih termina za odabrani datum.&nbsp;
+                    {anyWork ? "Pokušaj drugi dan." : "Zaposleni ne rade taj dan."}
+
+                  </div>
+                ) : (
+                  <div className="slots">
+                    {slots.map((s,i)=>{
+                      const emp = chosenEmployeeId==="firstFree" ? (s.employeeId ? (employees.find(e=>e.username===s.employeeId)?.firstName || s.employeeId) : null) : null;
+                      return (
+                        <button
+                          key={i}
+                          className={`slot ${emp?"emp":""}`}
+                          onClick={()=>pickSlot(s)}
+                          disabled={s.start < new Date()}
+                          title={s.start < new Date() ? "Vreme je prošlo" : ""}
+                        >
+                          {hhmm(s.start)}{emp?` • ${emp}`:""}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )
+            )
+        )}
 
         {/* Rezime + odabir usluga */}
         <div className="res">
@@ -910,11 +970,11 @@ export default function BookingTime(){
                 <div>Zaposleni</div>
                 <div>
                   {(() => {
-                    const id = confirmData.employeeId;
-                    if (!id) return "—";
-                    const e = employees.find(x=>x.username===id);
-                    return e ? `${e.firstName||""} ${e.lastName||""}`.trim() || id : id;
-                  })()}
+                   const id = confirmData.employeeId;
+  if (!id) return "—";
+  const e = employees.find(x => x.username === id);
+  return e ? `${e.firstName || ""} ${e.lastName || ""}`.trim() || id : id;
+})()}
                 </div>
               </div>
 
@@ -1013,19 +1073,28 @@ export default function BookingTime(){
         {/* FAB */}
         <div className="fab">
           <button className="btn btn-dark" onClick={()=>nav(-1)}>Nazad</button>
-          <button className="btn btn-dark" onClick={()=>{
-            if (!totalDurationMin) {
-              pushToast("Izaberi bar jednu uslugu za ovaj termin.");
-              return;
-            }
-            if (selectedDay < today0){
-              pushToast("Ne možeš birati datum u prošlosti.");
-              return;
-            }
-            ensureValidSelectionForEmployee(() => {
-              pushToast("Izaberi vreme iznad pa potvrdi.");
-            });
-          }}>Nastavi</button>
+          <button
+            className="btn btn-dark"
+            onClick={()=>{
+              if (!totalDurationMin) {
+                pushToast("Izaberi bar jednu uslugu za ovaj termin.");
+                return;
+              }
+              if (selectedDay < today0){
+                pushToast("Ne možeš birati datum u prošlosti.");
+                return;
+              }
+            if (selectedDay > maxDate) {
+  pushToast("Zakazivanje je moguće samo u naredne dve nedelje.");
+  return;
+}
+              ensureValidSelectionForEmployee(() => {
+                pushToast("Izaberi vreme iznad pa potvrdi.");
+              });
+            }}
+          >
+            Nastavi
+          </button>
         </div>
       </div>
 
