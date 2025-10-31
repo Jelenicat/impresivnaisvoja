@@ -87,34 +87,59 @@ function hmToMin(s) { if (typeof s !== "string") return null; const [h, m] = s.s
 function getWorkIntervalsFor(empUsername, dateObj, latestSchedules) {
   const sch = latestSchedules.get(empUsername);
   if (!sch) return [];
+
   const d = startOfDay(dateObj);
   const dStr = localYmd(d);
+
+  // 1) Override prioritet (jedan tačan dan)
+  const ov = sch?.overrides?.[dStr];
+  if (ov) {
+    if (ov.closed) return [];
+    const s = hmToMin(ov.from);
+    const e = hmToMin(ov.to);
+    if (s != null && e != null && e > s) return [[s, e]];
+    return [];
+  }
+
+  // 2) Opseg važenja baznog schedule-a
   const inRange = (!sch.startDate || sch.startDate <= dStr) && (!sch.endDate || sch.endDate >= dStr);
   if (!inRange) return [];
+
+  // 3) Pattern (1w/2w/3w/4w) kao i ranije
   const weeksCount = sch.pattern === "2w" ? 2 : sch.pattern === "3w" ? 3 : sch.pattern === "4w" ? 4 : 1;
   const start = sch.startDate ? parseLocalYmd(sch.startDate) : d;
   const diffDays = Math.floor((d - startOfDay(start)) / (24 * 3600 * 1000));
   if (diffDays < 0) return [];
+
   const weekIdx = ((Math.floor(diffDays / 7) % weeksCount) + weeksCount) % weeksCount;
-  const weeksArr = Array.isArray(sch.weeks) ? sch.weeks : Object.keys(sch.weeks || {}).sort((a, b) => Number(a) - Number(b)).map(k => sch.weeks[k]);
+  const weeksArr = Array.isArray(sch.weeks)
+    ? sch.weeks
+    : Object.keys(sch.weeks || {}).sort((a, b) => Number(a) - Number(b)).map(k => sch.weeks[k]);
+
   const dayCfg = (weeksArr[weekIdx] || [])[weekdayIndex(d)];
   if (!dayCfg || dayCfg.closed) return [];
+
   const intervals = [];
+
   if (Array.isArray(dayCfg.ranges)) {
     for (const r of dayCfg.ranges) {
       let s = typeof r.start === "number" ? r.start : hmToMin(r.start);
-      let e = typeof r.end === "number" ? r.end : hmToMin(r.end);
+      let e = typeof r.end   === "number" ? r.end   : hmToMin(r.end);
       if (s == null || e == null) continue;
       if (e > s) intervals.push([s, e]);
     }
   }
+
   const cand = [[dayCfg.from, dayCfg.to], [dayCfg.start, dayCfg.end], [dayCfg.startMin, dayCfg.endMin]];
   for (const [a, b] of cand) {
     let s = typeof a === "number" ? a : hmToMin(a);
     let e = typeof b === "number" ? b : hmToMin(b);
     if (s != null && e != null && e > s) intervals.push([s, e]);
   }
+
   intervals.sort((x, y) => x[0] - y[0]);
+
+  // merge preklapanja
   const merged = [];
   for (const [s, e] of intervals) {
     if (!merged.length || s > merged[merged.length - 1][1]) merged.push([s, e]);
@@ -122,6 +147,7 @@ function getWorkIntervalsFor(empUsername, dateObj, latestSchedules) {
   }
   return merged;
 }
+
 function getOffIntervals(workIntervals) {
   const res = []; let cur = DAY_START_MIN;
   for (const [s, e] of workIntervals) { if (s > cur) res.push([cur, Math.min(s, DAY_END_MIN)]); cur = Math.max(cur, e); }
@@ -192,20 +218,81 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
   const dayStart = useMemo(() => startOfDay(day), [day]);
   const dayEnd = useMemo(() => endOfDay(day), [day]);
 
-  useEffect(() => {
-    const unsub = onSnapshot(collection(db, "schedules"), (snap) => {
-      const perEmp = new Map();
-      for (const d of snap.docs) {
-        const data = { id: d.id, ...d.data() };
-        const k = data.employeeUsername;
-        const prev = perEmp.get(k);
-        const created = data.createdAt?.toDate?.()?.getTime?.() || 0;
-        if (!prev || created > (prev.createdAt?.toDate?.()?.getTime?.() || 0)) perEmp.set(k, data);
+ useEffect(() => {
+  const unsub = onSnapshot(collection(db, "schedules"), (snap) => {
+    // privremena struktura: emp -> { base: scheduleDoc | null, overrides: { [ymd]: {from,to,closed} } }
+    const tmp = new Map();
+
+    const getOrInit = (emp) => {
+      if (!tmp.has(emp)) tmp.set(emp, { base: null, overrides: {} });
+      return tmp.get(emp);
+    };
+
+    // helperi
+    const pickNewest = (a, b) => {
+      const ta = a?.createdAt?.toDate?.()?.getTime?.() || 0;
+      const tb = b?.createdAt?.toDate?.()?.getTime?.() || 0;
+      return ta >= tb ? a : b;
+    };
+    const jsWeekdayIdx = (dateStr) => (new Date(`${dateStr}T00:00:00`).getDay() + 6) % 7;
+
+    for (const docSnap of snap.docs) {
+      const data = { id: docSnap.id, ...docSnap.data() };
+      const emp = data.employeeUsername;
+      if (!emp) continue;
+      const bucket = getOrInit(emp);
+
+      const isExplicitOverride =
+        data?.kind === "override" ||
+        data?.pattern === "custom-1d" ||
+        (!!data?.startDate && !!data?.endDate && data.startDate === data.endDate);
+
+      if (isExplicitOverride) {
+        // Izvući (from,to,closed) za taj jedini dan iz weeks["0"][dan]
+        const dateStr = data.startDate; // isti je kao endDate
+        const w0 = Array.isArray(data.weeks) ? data.weeks[0] : data.weeks?.["0"];
+        const dayIdx = jsWeekdayIdx(dateStr);
+        const cell = Array.isArray(w0) ? (w0[dayIdx] || null) : null;
+
+        // ako nema cell, tretiraj kao closed
+        const from = cell?.from ?? "";
+        const to   = cell?.to   ?? "";
+        const closed = cell?.closed === true || (!from || !to);
+
+        bucket.overrides[dateStr] = { from, to, closed: !!closed };
+      } else {
+        // kandidat za bazni schedule (1w/2w/3w/4w)
+        bucket.base = bucket.base ? pickNewest(bucket.base, data) : data;
+
+        // Ako sam bazni već ima svoju mapu overrides (buduća verzija), spoji i nju
+        if (data?.overrides && typeof data.overrides === "object") {
+          for (const [k, v] of Object.entries(data.overrides)) {
+            // očekuje se {from,to,closed}
+            if (!bucket.overrides[k]) bucket.overrides[k] = {
+              from: v?.from ?? "",
+              to: v?.to ?? "",
+              closed: !!v?.closed
+            };
+          }
+        }
       }
-      setLatestSchedules(perEmp);
-    });
-    return () => unsub && unsub();
-  }, []);
+    }
+
+    // Pretvori u mapu za render: emp -> "composed schedule"
+    // composed = { ...base, overrides: {ymd:{from,to,closed}} }
+    const perEmp = new Map();
+    for (const [emp, { base, overrides }] of tmp.entries()) {
+      if (base) perEmp.set(emp, { ...base, overrides });
+      else if (Object.keys(overrides).length) {
+        // u teoriji može postojati samo override bez base – i to prikaži makar kao “samo taj dan”
+        perEmp.set(emp, { pattern: "1w", startDate: null, endDate: null, weeks: {"0": []}, overrides });
+      }
+    }
+
+    setLatestSchedules(perEmp);
+  });
+  return () => unsub && unsub();
+}, []);
 
   function worksThisDay(empUsername, dateObj) {
     const sch = latestSchedules.get(empUsername);

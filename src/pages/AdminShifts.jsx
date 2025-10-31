@@ -3,7 +3,8 @@ import React, { useEffect, useMemo, useState, useRef } from "react";
 import {
   collection, query, orderBy, onSnapshot,
   addDoc, serverTimestamp,
-  where, getDocs, limit
+  where, getDocs, limit,
+  doc, updateDoc
 } from "firebase/firestore";
 import { db } from "../firebase";
 
@@ -16,6 +17,12 @@ const PATTERNS = [
 ];
 const DAYS = ["Ponedeljak","Utorak","Sreda","Četvrtak","Petak","Subota","Nedelja"];
 const isTime = (v) => /^([01]\d|2[0-3]):[0-5]\d$/.test(v);
+
+// helper: JS 0=nedelja...6=subota → mi 0=pon...6=ned
+const weekdayIndexFromDate = (dateStr) => {
+  const d = new Date(`${dateStr}T00:00:00`);
+  return (d.getDay() + 6) % 7;
+};
 
 /* ====== Jedan dan ====== */
 function DayRow({ value, onChange, label }) {
@@ -105,6 +112,20 @@ export default function AdminShifts() {
 
   const loadingFromDbRef = useRef(false);
 
+  // ==== DODATO: izuzetak za jedan dan (state)
+  const [oneDayDate, setOneDayDate] = useState("");   // YYYY-MM-DD
+  const [oneDayFrom, setOneDayFrom] = useState("");   // HH:mm
+  const [oneDayTo, setOneDayTo] = useState("");       // HH:mm
+
+  // ==== DODATO: BLOKADA VIŠE DANA (state)
+  const [blkStartDate, setBlkStartDate] = useState(""); // YYYY-MM-DD
+  const [blkEndDate, setBlkEndDate]     = useState(""); // YYYY-MM-DD
+  const [blkFrom, setBlkFrom]           = useState(""); // HH:mm
+  const [blkTo, setBlkTo]               = useState(""); // HH:mm
+  const [blkNote, setBlkNote]           = useState("");
+  // 0=pon..6=ned
+  const [blkWeekdays, setBlkWeekdays]   = useState([true,true,true,true,true,true,true]);
+
   // učitaj zaposlene
   useEffect(() => {
     const unsub = onSnapshot(
@@ -169,13 +190,13 @@ export default function AdminShifts() {
     (async () => {
       try {
         loadingFromDbRef.current = true;
-        const q = query(
+        const qy = query(
           collection(db, "schedules"),
           where("employeeUsername", "==", selectedUser),
           orderBy("createdAt", "desc"),
           limit(1)
         );
-        const snap = await getDocs(q);
+        const snap = await getDocs(qy);
 
         if (snap.empty) {
           setPattern(PATTERNS[0]);
@@ -240,6 +261,104 @@ export default function AdminShifts() {
     });
   }
 
+  // ==== DODATO: snimi izuzetak za tačno jedan dan (update postojeceg dokumenta, ne kreira novi)
+  async function saveOneDayOverride() {
+    if (!selectedUser) return alert("Izaberi radnicu.");
+    if (!oneDayDate) return alert("Izaberi dan.");
+    if (!isTime(oneDayFrom) || !isTime(oneDayTo) || oneDayFrom >= oneDayTo) {
+      return alert("Unesi ispravno vreme (od < do).");
+    }
+
+    try {
+      // Nađi POSLEDNJI (bazni) raspored te radnice
+      const qy = query(
+        collection(db, "schedules"),
+        where("employeeUsername", "==", selectedUser),
+        orderBy("createdAt", "desc"),
+        limit(1)
+      );
+      const snap = await getDocs(qy);
+      if (snap.empty) {
+        return alert("Nema baznog rasporeda za ovu radnicu. Sačuvaj prvo raspored.");
+      }
+      const baseDoc = snap.docs[0];
+      const docRef = doc(db, "schedules", baseDoc.id);
+
+      // Updejt: upiši overrides.<YYYY-MM-DD> = { from, to, closed:false } – ne dira ništa drugo
+      await updateDoc(docRef, {
+        [`overrides.${oneDayDate}`]: { from: oneDayFrom, to: oneDayTo, closed: false },
+        updatedAt: serverTimestamp(),
+      });
+
+      alert("Postavljena smena za izabrani dan (izuzetak). Ostali dani ostaju isti.");
+      setOneDayDate("");
+      setOneDayFrom("");
+      setOneDayTo("");
+    } catch (e) {
+      console.error(e);
+      alert("Greška pri čuvanju izuzetka za dan.");
+    }
+  }
+
+  /* ====== HELPERI ZA BLOKADU VIŠE DANA ====== */
+  function ymdToDate(ymd){ return ymd ? new Date(`${ymd}T00:00:00`) : null; }
+  function addDays(d,n){ const x=new Date(d); x.setDate(x.getDate()+n); return x; }
+  function weekdayIdx(d){ return (d.getDay()+6)%7; } // 0=pon..6=ned
+  function makeDateWithTime(d, hhmm){
+    const [h,m] = (hhmm||"").split(":").map(Number);
+    const x = new Date(d);
+    x.setHours(h||0, m||0, 0, 0);
+    return x;
+  }
+
+  // ==== KREIRANJE BLOKADA VIŠE DANA (appointments, type:"block")
+  async function createMultiDayBlocks() {
+    if (!selectedUser) return alert("Izaberi radnicu.");
+    if (!blkStartDate || !blkEndDate) return alert("Unesi datum od–do.");
+    if (!isTime(blkFrom) || !isTime(blkTo) || blkFrom >= blkTo) {
+      return alert("Unesi ispravno vreme (od < do).");
+    }
+
+    const fromD = ymdToDate(blkStartDate);
+    const toD   = ymdToDate(blkEndDate);
+    if (!fromD || !toD || toD < fromD) return alert("Datum DO mora biti posle OD.");
+
+    // lista dana filtrirana po izabranim danima u nedelji
+    const days = [];
+  for (let d = new Date(fromD); d <= toD; d = addDays(d,1)) {
+  days.push(new Date(d)); // svaki dan u opsegu, bez filtriranja po nedelji
+}
+
+    if (days.length === 0) return alert("Nema dana za blokiranje (proveri izbor dana u nedelji).");
+
+    if (!window.confirm(`Kreirati ${days.length} blokada za ${selectedUser}?`)) return;
+
+    try {
+      for (const d of days) {
+        const start = makeDateWithTime(d, blkFrom);
+        const end   = makeDateWithTime(d, blkTo);
+
+        const payload = {
+          type: "block",
+          employeeUsername: selectedUser,
+          start,
+          end,
+          note: blkNote || "",
+          source: "manual",
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        };
+        await addDoc(collection(db, "appointments"), payload);
+      }
+      alert(`Gotovo. Kreirano: ${days.length} blokada.`);
+      // (po želji reset polja)
+      // setBlkNote("");
+    } catch (e) {
+      console.error(e);
+      alert("Greška pri upisu blokada.");
+    }
+  }
+
   return (
     <div className="shifts-page">
       <style>{`
@@ -300,14 +419,12 @@ export default function AdminShifts() {
           padding:10px 12px; border-radius:12px; border:1px solid #ddd6cc; background:#fff; cursor:pointer;
           font-weight:600; font-size:13px; transition:all .2s; min-width:92px; text-align:center; color:#1f1f1f;
         }
-        /* >>> IZMENJENO: aktivni dugmići više nisu crni */
-       .seg-btn.is-active {
-         /* svetlo svetlo siva pozadina */
-  background: #faf8f5;        /* svetlo svetla pozadina */
-  color: #1f1f1f;             /* crn tekst */
-  border-color: #ccc;         /* siva ivica */
-  box-shadow: 0 0 0 2px rgba(0,0,0,.05) inset, 0 4px 12px rgba(0,0,0,.05);
-}
+        .seg-btn.is-active {
+          background: #faf8f5;
+          color: #1f1f1f;
+          border-color: #ccc;
+          box-shadow: 0 0 0 2px rgba(0,0,0,.05) inset, 0 4px 12px rgba(0,0,0,.05);
+        }
 
         .seg-btn:hover{ background:#faf8f5; }
 
@@ -544,6 +661,136 @@ export default function AdminShifts() {
               Resetuj sate
             </button>
           </div>
+
+          {/* ==== DODATO: izuzetak za jedan dan */}
+          <div className="field" style={{marginTop:20}}>
+            <h3 style={{marginTop:0}}>Izuzetak za jedan dan</h3>
+
+            <label className="label">Dan</label>
+            <input
+              type="date"
+              className="input"
+              value={oneDayDate}
+              onChange={(e)=>setOneDayDate(e.target.value)}
+              disabled={!selectedUser}
+            />
+
+            <div style={{display:"flex", gap:8, marginTop:10}}>
+              <div style={{flex:1}}>
+                <label className="label">Od</label>
+                <input
+                  type="time"
+                  className="input"
+                  value={oneDayFrom}
+                  onChange={(e)=>setOneDayFrom(e.target.value)}
+                  disabled={!selectedUser}
+                />
+              </div>
+              <div style={{flex:1}}>
+                <label className="label">Do</label>
+                <input
+                  type="time"
+                  className="input"
+                  value={oneDayTo}
+                  onChange={(e)=>setOneDayTo(e.target.value)}
+                  disabled={!selectedUser}
+                />
+              </div>
+            </div>
+
+            <button
+              className="btn"
+              style={{marginTop:12}}
+              onClick={saveOneDayOverride}
+              disabled={!selectedUser || !oneDayDate || !oneDayFrom || !oneDayTo}
+            >
+              Postavi smenu za taj dan
+            </button>
+
+            <p className="hint" style={{marginTop:10}}>
+              Ovo važi samo za izabrani dan i ne menja tvoj postojeći šablon — sve ostalo ostaje isto.
+            </p>
+          </div>
+          {/* ==== /DODATO */}
+
+          {/* ==== NOVO: BLOKADA VIŠE DANA ==== */}
+          <div className="field" style={{marginTop:24}}>
+            <h3 style={{marginTop:0}}>Blokiraj više dana</h3>
+
+            <div style={{display:"grid", gap:8, gridTemplateColumns:"1fr 1fr"}}>
+              <div>
+                <label className="label">Od (datum)</label>
+                <input
+                  type="date"
+                  className="input"
+                  value={blkStartDate}
+                  onChange={(e)=>setBlkStartDate(e.target.value)}
+                  disabled={!selectedUser}
+                />
+              </div>
+              <div>
+                <label className="label">Do (datum)</label>
+                <input
+                  type="date"
+                  className="input"
+                  value={blkEndDate}
+                  onChange={(e)=>setBlkEndDate(e.target.value)}
+                  disabled={!selectedUser}
+                />
+              </div>
+            </div>
+
+            <div style={{display:"grid", gap:8, gridTemplateColumns:"1fr 1fr", marginTop:10}}>
+              <div>
+                <label className="label">Početak (vreme)</label>
+                <input
+                  type="time"
+                  step="300"
+                  className="input"
+                  value={blkFrom}
+                  onChange={(e)=>setBlkFrom(e.target.value)}
+                  disabled={!selectedUser}
+                />
+              </div>
+              <div>
+                <label className="label">Kraj (vreme)</label>
+                <input
+                  type="time"
+                  step="300"
+                  className="input"
+                  value={blkTo}
+                  onChange={(e)=>setBlkTo(e.target.value)}
+                  disabled={!selectedUser}
+                />
+              </div>
+            </div>
+
+          
+
+            <div style={{marginTop:10}}>
+              <label className="label">Beleška (opcionalno)</label>
+              <input
+                className="input"
+                value={blkNote}
+                onChange={(e)=>setBlkNote(e.target.value)}
+                disabled={!selectedUser}
+              />
+            </div>
+
+            <button
+              className="btn"
+              style={{marginTop:12}}
+              onClick={createMultiDayBlocks}
+              disabled={!selectedUser || !blkStartDate || !blkEndDate || !blkFrom || !blkTo}
+            >
+              Sačuvaj blokade
+            </button>
+
+            <p className="hint" style={{marginTop:10}}>
+              Kreira pojedinačne „blok“ termine u kalendaru za izabrane dane — isto kao da si ručno dodala blokadu za svaki dan.
+            </p>
+          </div>
+          {/* ==== /BLOKADA VIŠE DANA ==== */}
         </div>
 
         {/* DESNO – nedelje i dani */}
