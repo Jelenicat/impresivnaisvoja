@@ -29,7 +29,7 @@ const maxHM = (a,b)=> cmpHM(a,b)>=0?a:b;
 const minHM = (a,b)=> cmpHM(a,b)<=0?a:b;
 const wd1to7 = d => (d.getDay()===0?7:d.getDay());
 const dayKey = d => { const x=new Date(d); x.setHours(0,0,0,0); return x.toISOString().slice(0,10); };
-const hhmm = d => d.toLocaleTimeString("sr-RS",{hour:"2-digit",minute:"2-digit"});
+const hhmm = d => d.toLocaleTimeString("sr-RS", { hour: "2-digit", minute: "2-digit", hour12: false });
 const nice = (d, o={}) => d.toLocaleString("sr-RS", o);
 const niceDate = d => d.toLocaleDateString("sr-RS",{weekday:"short", day:"2-digit", month:"2-digit", year:"numeric"});
 
