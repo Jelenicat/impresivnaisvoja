@@ -84,13 +84,17 @@ function slotsFromMinuteIntervals(dayDate, minuteIntervals, durationMin){
   const out=[];
   for (const seg of minuteIntervals){
     for (let s=seg.start; s+durationMin<=seg.end; s+=MIN_STEP){
-      const start = new Date(dayDate); start.setHours(0,0,0,0); start.setMinutes(s);
-      const end   = new Date(start); end.setMinutes(s+durationMin);
+      const start = new Date(dayDate);
+      start.setHours(0,0,0,0);
+      start.setMinutes(s);
+      const end = new Date(start);
+      end.setMinutes(start.getMinutes() + durationMin); // ✅ ISPRAVKA
       out.push({ start, end });
     }
   }
   return out;
 }
+
 
 /* ---------- Pattern/schedule helpers ---------- */
 const PATTERN_WEEKS = {"1w":1,"2w":2,"3w":3,"4w":4};
