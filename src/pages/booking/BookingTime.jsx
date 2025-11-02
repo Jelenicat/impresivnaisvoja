@@ -252,16 +252,15 @@ export default function BookingTime(){
   const [selectedDay, setSelectedDay] = useState(()=> new Date());
 
   const daysInMonth = useMemo(()=>{
-    const first=startOfMonth(anchor);
-    const arr=[];
-    for(const d of iterDays(first, 40)){
-      if (d.getMonth()!==anchor.getMonth()) continue;
-      if (d < today0) continue;          // ne prikazuj prošle dane
-      if (d > maxDate) continue;         // ❗ sakrij dane posle 2 nedelje
-      arr.push(d);
-    }
-    return arr;
-  },[anchor, today0, maxDate]);
+  const first = startOfMonth(anchor);
+  const arr = [];
+  for (const d of iterDays(first, 40)) {
+    if (d.getMonth() !== anchor.getMonth()) continue;
+    arr.push(d);                       // ✅ prikaži ceo mesec
+  }
+  return arr;
+}, [anchor]);
+
 
   // Prev/Next ograničenja za mesece
   const canGoPrev = useMemo(()=>{
@@ -856,7 +855,8 @@ return { slots: resultSlots, anyWork };
           <div className="grid">
             {["Pon","Uto","Sre","Čet","Pet","Sub","Ned"].map(d=><div key={d} className="dow">{d}</div>)}
             {(() => {
-              const firstDow = ((new Date(anchor).getDay()+6)%7); // 0=pon
+              const firstDow = ((new Date(anchor.getFullYear(), anchor.getMonth(), 1).getDay() + 6) % 7);
+
               const blanks = Array(firstDow).fill(null);
               const elems = [];
               blanks.forEach((_,i)=>elems.push(<div key={`b${i}`} />));
