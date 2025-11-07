@@ -42,6 +42,41 @@ const mOf = d => d.getHours()*60 + d.getMinutes();
 const hmToMin = (hm)=>{ const {h,m}=toHM(hm); return h*60+m; };
 const iv = (s,e)=>({start:s,end:e}); // interval u minutima
 
+// --- BRZI FETCH zauzeća za više radnika odjednom (batch-uje po 10) ---
+async function loadBusyMap(day, usernames) {
+  if (!usernames?.length) return new Map();
+
+  const s = new Date(day); s.setHours(0,0,0,0);
+  const e = new Date(day); e.setHours(23,59,59,999);
+
+  const chunks = [];
+  for (let i = 0; i < usernames.length; i += 10) {
+    chunks.push(usernames.slice(i, i + 10));
+  }
+
+  const map = new Map();
+  for (const batch of chunks) {
+    const qAp = query(
+      collection(db, "appointments"),
+      where("employeeUsername", "in", batch),
+      where("start", ">=", s),
+      where("start", "<=", e),
+      orderBy("start", "asc")
+    );
+    const snap = await getDocs(qAp);
+    snap.forEach(d => {
+      const a = d.data();
+      const u = a.employeeUsername;
+      const st = a.start?.toDate?.() || new Date(a.start);
+      const en = a.end?.toDate?.()   || new Date(a.end);
+      if (!map.has(u)) map.set(u, []);
+      map.get(u).push(iv(mOf(st), mOf(en)));
+    });
+  }
+  return map;
+}
+
+
 function* iterDays(from,count){ const x=new Date(from); x.setHours(0,0,0,0); for(let i=0;i<count;i++){ yield new Date(x); x.setDate(x.getDate()+1);} }
 function intersectIntervals(a,b){
   const out=[];
@@ -716,7 +751,7 @@ return { slots: resultSlots, anyWork };
         pushToast(`Ostala je još ${left} usluga`);
         setTimeout(()=>{ nav("/booking/employee", { state:{ info:`Ostalo za zakazivanje: ${left} usluga` } }); }, 400);
       } else {
-        setTimeout(()=>nav("/home"), 400);
+        setTimeout(()=>nav("/home"), 2600);
       }
 
     } catch (err){
