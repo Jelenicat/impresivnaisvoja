@@ -214,7 +214,7 @@ export default function BookingTime(){
   /* ✅ OGRANIČENJE: poslednji dozvoljeni dan za izbor (danas + 14 dana, uključivo) */
   const maxDate = useMemo(() => {
     const x = new Date(today0);
-    x.setDate(x.getDate() + 14); // poslednji dozvoljeni dan
+    x.setDate(x.getDate() + 7); // poslednji dozvoljeni dan
     return x;
   }, [today0]);
 
@@ -902,7 +902,7 @@ return { slots: resultSlots, anyWork };
                 const isTooFar  = d > maxDate; // ❗ nova provera
                 const disabled = isOff || isPastDay || isTooFar;
                 const title = disabled
-                  ? (isPastDay ? "Dan je prošao" : (isTooFar ? "Zakazivanje moguće samo 2 nedelje unapred" : "Salon ne radi"))
+                  ? (isPastDay ? "Dan je prošao" : (isTooFar ? "Zakazivanje moguće samo za nedelju unapred" : "Salon ne radi"))
                   : "";
                 elems.push(
                   <button
