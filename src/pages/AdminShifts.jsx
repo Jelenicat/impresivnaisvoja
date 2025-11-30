@@ -39,7 +39,6 @@ function DayRow({ value, onChange, label }) {
           step="300"
           value={value.from || ""}
           onChange={(e)=>onChange({ ...value, from: e.target.value })}
-          disabled={closed}
         />
         <span className="dash">–</span>
         <input
@@ -48,7 +47,6 @@ function DayRow({ value, onChange, label }) {
           step="300"
           value={value.to || ""}
           onChange={(e)=>onChange({ ...value, to: e.target.value })}
-          disabled={closed}
         />
       </div>
 
@@ -64,6 +62,7 @@ function DayRow({ value, onChange, label }) {
     </div>
   );
 }
+
 
 /* ====== Jedna nedelja ====== */
 function WeekCard({ index, value, onChange, onCopyFrom }) {

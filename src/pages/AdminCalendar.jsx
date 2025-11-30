@@ -295,22 +295,50 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
 }, []);
 
   function worksThisDay(empUsername, dateObj) {
-    const sch = latestSchedules.get(empUsername);
-    if (!sch) return false;
-    const d = startOfDay(dateObj);
-    const dStr = localYmd(d);
-    const inRange = (!sch.startDate || sch.startDate <= dStr) && (!sch.endDate || sch.endDate >= dStr);
-    if (!inRange) return false;
-    const weeksCount = sch.pattern === "2w" ? 2 : sch.pattern === "3w" ? 3 : sch.pattern === "4w" ? 4 : 1;
-    const start = sch.startDate ? parseLocalYmd(sch.startDate) : d;
-    const diffDays = Math.floor((d - startOfDay(start)) / (24 * 3600 * 1000));
-    if (diffDays < 0) return false;
-    const weekIdx = ((Math.floor(diffDays / 7) % weeksCount) + weeksCount) % weeksCount;
-    const weeksArr = Array.isArray(sch.weeks) ? sch.weeks : Object.keys(sch.weeks || {}).sort((a, b) => Number(a) - Number(b)).map(k => sch.weeks[k]);
-    const dayCfg = (weeksArr[weekIdx] || [])[weekdayIndex(d)];
-    if (!dayCfg || dayCfg.closed) return false;
+  const sch = latestSchedules.get(empUsername);
+  if (!sch) return false;
+
+  const d = startOfDay(dateObj);
+  const dStr = localYmd(d);
+
+  // 0) Ako postoji override za TAJ dan – on ima prioritet
+  const ov = sch.overrides && sch.overrides[dStr];
+  if (ov) {
+    // ako je označen kao zatvoren ili nema ispravno vreme → tretiraj kao da ne radi
+    if (ov.closed) return false;
+    const s = hmToMin(ov.from);
+    const e = hmToMin(ov.to);
+    if (s == null || e == null || e <= s) return false;
     return true;
   }
+
+  // 1) Provera opsega važenja baznog rasporeda
+  const inRange =
+    (!sch.startDate || sch.startDate <= dStr) &&
+    (!sch.endDate || sch.endDate >= dStr);
+  if (!inRange) return false;
+
+  // 2) Pattern (1w/2w/3w/4w) – isto kao u getWorkIntervalsFor
+  const weeksCount =
+    sch.pattern === "2w" ? 2 :
+    sch.pattern === "3w" ? 3 :
+    sch.pattern === "4w" ? 4 : 1;
+
+  const start = sch.startDate ? parseLocalYmd(sch.startDate) : d;
+  const diffDays = Math.floor((d - startOfDay(start)) / (24 * 3600 * 1000));
+  if (diffDays < 0) return false;
+
+  const weekIdx = ((Math.floor(diffDays / 7) % weeksCount) + weeksCount) % weeksCount;
+  const weeksArr = Array.isArray(sch.weeks)
+    ? sch.weeks
+    : Object.keys(sch.weeks || {})
+        .sort((a, b) => Number(a) - Number(b))
+        .map(k => sch.weeks[k]);
+
+  const dayCfg = (weeksArr[weekIdx] || [])[weekdayIndex(d)];
+  if (!dayCfg || dayCfg.closed) return false;
+  return true;
+}
 
   const employeesWorkingToday = useMemo(() => (employees || []).filter(e => worksThisDay(e.username, dayStart)), [employees, latestSchedules, dayStart]);
   const visibleEmployees = useMemo(() => {
