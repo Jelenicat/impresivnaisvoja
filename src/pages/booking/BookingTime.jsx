@@ -9,12 +9,12 @@ import { db } from "../../firebase";
 
 /* ---------- Salon sati (1=pon .. 7=ned) ---------- */
 const SALON_HOURS = {
-  1:[{start:"09:00",end:"20:00"}],
-  2:[{start:"09:00",end:"20:00"}],
-  3:[{start:"09:00",end:"20:00"}],
-  4:[{start:"09:00",end:"20:00"}],
-  5:[{start:"09:00",end:"20:00"}],
-  6:[{start:"09:00",end:"16:00"}],
+  1:[{start:"08:00",end:"21:00"}],
+  2:[{start:"08:00",end:"21:00"}],
+  3:[{start:"08:00",end:"21:00"}],
+  4:[{start:"08:00",end:"21:00"}],
+  5:[{start:"08:00",end:"21:00"}],
+  6:[{start:"08:00",end:"16:00"}],
   7:[]
 };
 
@@ -123,19 +123,27 @@ function subtractIntervals(freeMins, busyMins){
   return res;
 }
 function slotsFromMinuteIntervals(dayDate, minuteIntervals, durationMin){
-  const out=[];
+  const out = [];
+
+  // 👇 ako je ukupno trajanje ≥ 120 min → korak 120,
+  // inače koristi standardni MIN_STEP (60 min)
+  const step = durationMin >= 120 ? 120 : MIN_STEP;
+
   for (const seg of minuteIntervals){
-    for (let s=seg.start; s+durationMin<=seg.end; s+=MIN_STEP){
+    for (let s = seg.start; s + durationMin <= seg.end; s += step){
       const start = new Date(dayDate);
-      start.setHours(0,0,0,0);
+      start.setHours(0, 0, 0, 0);
       start.setMinutes(s);
+
       const end = new Date(start);
-      end.setMinutes(start.getMinutes() + durationMin); // ✅ ISPRAVKA
+      end.setMinutes(start.getMinutes() + durationMin);
+
       out.push({ start, end });
     }
   }
   return out;
 }
+
 
 
 /* ---------- Pattern/schedule helpers ---------- */
