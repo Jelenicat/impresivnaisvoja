@@ -28,7 +28,14 @@ const cmpHM = (a,b)=>{ const A=toHM(a),B=toHM(b); return A.h!==B.h?A.h-B.h:A.m-B
 const maxHM = (a,b)=> cmpHM(a,b)>=0?a:b;
 const minHM = (a,b)=> cmpHM(a,b)<=0?a:b;
 const wd1to7 = d => (d.getDay()===0?7:d.getDay());
-const dayKey = d => { const x=new Date(d); x.setHours(0,0,0,0); return x.toISOString().slice(0,10); };
+const dayKey = (d) => {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  const y = x.getFullYear();
+  const m = String(x.getMonth() + 1).padStart(2, "0");
+  const day = String(x.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;  // npr "2025-12-05"
+};
 const hhmm = d => d.toLocaleTimeString("sr-RS", { hour: "2-digit", minute: "2-digit", hour12: false });
 const nice = (d, o={}) => d.toLocaleString("sr-RS", o);
 const niceDate = d => d.toLocaleDateString("sr-RS",{weekday:"short", day:"2-digit", month:"2-digit", year:"numeric"});
@@ -135,25 +142,47 @@ function slotsFromMinuteIntervals(dayDate, minuteIntervals, durationMin){
 const PATTERN_WEEKS = {"1w":1,"2w":2,"3w":3,"4w":4};
 const jsDayToIdx = d => (d.getDay()+6)%7; // Mon=0
 function pickDayFromSchedule(sched, date){
-  if (!sched?.startDate) return null;
-  const start=new Date(sched.startDate); start.setHours(0,0,0,0);
-  const cur=new Date(date); cur.setHours(0,0,0,0);
-  if (sched.endDate){
-    const end=new Date(sched.endDate); end.setHours(23,59,59,999);
-    if (cur> end) return null;
+  if (!sched) return null;
+
+  // 🔹 1) prvo proveri da li postoji override za TAČAN dan
+  const key = dayKey(date);            // npr. "2025-12-05"
+  const ov  = sched.overrides && sched.overrides[key];
+  if (ov) {
+    // ako ima override – on je jači od šablona
+    return {
+      from:   ov.from   || "",
+      to:     ov.to     || "",
+      closed: !!ov.closed,
+    };
   }
-  if (cur<start) return null;
 
-  const diffDays=Math.floor((cur-start)/(24*3600*1000));
-  const totalWeeks=PATTERN_WEEKS[sched.pattern]||1;
-  const weekIdx=((Math.floor(diffDays/7))%totalWeeks);
-  const dayIdx=jsDayToIdx(cur);
-  const weekArr=sched.weeks?.[String(weekIdx)] || [];
-  const day=weekArr[dayIdx];
-  if(!day) return null;
-  return { from:day.from||"", to:day.to||"", closed:!!day.closed };
+  // 🔹 2) ako nema override → koristi postojeću logiku sa pattern-om
+  if (!sched.startDate) return null;
+
+  const start = new Date(sched.startDate);
+  start.setHours(0,0,0,0);
+
+  const cur = new Date(date);
+  cur.setHours(0,0,0,0);
+
+  if (sched.endDate){
+    const end=new Date(sched.endDate);
+    end.setHours(23,59,59,999);
+    if (cur > end) return null;
+  }
+  if (cur < start) return null;
+
+  const diffDays = Math.floor((cur - start) / (24*3600*1000));
+  const totalWeeks = PATTERN_WEEKS[sched.pattern] || 1;
+  const weekIdx = (Math.floor(diffDays/7)) % totalWeeks;
+
+  const dayIdx = jsDayToIdx(cur);
+  const weekArr = sched.weeks?.[String(weekIdx)] || [];
+  const day = weekArr[dayIdx];
+  if (!day) return null;
+
+  return { from: day.from || "", to: day.to || "", closed: !!day.closed };
 }
-
 /* ---------- Skill helpers ---------- */
 function canEmployeeDo(service, employee){
   if (!employee) return true; // "Prvi dostupan" – ne filtriramo
