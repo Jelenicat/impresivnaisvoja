@@ -481,7 +481,7 @@ export default function ClientHistory(){
           <>
             {mode==="cancel" ? (
               <div>
-                <h3>Budući termini (otkazivanje na dan termina nije moguće)</h3>
+                <h3>Budući termini (online otkazivanje na dan termina nije moguće, molim pozovite salon radi izmena)</h3>
 
                 {upcoming.length===0 ? (
                   <div>Nema zakazanih termina.</div>
