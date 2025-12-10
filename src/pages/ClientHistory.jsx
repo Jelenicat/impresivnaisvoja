@@ -42,7 +42,7 @@ const fmtDate = (d) => {
 };
 const fmtPrice = (n) => (Number(n)||0).toLocaleString("sr-RS");
 
-/* ---------- NEW: BLOCK SAME-DAY CANCEL ---------- */
+/* ---------- SAME-DAY CANCEL BLOCK ---------- */
 function sameDay(d1, d2){
   return (
     d1.getFullYear() === d2.getFullYear() &&
@@ -54,10 +54,9 @@ function sameDay(d1, d2){
 function canCancel(when){
   const start = toJsDate(when);
   const now = new Date();
-
   if (!start || isNaN(start)) return false;
 
-  // 🚫 ako je termin danas — zabrani otkazivanje
+  // ❌ zabrani otkazivanje ako je termin danas
   if (sameDay(start, now)) return false;
 
   return true;
@@ -140,7 +139,7 @@ function isDocIdLike(str){
   return /^[A-Za-z0-9_-]{15,}$/.test(str.trim());
 }
 
-/* ---------- lookup for employee id ---------- */
+/* ---------- lookup for employee document id ---------- */
 async function getEmployeeIdByUsername(username){
   if (!username) return null;
   const qx = query(collection(db, "employees"), where("username", "==", username));
@@ -149,7 +148,10 @@ async function getEmployeeIdByUsername(username){
   return first ? first.id : null;
 }
 
-/* ---------- MAIN COMPONENT ---------- */
+/* ===========================================================
+                      MAIN COMPONENT
+=========================================================== */
+
 export default function ClientHistory(){
   const nav = useNavigate();
   const location = useLocation();
@@ -159,8 +161,25 @@ export default function ClientHistory(){
 
   const [svcIndex, setSvcIndex] = useState({});
   const [catIndex, setCatIndex] = useState({});
+  const [empIndex, setEmpIndex] = useState({});   // 👈 NEW — name lookup
 
   const mode = location?.state?.autoCancel ? "cancel" : "history";
+
+  /* LOAD EMPLOYEES for full names */
+  useEffect(()=>{
+    const unsub = onSnapshot(collection(db, "employees"), snap=>{
+      const map = {};
+      snap.forEach(doc=>{
+        const v = doc.data() || {};
+        const fn = v.firstName || "";
+        const ln = v.lastName || "";
+        const full = `${fn} ${ln}`.trim();
+        if (v.username) map[v.username] = full;
+      });
+      setEmpIndex(map);
+    });
+    return ()=>unsub && unsub();
+  },[]);
 
   /* LOAD SERVICES */
   useEffect(()=>{
@@ -211,15 +230,15 @@ export default function ClientHistory(){
     const seen = new Map();
 
     const pushDocs = (snap, source) => {
-      snap.forEach(d => {
+      snap.forEach(d=>{
         const existing = seen.get(d.id);
-        const val = { id: d.id, ...d.data(), __src: source };
-        if (!existing || existing.__src === "history") {
+        const val = { id:d.id, ...d.data(), __src:source };
+        if (!existing || existing.__src==="history"){
           seen.set(d.id, val);
         }
       });
       const all = Array.from(seen.values())
-        .sort((a,b)=>((toJsDate(b.start)?.getTime()||0) - (toJsDate(a.start)?.getTime()||0)));
+        .sort((a,b)=>(toJsDate(b.start)-toJsDate(a.start)));
       setItems(all);
       setLoading(false);
     };
@@ -229,49 +248,42 @@ export default function ClientHistory(){
       try{
         const qx = query(
           collection(db, col),
-          where(field, "==", value),
+          where(field,"==",value),
           orderBy("start","desc")
         );
-        unsubs.push(onSnapshot(qx,(snap)=>pushDocs(snap, tag)));
+        unsubs.push(onSnapshot(qx,(snap)=>pushDocs(snap,tag)));
       }catch(e){
         console.warn(`Query index needed for ${col}.${field}`, e);
       }
     };
 
     if (mode==="cancel" || mode==="history"){
-      addQ("appointments", "clientId",        client?.id,     "active");
-      addQ("appointments", "clientPhoneNorm", phoneNorm,      "active");
-      addQ("appointments", "clientPhone",     rawPhone,       "active");
-      addQ("appointments", "clientEmail",     email,          "active");
+      addQ("appointments","clientId",client?.id,"active");
+      addQ("appointments","clientPhoneNorm",phoneNorm,"active");
+      addQ("appointments","clientPhone",rawPhone,"active");
+      addQ("appointments","clientEmail",email,"active");
     }
     if (mode==="history"){
-      addQ("appointments_history", "clientId",        client?.id, "history");
-      addQ("appointments_history", "clientPhoneNorm", phoneNorm,  "history");
-      addQ("appointments_history", "clientPhone",     rawPhone,   "history");
-      addQ("appointments_history", "clientEmail",     email,      "history");
+      addQ("appointments_history","clientId",client?.id,"history");
+      addQ("appointments_history","clientPhoneNorm",phoneNorm,"history");
+      addQ("appointments_history","clientPhone",rawPhone,"history");
+      addQ("appointments_history","clientEmail",email,"history");
     }
 
     return ()=>unsubs.forEach(u=>u&&u());
-  }, [client?.id, client?.phone, client?.email, nav, mode]);
+  },[client?.id, client?.phone, client?.email, nav, mode]);
 
-  const normalized = useMemo(()=> (items || []).map(normalizeAppointment), [items]);
+  const normalized = useMemo(()=> (items||[]).map(normalizeAppointment), [items]);
 
   const hydrated = useMemo(()=>{
-    return (normalized || []).map(a=>{
-      const hydraServices = (a.services || []).map(s=>{
+    return (normalized||[]).map(a=>{
+      const hydraServices = (a.services||[]).map(s=>{
         const meta = svcIndex[s.serviceId] || {};
         const resolvedCategoryId =
           s.categoryId ?? meta.categoryId ?? null;
-
         const resolvedCategoryName =
-          s.categoryName ??
-          meta.categoryName ??
-          (resolvedCategoryId ? catIndex[resolvedCategoryId] : null) ??
-          null;
-
-        const resolvedName =
-          (s.name || meta.name || "").trim();
-
+          s.categoryName ?? meta.categoryName ?? (resolvedCategoryId ? catIndex[resolvedCategoryId] : null);
+        const resolvedName = (s.name || meta.name || "").trim();
         return {
           ...s,
           name: resolvedName,
@@ -288,30 +300,39 @@ export default function ClientHistory(){
           ? a.servicesLabel.trim()
           : derivedLabel;
 
-      const totalDurationMin = a.totalDurationMin ||
+      const totalDurationMin =
+        a.totalDurationMin ||
         Math.max(15, hydraServices.reduce((acc,x)=>acc+(x.durationMin||0),0) || 15);
 
-      const totalAmountRsd = (a.totalAmountRsd != null ? a.totalAmountRsd : null) ??
+      const totalAmountRsd =
+        (a.totalAmountRsd != null ? a.totalAmountRsd : null) ??
         hydraServices.reduce((acc,x)=>acc+(x.priceRsd||0),0);
 
-      return { ...a, services: hydraServices, servicesLabel: labelToUse, totalDurationMin, totalAmountRsd };
+      return {
+        ...a,
+        services: hydraServices,
+        servicesLabel: labelToUse,
+        totalDurationMin,
+        totalAmountRsd
+      };
     });
-  }, [normalized, svcIndex, catIndex]);
+  },[normalized,svcIndex,catIndex]);
 
   const nowMs = Date.now();
-  const upcoming = useMemo(()=>
-    (hydrated || [])
+
+  const upcoming = useMemo(()=>(
+    (hydrated||[])
       .filter(a => toJsDate(a.start)?.getTime()>=nowMs && a.status!=="cancelled")
       .sort((a,b)=>toJsDate(a.start)-toJsDate(b.start))
-  , [hydrated, nowMs]);
+  ),[hydrated,nowMs]);
 
-  const past = useMemo(()=>
-    (hydrated || [])
-      .filter(a => toJsDate(a.start)?.getTime() < nowMs || a.status==="cancelled")
+  const past = useMemo(()=>(
+    (hydrated||[])
+      .filter(a => toJsDate(a.start)?.getTime()<nowMs || a.status==="cancelled")
       .sort((a,b)=>toJsDate(b.start)-toJsDate(a.start))
-  , [hydrated, nowMs]);
+  ),[hydrated,nowMs]);
 
-  /* ---------- CANCEL FUNCTION WITH PROTECTION ---------- */
+  /* ---------- CANCEL FUNCTION ---------- */
   async function cancel(id){
     const appt = upcoming.find(x=>x.id===id);
     if (appt && !canCancel(appt.start)){
@@ -321,13 +342,14 @@ export default function ClientHistory(){
 
     if (!window.confirm("Sigurno želiš da otkažeš ovaj termin?")) return;
     try{
-      const ref  = doc(db,"appointments", id);
+      const ref = doc(db,"appointments",id);
       const snap = await getDoc(ref);
       if (!snap.exists()){
         setItems(prev=>prev.filter(x=>x.id!==id));
         alert("Termin više ne postoji.");
         return;
       }
+
       const a = snap.data()||{};
       const when = toJsDate(a.start);
 
@@ -336,7 +358,7 @@ export default function ClientHistory(){
         originalId:id,
         status:"cancelled",
         cancelledAt:serverTimestamp(),
-        cancelledBy:getClient()?.id||"public",
+        cancelledBy:getClient()?.id || "public",
         archivedAt:serverTimestamp()
       },{merge:true});
 
@@ -345,38 +367,34 @@ export default function ClientHistory(){
 
       const employeeId = await getEmployeeIdByUsername(a?.employeeUsername);
 
-      const title = "❌ Termin otkazan";
-      const prettyWhen = when ? `— ${niceDate(when)} u ${hhmm(when)}` : "";
-      const body = `${a?.clientName || getClient()?.name || "Klijent"} je otkazao ${a?.servicesLabel || "uslugu"} ${prettyWhen}`;
-
-      const screen = "/admin";
-      const url = `/admin?appointmentId=${id}${employeeId?`&employeeId=${employeeId}`:""}`;
-
       try{
-        await fetch("/api/sendNotifications", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            kind: "appointment_canceled",
-            title,
-            body,
-            toRoles: ["admin","salon"],
-            toEmployeeId: employeeId || null,
-            data: {
-              screen,
-              url,
-              appointmentIds: [id],
-              employeeId: employeeId || "",
-              employeeUsername: a?.employeeUsername || ""
+        await fetch("/api/sendNotifications",{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({
+            kind:"appointment_canceled",
+            title:"❌ Termin otkazan",
+            body:`${a?.clientName || getClient()?.name || "Klijent"} je otkazao ${a?.servicesLabel||"uslugu"} — ${niceDate(when)} u ${hhmm(when)}`,
+            toRoles:["admin","salon"],
+            toEmployeeId:employeeId || null,
+            data:{
+              screen:"/admin",
+              url:`/admin?appointmentId=${id}${employeeId?`&employeeId=${employeeId}`:""}`,
+              appointmentIds:[id],
+              employeeId:employeeId || "",
+              employeeUsername:a?.employeeUsername || ""
             }
           })
         });
       }catch(e){
-        console.warn("Slanje notifikacije nije uspelo:", e);
+        console.warn("Slanje notifikacije nije uspelo:",e);
       }
 
       alert("Termin je otkazan.");
-    }catch(e){ console.error(e); alert("Greška pri otkazivanju."); }
+    }catch(e){
+      console.error(e);
+      alert("Greška pri otkazivanju.");
+    }
   }
 
   return (
@@ -422,9 +440,7 @@ export default function ClientHistory(){
           margin-bottom:18px;
           background:#fff;
           box-shadow:0 2px 6px rgba(0,0,0,.05);
-          overflow:visible;
         }
-        .card *{ min-height:0; }
 
         .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
         .badge{padding:4px 10px;border-radius:999px;font-size:12px;font-weight:700;}
@@ -454,29 +470,35 @@ export default function ClientHistory(){
           justify-content:flex-end;
           flex-wrap:wrap;
         }
-        .btn{padding:10px 14px;border-radius:10px;font-weight:700;cursor:pointer;line-height:1;}
-        .btn.ghost{background:#fff;border:1px solid #ddd;}
+        .btn{padding:10px 14px;border-radius:10px;font-weight:700;cursor:pointer;}
         .btn.primary{background:#111;color:#fff;}
       `}</style>
+
       <div className="sheet">
-        <div className="title">{mode==="cancel"?"Otkaži termin":"Istorija termina"}</div>
-        {loading? <div>Učitavanje…</div> : (
+        <div className="title">{mode==="cancel" ? "Otkaži termin" : "Istorija termina"}</div>
+
+        {loading ? <div>Učitavanje…</div> : (
           <>
-            {mode==="cancel"?(
+            {mode==="cancel" ? (
               <div>
-                <h3>Budući termini (nije moguće online otkazati termin na dan termina)</h3>
-                {upcoming.length===0? <div>Nema zakazanih termina.</div> :
+                <h3>Budući termini (otkazivanje na dan termina nije moguće)</h3>
+
+                {upcoming.length===0 ? (
+                  <div>Nema zakazanih termina.</div>
+                ) : (
                   upcoming.map(a=>{
-                    const chips = (a.services || []).filter(s => s.name && !isDocIdLike(s.name));
+                    const chips = (a.services||[]).filter(s => s.name && !isDocIdLike(s.name));
                     const disable = !canCancel(a.start);
-                    return(
+
+                    return (
                       <div key={a.id} className="card">
                         <div className="head">
                           <span className="badge upcoming">Zakazano</span>
                           <span>{fmtDate(a.start)}</span>
                         </div>
 
-                        <div>{a.employeeUsername||"Zaposleni"}</div>
+                        {/* FULL NAME OF EMPLOYEE */}
+                        <div>{empIndex[a.employeeUsername] || a.employeeUsername || "Zaposleni"}</div>
 
                         {a.servicesLabel ? (
                           <div style={{marginTop:6, fontWeight:600}}>
@@ -487,7 +509,7 @@ export default function ClientHistory(){
                         {chips.length>0 && (
                           <div className="services">
                             {chips.map(s=>(
-                              <span key={s.serviceId || s.name} className="chip" title={s.name}>
+                              <span key={s.serviceId||s.name} className="chip">
                                 {s.name}
                               </span>
                             ))}
@@ -499,7 +521,7 @@ export default function ClientHistory(){
                         <div className="rowbtns">
                           {disable ? (
                             <div style={{opacity:0.6, fontSize:13, fontWeight:600}}>
-                              Termin je danas i ne može se otkazati
+                              Termin je danas — nije moguće otkazivanje
                             </div>
                           ) : (
                             <button className="btn primary" onClick={()=>cancel(a.id)}>
@@ -510,25 +532,30 @@ export default function ClientHistory(){
                       </div>
                     );
                   })
-                }
+                )}
               </div>
-            ):(
+            ) : (
               <div>
                 <h3>Prošli i otkazani termini</h3>
-                {past.length===0? <div>Nema stavki u istoriji.</div> :
+
+                {past.length===0 ? (
+                  <div>Nema stavki u istoriji.</div>
+                ) : (
                   past.map(a=>{
-                    const canceled=(a.status==="cancelled" || a.__src==="history");
-                    const chips = (a.services || []).filter(s => s.name && !isDocIdLike(s.name));
-                    return(
+                    const canceled = (a.status==="cancelled" || a.__src==="history");
+                    const chips = (a.services||[]).filter(s => s.name && !isDocIdLike(s.name));
+
+                    return (
                       <div key={a.id} className="card">
                         <div className="head">
                           <span className={`badge ${canceled?"canceled":"done"}`}>
-                            {canceled?"Otkazano":"Završen"}
+                            {canceled ? "Otkazano" : "Završen"}
                           </span>
                           <span>{fmtDate(a.start)}</span>
                         </div>
 
-                        <div>{a.employeeUsername||"Zaposleni"}</div>
+                        {/* FULL NAME EMPLOYEE */}
+                        <div>{empIndex[a.employeeUsername] || a.employeeUsername || "Zaposleni"}</div>
 
                         {a.servicesLabel ? (
                           <div style={{marginTop:6, fontWeight:600}}>
@@ -539,7 +566,7 @@ export default function ClientHistory(){
                         {chips.length>0 && (
                           <div className="services">
                             {chips.map(s=>(
-                              <span key={s.serviceId || s.name} className="chip" title={s.name}>
+                              <span key={s.serviceId||s.name} className="chip">
                                 {s.name}
                               </span>
                             ))}
@@ -550,7 +577,7 @@ export default function ClientHistory(){
                       </div>
                     );
                   })
-                }
+                )}
               </div>
             )}
           </>
