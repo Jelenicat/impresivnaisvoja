@@ -42,7 +42,28 @@ const fmtDate = (d) => {
 };
 const fmtPrice = (n) => (Number(n)||0).toLocaleString("sr-RS");
 
-/* ---------- services normalization (radi za stare i nove zapise) ---------- */
+/* ---------- NEW: BLOCK SAME-DAY CANCEL ---------- */
+function sameDay(d1, d2){
+  return (
+    d1.getFullYear() === d2.getFullYear() &&
+    d1.getMonth() === d2.getMonth() &&
+    d1.getDate() === d2.getDate()
+  );
+}
+
+function canCancel(when){
+  const start = toJsDate(when);
+  const now = new Date();
+
+  if (!start || isNaN(start)) return false;
+
+  // 🚫 ako je termin danas — zabrani otkazivanje
+  if (sameDay(start, now)) return false;
+
+  return true;
+}
+
+/* ---------- services normalization ---------- */
 const sid = (s) => String(s?.serviceId ?? s?.id ?? s ?? "");
 
 function expandServicesForHistory(appt){
@@ -114,13 +135,12 @@ function normalizeAppointment(appt){
   };
 }
 
-/* ---------- util: da li string liči na Firestore docId ---------- */
 function isDocIdLike(str){
   if (!str) return false;
   return /^[A-Za-z0-9_-]{15,}$/.test(str.trim());
 }
 
-/* ---------- lookup helper: nađi employee docId po username (za notifikaciju) ---------- */
+/* ---------- lookup for employee id ---------- */
 async function getEmployeeIdByUsername(username){
   if (!username) return null;
   const qx = query(collection(db, "employees"), where("username", "==", username));
@@ -129,7 +149,7 @@ async function getEmployeeIdByUsername(username){
   return first ? first.id : null;
 }
 
-/* ---------- component ---------- */
+/* ---------- MAIN COMPONENT ---------- */
 export default function ClientHistory(){
   const nav = useNavigate();
   const location = useLocation();
@@ -137,14 +157,12 @@ export default function ClientHistory(){
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // indeks servisa { [serviceId]: {name, durationMin, priceRsd, ...} }
   const [svcIndex, setSvcIndex] = useState({});
-  // indeks kategorija { [categoryId]: categoryName } (ne prikazujemo je, ali punimo index)
   const [catIndex, setCatIndex] = useState({});
 
   const mode = location?.state?.autoCancel ? "cancel" : "history";
 
-  // Učitaj sve servise
+  /* LOAD SERVICES */
   useEffect(()=>{
     const unsub = onSnapshot(collection(db, "services"), (snap)=>{
       const m = {};
@@ -164,7 +182,7 @@ export default function ClientHistory(){
     return ()=>unsub && unsub();
   },[]);
 
-  // Učitaj kategorije
+  /* LOAD CATEGORIES */
   useEffect(()=>{
     const unsub = onSnapshot(collection(db, "categories"), (snap)=>{
       const m = {};
@@ -178,6 +196,7 @@ export default function ClientHistory(){
     return ()=>unsub && unsub();
   },[]);
 
+  /* LOAD APPOINTMENTS */
   useEffect(()=>{
     const phoneNorm = normPhone(client?.phone);
     const rawPhone  = String(client?.phone||"").trim();
@@ -235,10 +254,8 @@ export default function ClientHistory(){
     return ()=>unsubs.forEach(u=>u&&u());
   }, [client?.id, client?.phone, client?.email, nav, mode]);
 
-  // normalizovani zapisi
   const normalized = useMemo(()=> (items || []).map(normalizeAppointment), [items]);
 
-  // hidracija + korekcija servicesLabel, bez prikaza kategorije u nazivu
   const hydrated = useMemo(()=>{
     return (normalized || []).map(a=>{
       const hydraServices = (a.services || []).map(s=>{
@@ -252,7 +269,6 @@ export default function ClientHistory(){
           (resolvedCategoryId ? catIndex[resolvedCategoryId] : null) ??
           null;
 
-        // NEMA fallback-a na serviceId; ako nema imena, ostaje prazno
         const resolvedName =
           (s.name || meta.name || "").trim();
 
@@ -295,7 +311,14 @@ export default function ClientHistory(){
       .sort((a,b)=>toJsDate(b.start)-toJsDate(a.start))
   , [hydrated, nowMs]);
 
+  /* ---------- CANCEL FUNCTION WITH PROTECTION ---------- */
   async function cancel(id){
+    const appt = upcoming.find(x=>x.id===id);
+    if (appt && !canCancel(appt.start)){
+      alert("Termin je danas i više se ne može otkazati.");
+      return;
+    }
+
     if (!window.confirm("Sigurno želiš da otkažeš ovaj termin?")) return;
     try{
       const ref  = doc(db,"appointments", id);
@@ -441,11 +464,11 @@ export default function ClientHistory(){
           <>
             {mode==="cancel"?(
               <div>
-                <h3>Budući termini</h3>
+                <h3>Budući termini (nije moguće online otkazati termin na dan termina)</h3>
                 {upcoming.length===0? <div>Nema zakazanih termina.</div> :
                   upcoming.map(a=>{
-                    // pripremi čipove bez ID-jeva
                     const chips = (a.services || []).filter(s => s.name && !isDocIdLike(s.name));
+                    const disable = !canCancel(a.start);
                     return(
                       <div key={a.id} className="card">
                         <div className="head">
@@ -464,11 +487,7 @@ export default function ClientHistory(){
                         {chips.length>0 && (
                           <div className="services">
                             {chips.map(s=>(
-                              <span
-                                key={s.serviceId || s.name}
-                                className="chip"
-                                title={s.name}
-                              >
+                              <span key={s.serviceId || s.name} className="chip" title={s.name}>
                                 {s.name}
                               </span>
                             ))}
@@ -476,8 +495,17 @@ export default function ClientHistory(){
                         )}
 
                         <div className="total">{fmtPrice(a.totalAmountRsd||0)} RSD</div>
+
                         <div className="rowbtns">
-                          <button className="btn primary" onClick={()=>cancel(a.id)}>Otkaži</button>
+                          {disable ? (
+                            <div style={{opacity:0.6, fontSize:13, fontWeight:600}}>
+                              Termin je danas i ne može se otkazati
+                            </div>
+                          ) : (
+                            <button className="btn primary" onClick={()=>cancel(a.id)}>
+                              Otkaži
+                            </button>
+                          )}
                         </div>
                       </div>
                     );
@@ -511,11 +539,7 @@ export default function ClientHistory(){
                         {chips.length>0 && (
                           <div className="services">
                             {chips.map(s=>(
-                              <span
-                                key={s.serviceId || s.name}
-                                className="chip"
-                                title={s.name}
-                              >
+                              <span key={s.serviceId || s.name} className="chip" title={s.name}>
                                 {s.name}
                               </span>
                             ))}
