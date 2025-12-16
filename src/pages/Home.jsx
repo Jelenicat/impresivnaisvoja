@@ -124,8 +124,16 @@ function ServicesModal({ open, onClose, services = [], loading, error, onPick })
                     onClick={()=>onPick?.(s)}
                     title={s.name}
                   >
-                    <div className="srv2-row-title">{s.name}</div>
-                    <span className="srv2-cta">Zakaži</span>
+                    <div className="srv2-row-title">
+  {s.name}
+  {s.priceRsd != null && (
+    <span className="srv2-price">
+      {" "}— {Number(s.priceRsd).toLocaleString("sr-RS")} RSD
+    </span>
+  )}
+</div>
+<span className="srv2-cta">Zakaži</span>
+
                   </button>
                 ))}
               </div>
@@ -374,9 +382,15 @@ export default function Home() {
       const raw = [];
       svcSnap.forEach(d => raw.push({ id: d.id, ...(d.data() || {}) }));
 
-      const valid = raw
-        .filter(s => (s.name || "").toString().trim())
-        .map(s => ({ id: s.id, name: s.name, categoryName: catById.get(s.categoryId) || null }));
+    const valid = raw
+  .filter(s => (s.name || "").toString().trim())
+  .map(s => ({
+    id: s.id,
+    name: s.name,
+    categoryName: catById.get(s.categoryId) || null,
+    priceRsd: s.priceRsd ?? s.price ?? null
+  }));
+
 
       // sort: cat -> name
       valid.sort((a, b) => {
