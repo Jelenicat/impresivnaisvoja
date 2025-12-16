@@ -1267,7 +1267,11 @@ if (actorRole === "admin" || actorRole === "salon") {
         title: "Vaš termin je pomeren",
         body: titleDate,
         screen: url, // sada /worker...
-        reason: "ADMIN_RESCHEDULED",
+       reason:
+  actorRole === "salon"
+    ? "SALON_MOVED_APPOINTMENT"
+    : "ADMIN_RESCHEDULED",
+
         info
       };
 } else if (actorRole === "worker") {
