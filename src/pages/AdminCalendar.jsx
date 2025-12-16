@@ -637,12 +637,111 @@ const payloadNotif = {
     setModalValue({ ...a, create: false, start: toJsDate(a.start), end: endDate, manualEnd: true });
     setOpen(true);
   }
-  async function handleDelete(id) {
-    if (!id) return;
-    if (!window.confirm("Obrisati ovaj termin?")) return;
+async function handleDelete(id) {
+  if (!id) return;
+  if (!window.confirm("Obrisati ovaj termin?")) return;
+
+  // Nađi termin PRE brisanja
+  const appt = (appointments || []).find(a => a.id === id);
+  if (!appt) {
     await deleteDoc(doc(db, "appointments", id));
     setOpen(false);
+    return;
   }
+
+  const fmt = (d) => {
+    const x = d?.toDate ? d.toDate() : new Date(d);
+    const dd = String(x.getDate()).padStart(2, "0");
+    const mm = String(x.getMonth() + 1).padStart(2, "0");
+    const yyyy = x.getFullYear();
+    const hh = String(x.getHours()).padStart(2, "0");
+    const mi = String(x.getMinutes()).padStart(2, "0");
+    return `${dd}.${mm}.${yyyy}. ${hh}:${mi}`;
+  };
+
+  const titleDate = `${fmt(appt.start)}–${fmt(appt.end)}`;
+  const employeeUsername = appt.employeeUsername;
+
+  const empObj = (employees || []).find(e => e.username === employeeUsername);
+  const empName = empObj
+    ? `${empObj.firstName || ""} ${empObj.lastName || ""}`.trim()
+    : employeeUsername;
+
+  /* ================= NOTIFIKACIJE ================= */
+
+  try {
+    // 1️⃣ SALON briše → admin + radnica
+    if (role === "salon") {
+      // admin
+      await fetch("/api/pushMoveNotif", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: "toAdmin",
+          title: "Salon je obrisao termin",
+          body: `${empName} • ${titleDate}`,
+          reason: "SALON_DELETED_APPOINTMENT",
+          info: { apptId: id }
+        })
+      });
+
+      // radnica
+      await fetch("/api/pushMoveNotif", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: "toEmployee",
+          employeeUsername,
+          title: "Vaš termin je obrisan",
+          body: titleDate,
+          screen: `/worker?appointmentId=${id}&employeeId=${employeeUsername}`,
+          reason: "SALON_DELETED_APPOINTMENT",
+          info: { apptId: id }
+        })
+      });
+    }
+
+    // 2️⃣ RADNICA briše → admin
+    if (role === "worker") {
+      await fetch("/api/pushMoveNotif", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: "toAdmin",
+          title: "Radnica je obrisala termin",
+          body: `${empName} • ${titleDate}`,
+          reason: "WORKER_DELETED_APPOINTMENT",
+          info: { apptId: id }
+        })
+      });
+    }
+
+    // 3️⃣ ADMIN briše → radnica
+    if (role === "admin") {
+      await fetch("/api/pushMoveNotif", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: "toEmployee",
+          employeeUsername,
+          title: "Vaš termin je obrisan",
+          body: titleDate,
+          screen: `/worker?appointmentId=${id}&employeeId=${employeeUsername}`,
+          reason: "ADMIN_DELETED_APPOINTMENT",
+          info: { apptId: id }
+        })
+      });
+    }
+  } catch (e) {
+    console.warn("pushMoveNotif (delete) error:", e);
+  }
+
+  /* ================= BRISANJE ================= */
+
+  await deleteDoc(doc(db, "appointments", id));
+  setOpen(false);
+}
+
   function prevDay() { const d = new Date(dayStart); d.setDate(d.getDate() - 1); setDay(d); }
   function nextDay() { const d = new Date(dayStart); d.setDate(d.getDate() + 1); setDay(d); }
   function today() { setDay(startOfDay(new Date())); }
