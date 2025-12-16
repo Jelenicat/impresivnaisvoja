@@ -634,6 +634,22 @@ if (createdBy === "worker") {
     })
   });
 }
+// SALON → ADMIN  ✅ DODATI
+if (createdBy === "salon") {
+  await fetch("/api/pushMoveNotif", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      kind: "toAdmin",
+      title: "Salon je zakazao novi termin",
+      body: `${empName} • ${titleDate}`,
+      screen: `/admin/kalendar?appointmentId=${info.apptId}&employeeId=${info.employeeUsername}`,
+      reason: "SALON_CREATED_APPOINTMENT",
+      info
+    })
+  });
+}
+
 
       } catch (e) {
         console.warn("pushMoveNotif (create) error:", e);
@@ -981,7 +997,11 @@ if (actorRole === "admin" || actorRole === "salon") {
     title: "Vaš termin je pomeren",
     body: titleDate,
     screen: url, // sada /worker...
-    reason: "ADMIN_RESIZED",
+    reason:
+  actorRole === "salon"
+    ? "SALON_RESIZED_APPOINTMENT"
+    : "ADMIN_RESIZED_APPOINTMENT",
+
     info
   };
 } else if (actorRole === "worker") {
@@ -994,6 +1014,21 @@ if (actorRole === "admin" || actorRole === "salon") {
     reason: "WORKER_RESIZED",
     info
   };
+}
+// ✅ SALON → ADMIN (resize)
+if (actorRole === "salon") {
+  await fetch("/api/pushMoveNotif", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      kind: "toAdmin",
+      title: "Salon je izmenio termin",
+      body: `${empName} • ${titleDate}`,
+      screen: `/admin/kalendar?appointmentId=${info.apptId}&employeeId=${info.employeeUsername}`,
+      reason: "SALON_RESIZED_APPOINTMENT",
+      info
+    })
+  });
 }
 
 
@@ -1219,7 +1254,11 @@ if (actorRole === "admin" || actorRole === "salon") {
         title: "Dodeljen vam je novi termin",
         body: titleDate,
         screen: url, // sada /worker...
-        reason: "ADMIN_MOVED_TO_NEW_EMP",
+       reason:
+  actorRole === "salon"
+    ? "SALON_MOVED_APPOINTMENT"
+    : "ADMIN_MOVED_APPOINTMENT",
+
         info
       }
     : {
@@ -1240,6 +1279,21 @@ if (actorRole === "admin" || actorRole === "salon") {
     reason: "WORKER_RESCHEDULED",
     info
   };
+}
+// ✅ SALON → ADMIN (drag & drop)
+if (actorRole === "salon") {
+  await fetch("/api/pushMoveNotif", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      kind: "toAdmin",
+      title: "Salon je pomerio termin",
+      body: `${empName} • ${titleDate}`,
+      screen: `/admin/kalendar?appointmentId=${info.apptId}&employeeId=${info.employeeUsername}`,
+      reason: "SALON_MOVED_APPOINTMENT",
+      info
+    })
+  });
 }
 
 
@@ -2044,7 +2098,16 @@ if (actorRole === "admin" || actorRole === "salon") {
                 <div className="chips">
                   {a.source && (
                     <span className="chip">
-                      {a.source === "manual" ? "Zakazano: admin" : "Zakazano: online"}
+                     {a.source === "manual"
+  ? `Zakazano: ${
+      a.createdBy === "salon"
+        ? "salon"
+        : a.createdBy === "worker"
+          ? "radnica"
+          : "admin"
+    }`
+  : "Zakazano: online"}
+
                     </span>
                   )}
                   {isOnline && <span className="chip">Online rezervacija 💬</span>}
