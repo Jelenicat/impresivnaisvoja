@@ -545,13 +545,12 @@ useEffect(() => {
       const a = { id: chg.doc.id, ...chg.doc.data() };
 
       // samo kad ADMIN/SLON dodaju ručno
-      const addedByAdmin = role === "admin" || role === "salon";
-      const isManual =
-        a?.source === "manual" ||
-        a?.createdBy === "admin" ||
-        a?.createdBy === "salon";
+const createdBy = a?.createdBy; // "admin" | "salon" | "worker"
+const isManual = a?.source === "manual";
 
-      if (!addedByAdmin || !isManual) return;
+if (!isManual) return;
+
+
 
       try {
         const fmt = (d) => {
@@ -583,28 +582,52 @@ useEffect(() => {
           clientPhone: client ? (client.phone || client.phoneNumber || "") : (a?.clientPhone || ""),
           serviceNames: items.map(s => s.name),
           priceRsd: String(total || 0),
-          changeType: "ADMIN_CREATED"
+          changeType:
+  createdBy === "worker"
+    ? "WORKER_CREATED"
+    : createdBy === "salon"
+      ? "SALON_CREATED"
+      : "ADMIN_CREATED"
+
         };
 
    const url = `/worker?appointmentId=${info.apptId}&employeeId=${info.employeeUsername}`;
 
-const payloadNotif = {
-  kind: "toEmployee",
-  employeeUsername: a.employeeUsername,
-  title: "Dodeljen vam je novi termin",
-  body: titleDate,
-  screen: url, // <-- sada /worker
-  reason: "ADMIN_CREATED_APPOINTMENT",
-  info
-};
+// ADMIN ili SALON → RADNICA
+if (createdBy === "admin" || createdBy === "salon") {
+  await fetch("/api/pushMoveNotif", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      kind: "toEmployee",
+      employeeUsername: a.employeeUsername,
+      title: "Dodeljen vam je novi termin",
+      body: titleDate,
+      screen: url, // /worker
+      reason: createdBy === "admin"
+        ? "ADMIN_CREATED_APPOINTMENT"
+        : "SALON_CREATED_APPOINTMENT",
+      info
+    })
+  });
+}
 
+// RADNICA → ADMIN
+if (createdBy === "worker") {
+  await fetch("/api/pushMoveNotif", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      kind: "toAdmin",
+      title: "Radnica je dodala termin",
+      body: `${empName} • ${titleDate}`,
+      screen: `/admin/kalendar?appointmentId=${info.apptId}&employeeId=${info.employeeUsername}`,
+      reason: "WORKER_CREATED_APPOINTMENT",
+      info
+    })
+  });
+}
 
-
-        await fetch("/api/pushMoveNotif", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payloadNotif)
-        });
       } catch (e) {
         console.warn("pushMoveNotif (create) error:", e);
       }
