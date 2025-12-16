@@ -199,6 +199,8 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
   const [scrollY, setScrollY] = useState(0);
   const colBodyRefs = useRef(new Map());
   const deepLinkOpenedRef = useRef({ id: null }); // sprečava ponovna otvaranja istog termina
+    const sentCreateRef = useRef(new Set());
+
 
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifItems, setNotifItems] = useState([]);
@@ -543,8 +545,11 @@ useEffect(() => {
       if (chg.type !== "added") return;
 
       const a = { id: chg.doc.id, ...chg.doc.data() };
+      if (sentCreateRef.current.has(a.id)) return;
+sentCreateRef.current.add(a.id);
 
-      // samo kad ADMIN/SLON dodaju ručno
+
+      // samo kad je termin dodat ručno (admin / salon / worker)
 const createdBy = a?.createdBy; // "admin" | "salon" | "worker"
 const isManual = a?.source === "manual";
 
