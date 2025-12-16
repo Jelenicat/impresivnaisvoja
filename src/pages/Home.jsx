@@ -98,17 +98,21 @@ function ServicesModal({ open, onClose, services = [], loading, error, onPick })
             // KORAK 1: Kategorije — JEDNA KOLONA
             categories.length ? (
               <div className="srv2-list cats one-col">
-                {categories.map(cat => (
-                  <button
-                    key={cat}
-                    className="srv2-row cat fancy"
-                    onClick={()=>setSelectedCat(cat)}
-                    title={cat}
-                  >
-                    <div className="srv2-row-title">{cat}</div>
-                    <span className="srv2-cta arrow">›</span>
-                  </button>
-                ))}
+{categories.map(cat => (
+  <button
+    key={cat}
+    className="srv2-row cat fancy"
+    onClick={() => setSelectedCat(cat)}
+    title={cat}
+  >
+    <div className="srv2-row-title">
+      {cat}
+    </div>
+  </button>
+))}
+
+
+            
               </div>
             ) : (
               <div className="srv2-empty">Nema kategorija.</div>
@@ -124,15 +128,17 @@ function ServicesModal({ open, onClose, services = [], loading, error, onPick })
                     onClick={()=>onPick?.(s)}
                     title={s.name}
                   >
-                    <div className="srv2-row-title">
-  {s.name}
+                    <div className="srv2-row-title srv2-col">
+  <div className="srv2-name">{s.name}</div>
+
   {s.priceRsd != null && (
-    <span className="srv2-price">
-      {" "}— {Number(s.priceRsd).toLocaleString("sr-RS")} RSD
-    </span>
+    <div className="srv2-price">
+      {Number(s.priceRsd).toLocaleString("sr-RS")} RSD
+    </div>
   )}
 </div>
 <span className="srv2-cta">Zakaži</span>
+
 
                   </button>
                 ))}
@@ -209,10 +215,32 @@ function ServicesModal({ open, onClose, services = [], loading, error, onPick })
         }
         .srv2-row.cat{ padding:12px 14px; }
 
-        .srv2-row-title{
-          font-size:15px; font-weight:800; color:#26262a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-          letter-spacing:.2px;
-        }
+       .srv2-row-title{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:4px;
+
+  font-size:15px;
+  font-weight:800;
+  color:#26262a;
+
+  white-space:normal;
+  overflow:visible;
+  text-overflow:unset;
+}
+
+.srv2-name{
+  white-space:normal;
+  line-height:1.25;
+}
+
+.srv2-price{
+  font-size:13px;
+  color:#6a5d4b;
+  font-weight:600;
+}
+
 
         .srv2-cta{
           font-size:12px; padding:6px 10px; border-radius:999px; border:1px solid #eadfce; background:#fff;
