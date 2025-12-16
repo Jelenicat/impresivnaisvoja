@@ -529,7 +529,8 @@ useEffect(() => {
     unsubs.push(unsubHist);
     return () => unsubs.forEach(u => u && u());
   }, [role, currentUsername, dayStart]);
-// === Notifikacija radnici kad admin/salon KREIRA novi termin (ručno) ===
+// === NOTIFIKACIJE: kreiranje termina (ručno) ===
+
 useEffect(() => {
   const FIVE_MIN = 5 * 60 * 1000;
   const since = new Date(Date.now() - FIVE_MIN);
@@ -545,13 +546,14 @@ useEffect(() => {
       if (chg.type !== "added") return;
 
       const a = { id: chg.doc.id, ...chg.doc.data() };
-      if (sentCreateRef.current.has(a.id)) return;
+if (sentCreateRef.current.has(a.id)) return;
 sentCreateRef.current.add(a.id);
 
-
-      // samo kad je termin dodat ručno (admin / salon / worker)
 const createdBy = a?.createdBy; // "admin" | "salon" | "worker"
 const isManual = a?.source === "manual";
+
+if (!isManual) return;
+
 
 
 
