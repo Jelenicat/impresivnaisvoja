@@ -549,67 +549,79 @@ function onServiceToggle(id, checked) {
   return;
 }
     // === HELPER: notifikacije za NOV termin (admin/salon kreira) ===
-    async function notifyOnNewAppointment(startTime, endTime) {
-      // Samo ako je neko iz salona/admina kreirao
-      if (role !== "admin" && role !== "salon") return;
-
-      const fmt = (d) => {
-        try {
-          const x = new Date(d);
-          const dd = String(x.getDate()).padStart(2, "0");
-          const mm = String(x.getMonth() + 1).padStart(2, "0");
-          const yyyy = x.getFullYear();
-          const hh = String(x.getHours()).padStart(2, "0");
-          const min = String(x.getMinutes()).padStart(2, "0");
-          return `${dd}.${mm}.${yyyy}. ${hh}:${min}`;
-        } catch {
-          return "";
-        }
-      };
-
-      const titleDate = `${fmt(startTime)}–${fmt(endTime)}`;
-
-      const clientName =
-        (clientForUI?.firstName || value?.clientName || "") +
-        (clientForUI?.lastName ? ` ${clientForUI.lastName}` : "");
-
-      const body = clientName ? `${clientName} • ${titleDate}` : titleDate;
-
-      const employeeUsername =
-        form.employeeUsername || (employees[0]?.username || "");
-
-      try {
-        // 1) radnica
-        await fetch("/api/pushMoveNotif", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            kind: "toEmployee",
-            employeeUsername,
-            title: "Imate novi termin",
-            body,
-            screen: "/admin",
-            reason: "ADMIN_CREATED",
-          }),
-        });
-
-        // 2) admin
-        await fetch("/api/pushMoveNotif", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            kind: "toAdmin",
-            title: "Salon je zakazao novi termin",
-            body,
-            screen: "/admin",
-            reason: "ADMIN_CREATED",
-          }),
-        });
-      } catch (e) {
-        console.warn("pushMoveNotif NEW error:", e);
-      }
+ async function notifyOnNewAppointment(startTime, endTime) {
+  const fmt = (d) => {
+    try {
+      const x = new Date(d);
+      const dd = String(x.getDate()).padStart(2, "0");
+      const mm = String(x.getMonth() + 1).padStart(2, "0");
+      const yyyy = x.getFullYear();
+      const hh = String(x.getHours()).padStart(2, "0");
+      const min = String(x.getMinutes()).padStart(2, "0");
+      return `${dd}.${mm}.${yyyy}. ${hh}:${min}`;
+    } catch {
+      return "";
     }
-    // === /HELPER ===
+  };
+
+  const titleDate = `${fmt(startTime)}–${fmt(endTime)}`;
+
+  const clientName =
+    (clientForUI?.firstName || value?.clientName || "") +
+    (clientForUI?.lastName ? ` ${clientForUI.lastName}` : "");
+
+  const body = clientName ? `${clientName} • ${titleDate}` : titleDate;
+
+  const employeeUsername =
+    form.employeeUsername || (employees[0]?.username || "");
+
+  try {
+    // ✅ AKO JE RADNICA KREIRALA TERMIN → IDE ADMINU
+    if (role === "worker") {
+      await fetch("/api/pushMoveNotif", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: "toAdmin",
+          title: "Radnica je zakazala novi termin",
+          body,
+          screen: "/admin",
+          reason: "WORKER_CREATED",
+        }),
+      });
+      return;
+    }
+
+    // ✅ ADMIN / SALON → RADNICA
+    await fetch("/api/pushMoveNotif", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        kind: "toEmployee",
+        employeeUsername,
+        title: "Imate novi termin",
+        body,
+        screen: "/admin",
+        reason: "ADMIN_CREATED",
+      }),
+    });
+
+    // ✅ ADMIN / SALON → ADMIN
+    await fetch("/api/pushMoveNotif", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        kind: "toAdmin",
+        title: "Zakazan je novi termin",
+        body,
+        screen: "/admin",
+        reason: "ADMIN_CREATED",
+      }),
+    });
+  } catch (e) {
+    console.warn("pushMoveNotif NEW error:", e);
+  }
+}
 
 
     // === NOV TERMIN -> RAZDVOJI PO KATEGORIJAMA ===

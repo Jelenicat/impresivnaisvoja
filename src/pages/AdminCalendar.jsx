@@ -553,7 +553,7 @@ sentCreateRef.current.add(a.id);
 const createdBy = a?.createdBy; // "admin" | "salon" | "worker"
 const isManual = a?.source === "manual";
 
-if (!isManual) return;
+
 
 
 
