@@ -389,7 +389,12 @@ function onServiceToggle(id, checked) {
       if(form.id){
         await setDoc(doc(db,"appointments", form.id), payload, { merge:true });
       }else{
-        await addDoc(collection(db,"appointments"), { ...payload, createdAt: serverTimestamp() });
+        await addDoc(collection(db,"appointments"), {
+  ...payload,
+  createdBy: role,        // 🔥 DODAJ
+  createdAt: serverTimestamp()
+});
+
       }
       onSaved?.();
       return;
@@ -591,7 +596,12 @@ function onServiceToggle(id, checked) {
         paymentStatus, paymentMethod, isPaid,
       };
 
-      await addDoc(collection(db,"appointments"), { ...payload, createdAt: serverTimestamp() });
+      await addDoc(collection(db,"appointments"), {
+  ...payload,
+  createdBy: role,        // 🔥 DODAJ
+  createdAt: serverTimestamp()
+});
+
         await notifyOnNewAppointment();
 
       onSaved?.();
@@ -645,7 +655,12 @@ function onServiceToggle(id, checked) {
         categoryId: g.categoryId || null,
       };
 
-      await addDoc(collection(db,"appointments"), { ...payload, createdAt: serverTimestamp() });
+  await addDoc(collection(db,"appointments"), {
+  ...payload,
+  createdBy: role,          // 🔥 OBAVEZNO
+  createdAt: serverTimestamp()
+});
+
     }
 
     // (opciono) mogao bi da upišeš i zbir u poslednju karticu ili da ga ignorišeš;
