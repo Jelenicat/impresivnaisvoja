@@ -16,6 +16,7 @@ if ("serviceWorker" in navigator) {
       .register("/firebase-messaging-sw.js")
       .then((reg) => {
         console.log("✅ Service Worker registrovan:", reg.scope);
+        reg.update(); // ⬅️ preporučeno (opciono)
       })
       .catch((err) => {
         console.error("❌ Greška pri registraciji SW:", err);

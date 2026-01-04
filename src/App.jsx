@@ -16,6 +16,7 @@ import BookingServices from "./pages/booking/BookingServices.jsx";
 import BookingTime from "./pages/booking/BookingTime.jsx";
 import EmployeeSelect from "./pages/booking/EmployeeSelect.jsx";
 import ClientHistory from "./pages/ClientHistory.jsx";
+import { getToken } from "firebase/messaging";
 
 // FCM foreground listener
 import { app } from "./firebase";
@@ -160,6 +161,56 @@ export default function App() {
     })();
     return () => unsub && unsub();
   }, []);
+  // 🔴 FCM TOKEN KEEP-ALIVE (KLJUČNO ZA iOS PWA)
+useEffect(() => {
+  let mounted = true;
+
+  async function refreshFcmToken(reason = "init") {
+    try {
+      if (!(await isSupported())) return;
+
+      const messaging = getMessaging(app);
+      const token = await getToken(messaging);
+
+      if (token && mounted) {
+        await fetch("/api/save-fcm-token", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          cache: "no-store",
+          body: JSON.stringify({
+            token,
+            reason,
+            ts: Date.now(),
+          }),
+        });
+      }
+    } catch (e) {
+      console.log("FCM refresh error:", e);
+    }
+  }
+
+  // 1️⃣ kad se app pokrene
+  refreshFcmToken("app_start");
+
+  // 2️⃣ kad se vrati u fokus (NAJBITNIJE ZA iOS)
+  const onFocus = () => refreshFcmToken("window_focus");
+  window.addEventListener("focus", onFocus);
+
+  // 3️⃣ kad tab ponovo postane vidljiv
+  const onVisibility = () => {
+    if (document.visibilityState === "visible") {
+      refreshFcmToken("visibility_visible");
+    }
+  };
+  document.addEventListener("visibilitychange", onVisibility);
+
+  return () => {
+    mounted = false;
+    window.removeEventListener("focus", onFocus);
+    document.removeEventListener("visibilitychange", onVisibility);
+  };
+}, []);
+
 
   // vrednosti iz localStorage za prosleđivanje u AdminCalendar/Finance
   const role = localStorage.getItem("role") || "";
