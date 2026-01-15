@@ -247,7 +247,8 @@ export default function BookingTime(){
   const chosenEmployeeId = state?.employee || "firstFree";
   const client = useMemo(()=>getLoggedClient(),[]);
 
-  const today0 = startOfToday();
+  const [today0] = useState(() => startOfToday());
+
   /* ✅ OGRANIČENJE: poslednji dozvoljeni dan za izbor (danas + 14 dana, uključivo) */
   const maxDate = useMemo(() => {
     const x = new Date(today0);
@@ -346,21 +347,33 @@ export default function BookingTime(){
 
   /* ---------- Busy map po radnici za izabrani dan ---------- */
   const [busyByEmp, setBusyByEmp] = useState(new Map());
-  useEffect(()=>{
-    // Ako je izabrani dan izvan dozvoljenog opsega, ne otvaraj subscribe
-    if (selectedDay < today0 || selectedDay > maxDate) {
-      setBusyByEmp(new Map());
-      return;
-    }
+ const targetUsernames = useMemo(() => {
+  if (chosenEmployeeId === "firstFree") {
+    return employees.map(e => e.username).sort().join("|");
+  }
+  return chosenEmployeeId;
+}, [chosenEmployeeId, employees]);
+
+
+useEffect(()=>{
+  // ⛔️ odmah očisti stare podatke da ne bi “flešovali” pogrešni termini
+  setBusyByEmp(new Map());
+
+  if (selectedDay < today0 || selectedDay > maxDate) {
+
+     return;
+  }
+
 
     const s = new Date(selectedDay); s.setHours(0,0,0,0);
     const e = new Date(selectedDay); e.setHours(23,59,59,999);
 
-    const targets = (chosenEmployeeId==="firstFree")
-      ? employees.map(x=>x.username)
-      : [chosenEmployeeId];
+  const usernames =
+  chosenEmployeeId === "firstFree"
+    ? targetUsernames.split("|")
+    : [targetUsernames];
 
-    const unsubs = targets.map(u=>{
+const unsubs = usernames.map(u => {
       const qAp = query(
         collection(db, "appointments"),
         where("employeeUsername","==", u),
@@ -381,7 +394,12 @@ export default function BookingTime(){
     });
 
     return ()=> unsubs.forEach(u=>u && u());
-  },[selectedDay, chosenEmployeeId, employees, today0, maxDate]);
+  }, [selectedDay, targetUsernames, chosenEmployeeId, today0]);
+
+const loadingSlots =
+  busyByEmp.size === 0 &&
+  selectedDay >= today0 &&
+  selectedDay <= maxDate;
 
   function employeeCanDoAll(services, employee){
     return services.every(s => canEmployeeDo(s, employee));
@@ -970,36 +988,49 @@ return { slots: resultSlots, anyWork };
         </div>
 
         {/* Poruka ili slotovi */}
-        {(!totalDurationMin) ? (
-          <div className="msg">Izaberite bar jednu uslugu ispod da biste videli termine.</div>
-        ) : ( (selectedDay > maxDate)
-              ? <div className="msg">Zakazivanje je moguće samo u naredne dve nedelje.</div>
-              : (slots.length===0 ? (
-                  <div className="msg">
-                    Nema dostupnih termina za odabrani datum.&nbsp;
-                    {anyWork ? "Pokušaj drugi dan." : "Zaposleni ne rade taj dan."}
+  {!totalDurationMin ? (
+  <div className="msg">
+    Izaberite bar jednu uslugu ispod da biste videli termine.
+  </div>
+) : selectedDay > maxDate ? (
+  <div className="msg">
+    Zakazivanje je moguće samo u naredne dve nedelje.
+  </div>
+) : loadingSlots ? (
+  <div className="msg">
+    Učitavam dostupne termine…
+  </div>
+) : slots.length === 0 ? (
+  <div className="msg">
+    Nema dostupnih termina za odabrani datum.&nbsp;
+    {anyWork ? "Pokušaj drugi dan." : "Zaposleni ne rade taj dan."}
+  </div>
+) : (
+  <div className="slots">
+    {slots.map((s, i) => {
+      const emp =
+        chosenEmployeeId === "firstFree"
+          ? (s.employeeId
+              ? (employees.find(e => e.username === s.employeeId)?.firstName ||
+                 s.employeeId)
+              : null)
+          : null;
 
-                  </div>
-                ) : (
-                  <div className="slots">
-                    {slots.map((s,i)=>{
-                      const emp = chosenEmployeeId==="firstFree" ? (s.employeeId ? (employees.find(e=>e.username===s.employeeId)?.firstName || s.employeeId) : null) : null;
-                      return (
-                        <button
-                          key={i}
-                          className={`slot ${emp?"emp":""}`}
-                          onClick={()=>pickSlot(s)}
-                          disabled={s.start < new Date()}
-                          title={s.start < new Date() ? "Vreme je prošlo" : ""}
-                        >
-                          {hhmm(s.start)}{emp?` • ${emp}`:""}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )
-            )
-        )}
+      return (
+        <button
+          key={`${s.start.getTime()}-${s.employeeId || "any"}`}
+          className={`slot ${emp ? "emp" : ""}`}
+          onClick={() => pickSlot(s)}
+          disabled={s.start < new Date()}
+          title={s.start < new Date() ? "Vreme je prošlo" : ""}
+        >
+          {hhmm(s.start)}
+          {emp ? ` • ${emp}` : ""}
+        </button>
+      );
+    })}
+  </div>
+)}
 
         {/* Rezime + odabir usluga */}
         <div className="res">
