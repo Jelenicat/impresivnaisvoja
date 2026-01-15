@@ -22,7 +22,7 @@ try {
 }
 
 /* --------------- PWA: jednostavan offline cache --------------- */
-const CACHE_NAME = "impresivna-v2";
+const CACHE_NAME = "impresivna-v3";
 const APP_SHELL = [
   "/", // SPA entry
   "/index.html",
