@@ -673,11 +673,21 @@ return { slots: resultSlots, anyWork };
         const gEnd      = addMin(rollingStart, gDuration);
 
         // FINAL RACE GUARD
-        if (await hasConflict(confirmData.employeeId || "", rollingStart, gEnd)){
-          setSaving(false);
-          pushToast("Ups, termin je upravo zauzet. Izaberi drugi slobodan.");
-          return;
-        }
+       if (await hasConflict(confirmData.employeeId || "", rollingStart, gEnd)) {
+  setSaving(false);
+  pushToast("Ups, termin je upravo zauzet. Lista termina je osvežena.");
+
+  // 🔁 Forsiraj osvežavanje slotova (bez refresh-a stranice)
+  setBusyByEmp(new Map());
+
+  // mali tick da React ponovo izračuna slotove
+  setTimeout(() => {
+    setSelectedDay(d => new Date(d));
+  }, 0);
+
+  return;
+}
+
 
         const names = g.services.map(s => s.name).filter(Boolean);
         const servicesLabel = names.join(", ");
