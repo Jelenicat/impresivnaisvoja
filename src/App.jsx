@@ -179,6 +179,9 @@ useEffect(() => {
           cache: "no-store",
           body: JSON.stringify({
             token,
+            role: localStorage.getItem("role") || null,
+            username: localStorage.getItem("employeeUsername") || localStorage.getItem("username") || null,
+            ownerId: localStorage.getItem("employeeUsername") || localStorage.getItem("username") || null,
             reason,
             ts: Date.now(),
           }),
