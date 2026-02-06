@@ -66,6 +66,8 @@ self.addEventListener("fetch", (event) => {
 if (messaging && messaging.onBackgroundMessage) {
   messaging.onBackgroundMessage((payload) => {
     try {
+      // Ako browser vec automatski prikazuje "notification", nemoj duplirati.
+      if (payload?.notification && !payload?.data?.forceShow) return;
       const title =
         payload?.data?.title ||
         payload?.notification?.title ||
@@ -148,3 +150,6 @@ self.addEventListener("notificationclick", (event) => {
     })()
   );
 });
+
+
+
