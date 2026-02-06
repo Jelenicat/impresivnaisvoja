@@ -100,24 +100,24 @@ export default function App() {
             autoBody = [
               d.clientName ? `Klijent: ${d.clientName}` : null,
               d.servicesLabel || null,
-              whenTxt ? `Poƒçetak: ${whenTxt}` : null,
-            ].filter(Boolean).join(" ¬∑ ");
+              whenTxt ? `Pocetak: ${whenTxt}` : null,
+            ].filter(Boolean).join(" ∑ ");
           } else if (kind === "canceled" || kind === "appointment_canceled") {
             autoTitle = "Otkazan termin";
             autoBody = [
               d.clientName ? `Klijent: ${d.clientName}` : null,
               d.servicesLabel || null,
               whenTxt ? `Vreme: ${whenTxt}` : null,
-            ].filter(Boolean).join(" ¬∑ ");
+            ].filter(Boolean).join(" ∑ ");
           } else if (kind === "reminder") {
             autoTitle = "Podsetnik na termin";
             autoBody = [
               d.servicesLabel || null,
-              whenTxt ? `Poƒçetak: ${whenTxt}` : null,
-            ].filter(Boolean).join(" ¬∑ ");
+              whenTxt ? `Pocetak: ${whenTxt}` : null,
+            ].filter(Boolean).join(" ∑ ");
           }
 
-          // Ako backend ipak po≈°alje gotove title/body ‚Äì koristi njih ako nisu prazni
+          // Ako backend ipak poöalje gotove title/body ñ koristi njih ako nisu prazni
           const title =
             (d.title || "").trim() ||
             payload?.notification?.title ||
@@ -128,7 +128,7 @@ export default function App() {
             payload?.notification?.body ||
             autoBody;
 
-          // Fallback URL: ako nema eksplicitnog d.url, probaj da slo≈æi≈° kalendar sa query parametrima
+          // Fallback URL: ako nema eksplicitnog d.url, probaj da sloûiö kalendar sa query parametrima
           const primaryApptId =
             d.appointmentId || (Array.isArray(d.appointmentIds) ? d.appointmentIds[0] : "");
           let url = d.url || d.screen || "";
@@ -161,63 +161,70 @@ export default function App() {
     })();
     return () => unsub && unsub();
   }, []);
-  // üî¥ FCM TOKEN KEEP-ALIVE (KLJUƒåNO ZA iOS PWA)
-useEffect(() => {
-  let mounted = true;
 
-  async function refreshFcmToken(reason = "init") {
-    try {
-      if (!(await isSupported())) return;
+  // ?? FCM TOKEN KEEP-ALIVE (KLJUCNO ZA iOS PWA)
+  useEffect(() => {
+    let mounted = true;
 
-      const messaging = getMessaging(app);
-      const token = await getToken(messaging);
+    async function refreshFcmToken(reason = "init") {
+      try {
+        if (!(await isSupported())) return;
 
-      if (token && mounted) {
-        await fetch("/api/save-fcm-token", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          cache: "no-store",
-          body: JSON.stringify({
-            token,
-            role: localStorage.getItem("role") || null,
-            username: localStorage.getItem("employeeUsername") || localStorage.getItem("username") || null,
-            ownerId: localStorage.getItem("employeeUsername") || localStorage.getItem("username") || null,
-            reason,
-            ts: Date.now(),
-          }),
+        const messaging = getMessaging(app);
+        const swReg =
+          (await navigator.serviceWorker.getRegistration("/firebase-messaging-sw.js")) ||
+          (await navigator.serviceWorker.register("/firebase-messaging-sw.js"));
+
+        const token = await getToken(messaging, {
+          vapidKey: "BK4128ixBhpZ5V40LkeaFRbaVou7tMHno-5wT_bOQpwfbklMKiBsHN_k5IMrQDZg5jTr2w7vWgUJo9ocPOe-4qs",
+          serviceWorkerRegistration: swReg,
         });
+
+        if (token && mounted) {
+          await fetch("/api/save-fcm-token", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            cache: "no-store",
+            body: JSON.stringify({
+              token,
+              role: localStorage.getItem("role") || null,
+              username: localStorage.getItem("employeeUsername") || localStorage.getItem("username") || null,
+              ownerId: localStorage.getItem("employeeUsername") || localStorage.getItem("username") || null,
+              reason,
+              ts: Date.now(),
+            }),
+          });
+        }
+      } catch (e) {
+        console.log("FCM refresh error:", e);
       }
-    } catch (e) {
-      console.log("FCM refresh error:", e);
     }
-  }
 
-  // 1Ô∏è‚É£ kad se app pokrene
-  refreshFcmToken("app_start");
+    // 1?? kad se app pokrene
+    refreshFcmToken("app_start");
 
-  // 2Ô∏è‚É£ kad se vrati u fokus (NAJBITNIJE ZA iOS)
-  const onFocus = () => refreshFcmToken("window_focus");
-  window.addEventListener("focus", onFocus);
+    // 2?? kad se vrati u fokus (NAJBITNIJE ZA iOS)
+    const onFocus = () => refreshFcmToken("window_focus");
+    window.addEventListener("focus", onFocus);
 
-  // 3Ô∏è‚É£ kad tab ponovo postane vidljiv
-  const onVisibility = () => {
-    if (document.visibilityState === "visible") {
-      refreshFcmToken("visibility_visible");
-    }
-  };
-  document.addEventListener("visibilitychange", onVisibility);
+    // 3?? kad tab ponovo postane vidljiv
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        refreshFcmToken("visibility_visible");
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
 
-  return () => {
-    mounted = false;
-    window.removeEventListener("focus", onFocus);
-    document.removeEventListener("visibilitychange", onVisibility);
-  };
-}, []);
+    return () => {
+      mounted = false;
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
 
-
-  // vrednosti iz localStorage za prosleƒëivanje u AdminCalendar/Finance
+  // vrednosti iz localStorage za prosledivanje u AdminCalendar/Finance
   const role = localStorage.getItem("role") || "";
-  // Kalendar oƒçekuje username ‚Äì ƒçuvamo ga kao employeeUsername (fallback na "username")
+  // Kalendar ocekuje username ñ cuvamo ga kao employeeUsername (fallback na "username")
   const currentUsername =
     localStorage.getItem("employeeUsername") ||
     localStorage.getItem("username") ||
@@ -233,10 +240,10 @@ useEffect(() => {
         /* Shell zauzima pun ekran i pravi kolonu */
         .app-shell { min-height: 100svh; display: flex; flex-direction: column; }
 
-        /* Main se ≈°iri da popuni prazan prostor, gura futer na dno */
+        /* Main se öiri da popuni prazan prostor, gura futer na dno */
         .app-main { flex: 1; display: block; }
 
-        /* Futer ‚Äì ako ga prikazuje≈° */
+        /* Futer ñ ako ga prikazujeö */
         .app-footer {
           border-top: 1px solid #eee;
           background: rgba(255,255,255,0.7);
@@ -245,7 +252,7 @@ useEffect(() => {
           text-align: center;
         }
 
-        /* Telefon prilagoƒëavanja headera */
+        /* Telefon prilagodavanja headera */
         @media (max-width: 768px) {
           .brand-header {
             padding-top: 50px;
@@ -284,10 +291,10 @@ useEffect(() => {
           <Route path="/booking/employee" element={<EmployeeSelect />} />
           <Route path="/booking/time" element={<BookingTime />} />
 
-          {/* klijent ‚Äî istorija/otkazivanje */}
+          {/* klijent ó istorija/otkazivanje */}
           <Route path="/me/history" element={<ClientHistory />} />
 
-          {/* admin/salon poƒçetna ‚Äì za≈°tiƒáeno: bilo koja rola */}
+          {/* admin/salon pocetna ñ zaöticeno: bilo koja rola */}
           <Route
             path="/admin"
             element={
@@ -297,7 +304,7 @@ useEffect(() => {
             }
           />
 
-          {/* FINANSIJE ‚Äî admin, salon i worker */}
+          {/* FINANSIJE ó admin, salon i worker */}
           <Route
             path="/admin/finansije"
             element={
@@ -307,13 +314,13 @@ useEffect(() => {
             }
           />
 
-          {/* Kalendar ‚Äî svi vide svoj deo */}
+          {/* Kalendar ó svi vide svoj deo */}
           <Route
             path="/admin/kalendar"
             element={<AdminCalendar role={role} currentUsername={currentUsername} />}
           />
 
-          {/* Smene ‚Äî samo admin */}
+          {/* Smene ó samo admin */}
           <Route
             path="/admin/smene"
             element={
@@ -339,7 +346,7 @@ useEffect(() => {
 
       {pathname === "/home" && (
         <footer className="app-footer">
-          App by Jelena ‚Äî 060 420 4623
+          App by Jelena ó 060 420 4623
         </footer>
       )}
     </div>

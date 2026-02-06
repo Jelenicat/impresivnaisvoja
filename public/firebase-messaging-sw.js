@@ -4,7 +4,7 @@
 importScripts("https://www.gstatic.com/firebasejs/10.12.3/firebase-app-compat.js");
 importScripts("https://www.gstatic.com/firebasejs/10.12.3/firebase-messaging-compat.js");
 
-// Init Firebase – isti config kao na frontu
+// Init Firebase � isti config kao na frontu
 firebase.initializeApp({
   apiKey: "AIzaSyDH0mxtNU3poGUhYFfZkcX-kWljSw9hgg4",
   authDomain: "impresivnaisvoja-7da43.firebaseapp.com",
@@ -59,17 +59,13 @@ self.addEventListener("fetch", (event) => {
 
 /* ----------------- FCM background notifikacije ----------------- */
 /*
-   Data-only pristup:
-   - Backend šalje SVE u `data` (title, body, url/screen, appointmentId/apptId, employeeId/employeeUsername…)
-   - Ovdje sami prikazujemo notifikaciju (tačno jedna)
-   - Ako stigne i `notification`, ignorišemo (browser je već prikazuje)
+   Prihvata i data-only i notification payload:
+   - Ako server salje `notification`, i dalje prikazujemo sami (da klik/deeplink radi konzistentno)
+   - Ako server salje data-only, isto radi
 */
 if (messaging && messaging.onBackgroundMessage) {
   messaging.onBackgroundMessage((payload) => {
     try {
-      // 🚫 spreči duplo ako server već šalje webpush.notification
-      if (payload && payload.notification) return;
-
       const title =
         payload?.data?.title ||
         payload?.notification?.title ||
@@ -86,12 +82,12 @@ if (messaging && messaging.onBackgroundMessage) {
         Object.entries(rawData).map(([k, v]) => [k, String(v ?? "")])
       );
 
-      // Normalizacije – da klik handler uvek ima iste ključeve
-      data.employeeId    = data.employeeId || data.employeeUsername || "";
+      // Normalizacije � da klik handler uvek ima iste kljuceve
+      data.employeeId = data.employeeId || data.employeeUsername || "";
       data.appointmentId = data.appointmentId || data.apptId || data.apptID || "";
-      data.url           = data.url || data.screen || "";
+      data.url = data.url || data.screen || "";
 
-      // Prikaži notifikaciju (uvek jedna)
+      // Prikazi notifikaciju (uvek jedna)
       self.registration.showNotification(title, {
         body,
         icon: "/icons/icon-192.png",
@@ -114,17 +110,17 @@ self.addEventListener("notificationclick", (event) => {
   // Prioritet: eksplicitni d.url, pa d.screen, pa sigurni fallback na kalendar
   let url = d.url || d.screen || "/admin/kalendar";
 
-  // Ako nije kompletan URL – pretvori u apsolutni na istom originu
+  // Ako nije kompletan URL � pretvori u apsolutni na istom originu
   if (!/^https?:\/\//i.test(url)) {
     const u = new URL(url, self.location.origin);
 
-    // Ako url nije eksplicitno prosleđen kao `d.url`,
+    // Ako url nije eksplicitno prosledjen kao `d.url`,
     // dopuni query sa appointmentId/employeeId (uzima i apptId/employeeUsername fallback)
     if (!d.url) {
       const appt = d.appointmentId || d.apptId || d.apptID || "";
-      const emp  = d.employeeId || d.employeeUsername || "";
+      const emp = d.employeeId || d.employeeUsername || "";
       if (appt) u.searchParams.set("appointmentId", appt);
-      if (emp)  u.searchParams.set("employeeId", emp);
+      if (emp) u.searchParams.set("employeeId", emp);
     }
 
     url = u.toString();
@@ -134,7 +130,7 @@ self.addEventListener("notificationclick", (event) => {
     (async () => {
       const list = await clients.matchAll({ type: "window", includeUncontrolled: true });
 
-      // Fokusiraj postojeći tab ako ga ima; probaj i navigate
+      // Fokusiraj postojeci tab ako ga ima; probaj i navigate
       if (list && list.length) {
         for (const client of list) {
           try {
@@ -145,7 +141,7 @@ self.addEventListener("notificationclick", (event) => {
         }
       }
 
-      // Ako nema tabova – otvori novi
+      // Ako nema tabova � otvori novi
       if (clients.openWindow) {
         return clients.openWindow(url);
       }

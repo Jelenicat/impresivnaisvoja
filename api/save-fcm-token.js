@@ -4,23 +4,45 @@ import { getFirestore, FieldValue } from "firebase-admin/firestore";
 
 /* --- init firebase-admin --- */
 function adminDb() {
-  if (!getApps().length) {
-    const projectId = process.env.FIREBASE_PROJECT_ID;
-    const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-    let privateKey = process.env.FIREBASE_PRIVATE_KEY;
-    if (!projectId || !clientEmail || !privateKey) {
-      throw new Error("Missing Firebase Admin env vars.");
+  if (getApps().length) return getFirestore();
+
+  const svcJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+  if (svcJson) {
+    try {
+      const creds = JSON.parse(svcJson);
+      if (creds.private_key) {
+        creds.private_key = creds.private_key.replace(/\\n/g, "\n");
+      }
+      initializeApp({ credential: cert(creds) });
+      return getFirestore();
+    } catch (e) {
+      console.error("Invalid FIREBASE_SERVICE_ACCOUNT_JSON:", e);
     }
-    privateKey = privateKey.replace(/\n/g, "
-");
-    initializeApp({
-      credential: cert({ projectId, clientEmail, privateKey }),
-    });
   }
+
+  const projectId = process.env.FIREBASE_PROJECT_ID;
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+  let privateKey = process.env.FIREBASE_PRIVATE_KEY;
+  if (!projectId || !clientEmail || !privateKey) {
+    throw new Error("Missing Firebase Admin env vars.");
+  }
+  privateKey = privateKey.replace(/\\n/g, "\n");
+  initializeApp({
+    credential: cert({ projectId, clientEmail, privateKey }),
+  });
+
   return getFirestore();
 }
 
+function setCors(res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+}
+
 export default async function handler(req, res) {
+  setCors(res);
+  if (req.method === "OPTIONS") return res.status(204).end();
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
