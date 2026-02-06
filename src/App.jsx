@@ -17,9 +17,10 @@ import BookingTime from "./pages/booking/BookingTime.jsx";
 import EmployeeSelect from "./pages/booking/EmployeeSelect.jsx";
 import ClientHistory from "./pages/ClientHistory.jsx";
 import { getToken } from "firebase/messaging";
+import { deleteDoc, doc } from "firebase/firestore";
 
 // FCM foreground listener
-import { app } from "./firebase";
+import { app, db } from "./firebase";
 import { getMessaging, isSupported, onMessage } from "firebase/messaging";
 
 // helper: samo admin
@@ -54,6 +55,8 @@ function showToast(title, body, onClick) {
     document.body.contains(el) && document.body.removeChild(el);
   }, 6000);
 }
+
+const LAST_TOKEN_KEY = "fcm:lastToken";
 
 export default function App() {
   const { pathname } = useLocation();
@@ -181,6 +184,12 @@ export default function App() {
         });
 
         if (token && mounted) {
+          const last = localStorage.getItem(LAST_TOKEN_KEY);
+          if (last && last !== token) {
+            try { await deleteDoc(doc(db, "fcmTokens", last)); } catch {}
+          }
+          try { localStorage.setItem(LAST_TOKEN_KEY, token); } catch {}
+
           await fetch("/api/save-fcm-token", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -352,3 +361,7 @@ export default function App() {
     </div>
   );
 }
+
+
+
+
