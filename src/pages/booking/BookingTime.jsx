@@ -252,7 +252,7 @@ export default function BookingTime(){
   /* ✅ OGRANIČENJE: poslednji dozvoljeni dan za izbor (danas + 14 dana, uključivo) */
   const maxDate = useMemo(() => {
     const x = new Date(today0);
-    x.setDate(x.getDate() + 7); // poslednji dozvoljeni dan
+    x.setDate(x.getDate() + 14); // poslednji dozvoljeni dan
     return x;
   }, [today0]);
 
