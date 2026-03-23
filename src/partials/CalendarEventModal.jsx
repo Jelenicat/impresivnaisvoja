@@ -19,6 +19,17 @@ function toLocalInput(d){
   const mm = String(x.getMinutes()).padStart(2,"0");
   return `${y}-${m}-${day}T${h}:${mm}`;
 }
+function parseLocalDateTime(value){
+  if(!value) return null;
+
+  const [datePart, timePart] = value.split("T");
+  if (!datePart || !timePart) return null;
+
+  const [y, m, d] = datePart.split("-").map(Number);
+  const [hh, mm] = timePart.split(":").map(Number);
+
+  return new Date(y, (m || 1) - 1, d || 1, hh || 0, mm || 0, 0, 0);
+}
 function getServiceIdsForEmployee(employee, services){
   const fromEmp = Array.isArray(employee?.serviceIds) ? new Set(employee.serviceIds) : null;
   if (fromEmp) return services.filter(s=>fromEmp.has(s.id)).map(s=>s.id);
@@ -1239,7 +1250,11 @@ const [desktopSvcsOpen, setDesktopSvcsOpen] = useState(false);
                       <input
                         className="input" type="datetime-local"
                         value={toLocalInput(form.start)}
-                        onChange={(e)=>setForm(f=>({...f, start:new Date(e.target.value)}))}
+                        onChange={(e)=>{
+  const nextStart = parseLocalDateTime(e.target.value);
+  if (!nextStart) return;
+  setForm(f=>({...f, start: nextStart}));
+}}
                       />
                     </div>
 
@@ -1248,7 +1263,12 @@ const [desktopSvcsOpen, setDesktopSvcsOpen] = useState(false);
                       <input
                         className="input" type="datetime-local"
                         value={toLocalInput(form.end)}
-                        onChange={(e)=>{ setForm(f=>({...f, end:new Date(e.target.value)})); setManualEnd(true); }}
+                        onChange={(e)=>{
+  const nextEnd = parseLocalDateTime(e.target.value);
+  if (!nextEnd) return;
+  setForm(f=>({...f, end: nextEnd}));
+  setManualEnd(true);
+}}
                       />
                       {manualEnd && (
                         <button className="pill" type="button" onClick={()=>setManualEnd(false)} style={{marginTop:8}}>
@@ -1520,7 +1540,11 @@ const [desktopSvcsOpen, setDesktopSvcsOpen] = useState(false);
                 <input
                   className="input" type="datetime-local"
                   value={toLocalInput(form.start)}
-                  onChange={(e)=>setForm(f=>({...f, start:new Date(e.target.value)}))}
+                  onChange={(e)=>{
+  const nextStart = parseLocalDateTime(e.target.value);
+  if (!nextStart) return;
+  setForm(f=>({...f, start: nextStart}));
+}}
                 />
               </div>
 
@@ -1529,7 +1553,12 @@ const [desktopSvcsOpen, setDesktopSvcsOpen] = useState(false);
                 <input
                   className="input" type="datetime-local"
                   value={toLocalInput(form.end)}
-                  onChange={(e)=>{ setForm(f=>({...f, end:new Date(e.target.value)})); setManualEnd(true); }}
+                  onChange={(e)=>{
+  const nextEnd = parseLocalDateTime(e.target.value);
+  if (!nextEnd) return;
+  setForm(f=>({...f, end: nextEnd}));
+  setManualEnd(true);
+}}
                 />
                 {manualEnd && (
                   <button className="pill" type="button" onClick={()=>setManualEnd(false)}>

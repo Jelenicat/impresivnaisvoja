@@ -36,7 +36,11 @@ const fmtDate = (d) => {
 };
 
 
-function minsInDay(dt, dayStart) { const t = toJsDate(dt)?.getTime?.() ?? 0; return Math.round((t - dayStart.getTime()) / 60000); }
+function minsInDay(dt) {
+  const x = toJsDate(dt);
+  if (!x || isNaN(x)) return 0;
+  return x.getHours() * 60 + x.getMinutes();
+}
 const fmtPrice = (n) => (Number(n) || 0).toLocaleString("sr-RS");
 
 const DAY_START_MIN = 7 * 60, DAY_END_MIN = 22 * 60, PX_PER_MIN = 1.1;
@@ -435,7 +439,7 @@ export default function AdminCalendar({ role = "admin", currentUsername = null }
         for (const a of docs) {
           if (!next.has(a.id)) continue;
           const targetEndMin = next.get(a.id);
-          const actualEndMin = Math.min(DAY_END_MIN, minsInDay(a.end, dayStart));
+          const actualEndMin = Math.min(DAY_END_MIN, minsInDay(a.end));
           if (actualEndMin === targetEndMin) {
             next.delete(a.id);
             const t = overrideTimersRef.current.get(a.id);
@@ -1071,7 +1075,7 @@ if (actorRole === "salon") {
     document.body.classList.add("is-resizing");
     resizingRef.current = {
       id: appt.id,
-      startMin: Math.max(DAY_START_MIN, minsInDay(appt.start, dayStart)),
+      startMin: Math.max(DAY_START_MIN, minsInDay(appt.start)),
       bodyTop: rect.top,
       scrollTop,
       emp: appt.employeeUsername
@@ -1330,8 +1334,8 @@ if (actorRole === "salon") {
     if (!body) return;
     ev.stopPropagation();
     document.body.classList.add("is-dnd");
-    const startMin = Math.max(DAY_START_MIN, minsInDay(appt.start, dayStart));
-    const endMin = Math.min(DAY_END_MIN, minsInDay(appt.end, dayStart));
+    const startMin = Math.max(DAY_START_MIN, minsInDay(appt.start));
+   const endMin = Math.min(DAY_END_MIN, minsInDay(appt.end));
     const durationMin = Math.max(15, endMin - startMin);
     const rect = body.getBoundingClientRect();
     const coords = getClientCoords(ev);
@@ -1425,7 +1429,7 @@ if (actorRole === "salon") {
     return () => window.removeEventListener("resize", computeH);
   }, []);
   useEffect(() => {
-    const tick = () => setNowMinAbs(minsInDay(new Date(), startOfDay(new Date())));
+    const tick = () => setNowMinAbs(minsInDay(new Date()));
     tick();
     const id = setInterval(tick, 30000);
     return () => clearInterval(id);
@@ -1903,8 +1907,8 @@ if (actorRole === "salon") {
                       })()}
 
                       {list.map(a=>{
-                        const startMin = Math.max(DAY_START_MIN, minsInDay(a.start, dayStart));
-                        const actualEndMin = Math.min(DAY_END_MIN, minsInDay(a.end, dayStart));
+                        const startMin = Math.max(DAY_START_MIN, minsInDay(a.start));
+                        const actualEndMin = Math.min(DAY_END_MIN, minsInDay(a.end));
                         const endMin = (overrideEndMap.get(a.id) ?? tempEndMap.get(a.id) ?? actualEndMin);
                         const top = yFromMinutes(startMin);
                         const height=Math.max(18,(endMin-startMin)*PX_PER_MIN-2);
