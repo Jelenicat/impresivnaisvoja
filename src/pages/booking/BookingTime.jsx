@@ -374,7 +374,7 @@ function escapeIcsText(text = "") {
     .replace(/\n/g, "\\n");
 }
 
-function downloadCalendarEvent({ title, start, end, description, location }) {
+async function downloadCalendarEvent({ title, start, end, description, location }) {
   const uid = `${Date.now()}@impresivnaisvoja`;
 
   const ics = [
@@ -396,16 +396,34 @@ function downloadCalendarEvent({ title, start, end, description, location }) {
   ].join("\r\n");
 
   const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+  const file = new File([blob], "termin.ics", { type: "text/calendar" });
+
+  // Najbolje za telefon: otvara Share Sheet ako browser podržava fajlove
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({
+        files: [file],
+        title: "Termin",
+        text: "Dodaj termin u kalendar",
+      });
+      return;
+    } catch (err) {
+      if (err?.name === "AbortError") return;
+      console.warn("Share nije uspeo, koristim fallback:", err);
+    }
+  }
+
+  // Fallback za browsere koji ne podržavaju share fajlova
   const url = URL.createObjectURL(blob);
+  const opened = window.open(url, "_blank");
 
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "termin.ics";
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
+  if (!opened) {
+    window.location.href = url;
+  }
 
-  URL.revokeObjectURL(url);
+  setTimeout(() => {
+    URL.revokeObjectURL(url);
+  }, 30000);
 }
 
 export default function BookingTime() {
