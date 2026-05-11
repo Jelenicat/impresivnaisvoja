@@ -374,52 +374,35 @@ function escapeIcsText(text = "") {
     .replace(/\n/g, "\\n");
 }
 
-async function downloadCalendarEvent({ title, start, end, description, location }) {
+function downloadCalendarEvent({ title, start, end, description, location }) {
+  const formatICSDate = (date) =>
+    new Date(date).toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+
   const uid = `${Date.now()}@impresivnaisvoja`;
 
-  const ics = [
-    "BEGIN:VCALENDAR",
-    "VERSION:2.0",
-    "PRODID:-//Impresivna i Svoja//Booking//SR",
-    "CALSCALE:GREGORIAN",
-    "METHOD:PUBLISH",
-    "BEGIN:VEVENT",
-    `UID:${uid}`,
-    `DTSTAMP:${toIcsDateLocal(new Date())}`,
-    `DTSTART:${toIcsDateLocal(start)}`,
-    `DTEND:${toIcsDateLocal(end)}`,
-    `SUMMARY:${escapeIcsText(title)}`,
-    `DESCRIPTION:${escapeIcsText(description)}`,
-    `LOCATION:${escapeIcsText(location)}`,
-    "END:VEVENT",
-    "END:VCALENDAR",
-  ].join("\r\n");
+  const icsContent = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Impresivna i Svoja//Booking//SR
+BEGIN:VEVENT
+UID:${uid}
+DTSTAMP:${formatICSDate(new Date())}
+DTSTART:${formatICSDate(start)}
+DTEND:${formatICSDate(end)}
+SUMMARY:${escapeIcsText(title)}
+LOCATION:${escapeIcsText(location || "")}
+DESCRIPTION:${escapeIcsText(description || "")}
+END:VEVENT
+END:VCALENDAR`;
 
-  const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
-  const file = new File([blob], "termin.ics", { type: "text/calendar" });
+  const blob = new Blob([icsContent], {
+    type: "text/calendar;charset=utf-8",
+  });
 
-  // Najbolje za telefon: otvara Share Sheet ako browser podržava fajlove
-  if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    try {
-      await navigator.share({
-        files: [file],
-        title: "Termin",
-        text: "Dodaj termin u kalendar",
-      });
-      return;
-    } catch (err) {
-      if (err?.name === "AbortError") return;
-      console.warn("Share nije uspeo, koristim fallback:", err);
-    }
-  }
-
-  // Fallback za browsere koji ne podržavaju share fajlova
   const url = URL.createObjectURL(blob);
-  const opened = window.open(url, "_blank");
 
-  if (!opened) {
-    window.location.href = url;
-  }
+  // Bitno: NE koristimo link.download, jer to tera browser da čuva fajl.
+  // Ovako telefon ima veću šansu da odmah otvori Calendar.
+  window.location.href = url;
 
   setTimeout(() => {
     URL.revokeObjectURL(url);
