@@ -374,7 +374,7 @@ function escapeIcsText(text = "") {
     .replace(/\n/g, "\\n");
 }
 
-function downloadCalendarEvent({ title, start, end, description, location }) {
+function createCalendarHref({ title, start, end, description, location }) {
   const formatICSDate = (date) =>
     new Date(date).toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
 
@@ -383,6 +383,8 @@ function downloadCalendarEvent({ title, start, end, description, location }) {
   const icsContent = `BEGIN:VCALENDAR
 VERSION:2.0
 PRODID:-//Impresivna i Svoja//Booking//SR
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
 BEGIN:VEVENT
 UID:${uid}
 DTSTAMP:${formatICSDate(new Date())}
@@ -394,19 +396,7 @@ DESCRIPTION:${escapeIcsText(description || "")}
 END:VEVENT
 END:VCALENDAR`;
 
-  const blob = new Blob([icsContent], {
-    type: "text/calendar;charset=utf-8",
-  });
-
-  const url = URL.createObjectURL(blob);
-
-  // Bitno: NE koristimo link.download, jer to tera browser da čuva fajl.
-  // Ovako telefon ima veću šansu da odmah otvori Calendar.
-  window.location.href = url;
-
-  setTimeout(() => {
-    URL.revokeObjectURL(url);
-  }, 30000);
+  return `data:text/calendar;charset=utf-8,${encodeURIComponent(icsContent)}`;
 }
 
 export default function BookingTime() {
@@ -812,7 +802,10 @@ export default function BookingTime() {
   const [confirmData, setConfirmData] = useState(null);
   const [saving, setSaving] = useState(false);
   const [calendarEvent, setCalendarEvent] = useState(null);
-
+const calendarHref = useMemo(() => {
+  if (!calendarEvent) return "";
+  return createCalendarHref(calendarEvent);
+}, [calendarEvent]);
   function pickSlot(opt) {
     if (opt?.start < new Date()) {
       pushToast("Ne možeš izabrati vreme u prošlosti.");
@@ -1235,7 +1228,11 @@ export default function BookingTime() {
           outline: none !important;
           box-shadow: none !important;
         }
-
+.calendarLink {
+  display: block;
+  text-align: center;
+  text-decoration: none;
+}
         .d:focus,
         .d:active {
           outline: none !important;
@@ -2190,12 +2187,14 @@ export default function BookingTime() {
                 Možete dodati termin u kalendar na telefonu.
               </div>
 
-              <button
-                className="btnx dark"
-                onClick={() => downloadCalendarEvent(calendarEvent)}
-              >
-                Dodaj u kalendar
-              </button>
+            <a
+  className="btnx dark calendarLink"
+  href={calendarHref}
+  target="_blank"
+  rel="noreferrer"
+>
+  Dodaj u kalendar
+</a>
 
               <button
                 className="btnx"
