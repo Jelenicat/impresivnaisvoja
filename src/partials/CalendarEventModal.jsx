@@ -65,6 +65,27 @@ function makeServicesLabel(services, selectedIds){
   const names = (selectedIds||[]).map(id => byId.get(id)?.name).filter(Boolean);
   return names.join(", ");
 }
+function makeServiceSnapshots(services, selectedIds){
+  const byId = new Map((services || []).map(s => [s.id, s]));
+  return (selectedIds || [])
+    .map(id => {
+      const s = byId.get(id);
+      if (!s) return null;
+      return {
+        id: s.id,
+        name: s.name || "",
+        priceRsd: Number(s.priceRsd || 0),
+        durationMin: Number(s.durationMin || 0),
+        categoryId: s.categoryId || null,
+      };
+    })
+    .filter(Boolean);
+}
+function sameServiceIds(a = [], b = []){
+  const aa = (a || []).map(String).sort();
+  const bb = (b || []).map(String).sort();
+  return aa.length === bb.length && aa.every((x, i) => x === bb[i]);
+}
 function groupServicesByCategory(selectedIds, allServices) {
   const byId = new Map((allServices || []).map(s => [s.id, s]));
   const groups = new Map(); // Map<categoryId, {categoryId, services: Service[]}>
@@ -456,9 +477,17 @@ function onServiceToggle(id, checked) {
 
     // === Ako je EDIT -> jedan doc kao i do sada ===
     if (editingExisting) {
-  const servicesLabel = makeServicesLabel(services, form.services);
+  const serviceIds = Array.isArray(form.services) ? form.services : [];
+  const originalServiceIds = extractServiceIds(value?.services);
+  const servicesChanged = !sameServiceIds(serviceIds, originalServiceIds);
+  const serviceSnapshots =
+    editingExisting && !servicesChanged && Array.isArray(value?.serviceSnapshots)
+      ? value.serviceSnapshots
+      : makeServiceSnapshots(services, serviceIds);
+
+  const servicesLabel = makeServicesLabel(services, serviceIds);
   const totalDurationMin =
-    (form.services || [])
+    serviceIds
       .map(id => (services.find(s=>s.id===id)?.durationMin)||0)
       .reduce((a,b)=>a+b,0) || 15;
 
@@ -466,7 +495,8 @@ function onServiceToggle(id, checked) {
     type: "appointment",
     employeeUsername: form.employeeUsername || (employees[0]?.username || ""),
     clientId: clientId || null,
-    services: Array.isArray(form.services) ? form.services : [],
+    services: serviceIds,
+    serviceSnapshots,
     start: form.start,
     end: form.end,
     priceRsd: Number(form.priceRsd)||0,
@@ -580,9 +610,12 @@ function onServiceToggle(id, checked) {
 
     // Ako zapravo ima samo jedna kategorija, ponašaj se kao i do sada (jedan doc)
     if (groups.length <= 1) {
-      const servicesLabel = makeServicesLabel(services, form.services);
+      const serviceIds = Array.isArray(form.services) ? form.services : [];
+      const serviceSnapshots = makeServiceSnapshots(services, serviceIds);
+
+      const servicesLabel = makeServicesLabel(services, serviceIds);
       const totalDurationMin =
-        (form.services || [])
+        serviceIds
           .map(id => (services.find(s=>s.id===id)?.durationMin)||0)
           .reduce((a,b)=>a+b,0) || 15;
 
@@ -590,7 +623,8 @@ function onServiceToggle(id, checked) {
         type: "appointment",
         employeeUsername: form.employeeUsername || (employees[0]?.username || ""),
         clientId: clientId || null,
-        services: Array.isArray(form.services) ? form.services : [],
+        services: serviceIds,
+        serviceSnapshots,
         start: form.start,
         end: form.end,
         priceRsd: Number(form.priceRsd)||0,
@@ -639,12 +673,14 @@ function onServiceToggle(id, checked) {
       cursor = gEnd;
 
       const servicesLabel = makeServicesLabel(services, svcIds);
+      const serviceSnapshots = makeServiceSnapshots(services, svcIds);
 
       const payload = {
         type: "appointment",
         employeeUsername: form.employeeUsername || (employees[0]?.username || ""),
         clientId: clientId || null,
         services: svcIds,
+        serviceSnapshots,
         start: gStart,
         end: gEnd,
         priceRsd: gSum,                     // cena po kartici (po kategoriji)

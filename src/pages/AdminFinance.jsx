@@ -91,19 +91,58 @@ export default function AdminFinance({
     return () => unsub && unsub();
   }, []);
 
-  /* === ACTUELNA CENA IZ USLUGA === */
-  const apptValue = useCallback((a) => {
-    // Ako termin ima listu usluga → saberi njihove trenutne cene iz servicesMap
-    const ids = Array.isArray(a?.services) ? a.services : null;
-    if (ids && ids.length) {
-      return ids.reduce((sum, id) => {
-        const svc = servicesMap.get(id);
-        return sum + Number(svc?.priceRsd || 0);
-      }, 0);
+  /* === CENA TERMINA / ISTORIJSKI CENOVNIK ===
+     Finansije ne smeju da se računaju iz trenutne cene usluge,
+     jer promena cenovnika ne sme da menja zaradu iz prošlih meseci.
+
+     Ispravan model je:
+     - pri zakazivanju / naplati termina snimi ukupnu cenu u appointment.priceRsd
+     - opciono snimi i serviceSnapshots: [{ id, name, priceRsd }]
+     - u finansijama prvo koristi snimljenu cenu, a trenutni servicesMap samo kao fallback
+  */
+  const getApptServiceRows = useCallback((a) => {
+    if (Array.isArray(a?.serviceSnapshots) && a.serviceSnapshots.length) {
+      return a.serviceSnapshots.map((s, i) => {
+        const id = s.id || s.serviceId || a?.services?.[i] || `snapshot-${i}`;
+        return {
+          id,
+          name: s.name || s.serviceName || servicesMap.get(id)?.name || "—",
+          priceRsd: Number(s.priceRsd ?? s.price ?? 0),
+        };
+      });
     }
-    // Fallback za stare termine bez services polja
-    return Number(a?.priceRsd) || 0;
+
+    const ids = Array.isArray(a?.services) ? a.services : [];
+    return ids.map((id) => {
+      const svc = servicesMap.get(id);
+      return {
+        id,
+        name: svc?.name || "—",
+        priceRsd: Number(svc?.priceRsd || 0),
+      };
+    });
   }, [servicesMap]);
+
+  const apptValue = useCallback((a) => {
+    // Najbitnije: ako je cena snimljena na samom terminu, koristi nju.
+    // Tako stari termini ostaju po starom cenovniku.
+    if (a?.priceRsd !== undefined && a?.priceRsd !== null && a?.priceRsd !== "") {
+      return Number(a.priceRsd) || 0;
+    }
+
+    // Fallback za termine koji imaju snapshot usluga, ali nemaju total.
+    if (Array.isArray(a?.serviceSnapshots) && a.serviceSnapshots.length) {
+      return getApptServiceRows(a).reduce((sum, s) => sum + Number(s.priceRsd || 0), 0);
+    }
+
+    // Poslednji fallback za stare termine koji nikad nisu sačuvali cenu.
+    // Ovo i dalje zavisi od trenutnog cenovnika, pa ga treba koristiti samo dok se stari podaci ne dopune.
+    const ids = Array.isArray(a?.services) ? a.services : [];
+    return ids.reduce((sum, id) => {
+      const svc = servicesMap.get(id);
+      return sum + Number(svc?.priceRsd || 0);
+    }, 0);
+  }, [getApptServiceRows, servicesMap]);
 
   /* Derived */
   const paidInRange = useMemo(() => {
@@ -130,19 +169,16 @@ export default function AdminFinance({
   const serviceCounter = useMemo(() => {
     const counts = new Map();
     for (const a of paidInRange) {
-      for (const id of (a.services ?? [])) {
-        counts.set(id, (counts.get(id) ?? 0) + 1);
+      for (const svc of getApptServiceRows(a)) {
+        const key = svc.id || svc.name;
+        const prev = counts.get(key) || { id: key, name: svc.name || "—", cnt: 0 };
+        counts.set(key, { ...prev, cnt: prev.cnt + 1 });
       }
     }
-    // Array.from(map) → [ [id, cnt], ... ]
-    return Array.from(counts, ([id, cnt]) => ({
-      id,
-      cnt,
-      name: servicesMap.get(id)?.name ?? "—",
-    })).sort((a, b) => b.cnt - a.cnt);
-  }, [paidInRange, servicesMap]);
+    return Array.from(counts.values()).sort((a, b) => b.cnt - a.cnt);
+  }, [paidInRange, getApptServiceRows]);
 
-  // ✅ Zarada po radnici (sa aktuelnim cenama iz usluga)
+  // ✅ Zarada po radnici (po ceni snimljenoj na terminu)
   const earningsByEmployee = useMemo(() => {
     const m = new Map();
     for (const a of paidInRange) {
@@ -197,7 +233,7 @@ export default function AdminFinance({
     const emp = employees.find(e=>e.username===username);
     return emp ? `${emp.firstName||""} ${emp.lastName||""}`.trim() : (username || "—");
   };
-  const formatServices = (ids=[]) => ids.map(id=>servicesMap.get(id)?.name||"—").filter(Boolean).join(", ") || "—";
+  const formatServices = (a) => getApptServiceRows(a).map(s=>s.name||"—").filter(Boolean).join(", ") || "—";
 
   return (
     <div className="fin-wrap">
@@ -1435,7 +1471,7 @@ color:#000;
                           <tr key={a.id}>
                             <td>{toJsDate(a.start).toLocaleString("sr-RS")}</td>
                             <td>{a.clientName || "—"}</td>
-                            <td>{formatServices(a.services)}</td>
+                            <td>{formatServices(a)}</td>
                             <td>{formatEmpName(a.employeeUsername || a.employeeId)}</td>
                             <td className="right">{fmtMoney(apptValue(a))} RSD</td>
                             <td><span className="pill">{a.paid}</span></td>
@@ -1469,7 +1505,7 @@ color:#000;
                           <tr key={a.id}>
                             <td>{toJsDate(a.start).toLocaleString("sr-RS")}</td>
                             <td>{a.clientName || "—"}</td>
-                            <td>{formatServices(a.services)}</td>
+                            <td>{formatServices(a)}</td>
                             <td className="right">{fmtMoney(apptValue(a))} RSD</td>
                             <td><span className="pill">{a.paid}</span></td>
                           </tr>
