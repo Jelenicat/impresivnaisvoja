@@ -58,6 +58,55 @@ function extractServiceIds(valueServices){
   if (typeof valueServices[0] === "object") return valueServices.map(s => sid(s)).filter(Boolean);
   return valueServices.map(x => String(x));
 }
+function extractAppointmentServiceIds(value){
+  const fromServices = extractServiceIds(value?.services);
+  if (fromServices.length) return fromServices;
+
+  const fromSnapshots = extractServiceIds(value?.serviceSnapshots);
+  if (fromSnapshots.length) return fromSnapshots;
+
+  const fromServiceIds = Array.isArray(value?.serviceIds)
+    ? value.serviceIds.map(x => String(x)).filter(Boolean)
+    : [];
+  if (fromServiceIds.length) return fromServiceIds;
+
+  const fromServicesIds = Array.isArray(value?.servicesIds)
+    ? value.servicesIds.map(x => String(x)).filter(Boolean)
+    : [];
+  return fromServicesIds;
+}
+function sumPricesFromRows(rows){
+  if (!Array.isArray(rows)) return 0;
+  return rows.reduce((sum, x) => sum + (Number(x?.priceRsd ?? x?.price ?? 0) || 0), 0);
+}
+function resolveAppointmentPrice(value, services, selectedIds){
+  // 1) Ako je cena snimljena na terminu, ona je izvor istine.
+  const direct = Number(value?.priceRsd);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+
+  const total = Number(value?.totalAmountRsd);
+  if (Number.isFinite(total) && total > 0) return total;
+
+  // 2) Ako je javno zakazivanje sačuvalo usluge kao objekte/snapshot, koristi tu cenu.
+  const snapshotSum = sumPricesFromRows(value?.serviceSnapshots);
+  if (snapshotSum > 0) return snapshotSum;
+
+  const servicesObjSum = Array.isArray(value?.services) && typeof value.services[0] === "object"
+    ? sumPricesFromRows(value.services)
+    : 0;
+  if (servicesObjSum > 0) return servicesObjSum;
+
+  // 3) Poslednji fallback: trenutni katalog, samo za stare/nepotpune termine.
+  const byId = new Map((services || []).map(s => [String(s.id), s]));
+  const catalogSum = (selectedIds || []).reduce((sum, id) => {
+    const svc = byId.get(String(id));
+    return sum + (Number(svc?.priceRsd) || 0);
+  }, 0);
+  if (catalogSum > 0) return catalogSum;
+
+  // Ako je termin zaista bez cene, ostaje 0.
+  return Number(value?.priceRsd ?? value?.totalAmountRsd ?? 0) || 0;
+}
 
 // Generiše "servicesLabel" iz kataloga i izabranih ID-jeva
 function makeServicesLabel(services, selectedIds){
@@ -116,7 +165,16 @@ export default function CalendarEventModal({
   onSaved,
   onDelete
 }){
-  const initialServiceIds = useMemo(() => extractServiceIds(value?.services), [value?.services]);
+  const initialServiceIds = useMemo(() => extractAppointmentServiceIds(value), [
+    value?.services,
+    value?.serviceSnapshots,
+    value?.serviceIds,
+    value?.servicesIds,
+  ]);
+
+  const initialPriceRsd = useMemo(() => {
+    return resolveAppointmentPrice(value, services || [], initialServiceIds);
+  }, [value, services, initialServiceIds]);
 
   // početni autosum (za zaključavanje custom cene)
   const initialAutoSum = useMemo(() => {
@@ -131,8 +189,11 @@ export default function CalendarEventModal({
 
   /* ---------- form state ---------- */
   const [form, setForm] = useState({
+    // zadrži postojeće
+    ...value,
+
     services: initialServiceIds,
-    priceRsd: 0,
+    priceRsd: initialPriceRsd,
     start: value?.start || new Date(),
     end: value?.end || new Date(),
 
@@ -143,9 +204,6 @@ export default function CalendarEventModal({
     paymentStatus: value?.paymentStatus ?? null,
     paymentMethod: value?.paymentMethod ?? null,
 
-    // zadrži postojeće
-    ...value,
-
     // UI proxy za plaćanje
     paid: value?.paid !== undefined
       ? value.paid
@@ -155,7 +213,25 @@ export default function CalendarEventModal({
   });
 
   useEffect(() => {
-    setForm(f => ({ ...f, services: initialServiceIds }));
+    const resolvedPrice = resolveAppointmentPrice(value, services || [], initialServiceIds);
+    setForm(f => ({
+      ...f,
+      ...value,
+      services: initialServiceIds,
+      priceRsd: resolvedPrice,
+      start: value?.start || new Date(),
+      end: value?.end || new Date(),
+      isOnline: value?.isOnline ?? false,
+      bookedVia: value?.bookedVia ?? null,
+      status: value?.status ?? null,
+      paymentStatus: value?.paymentStatus ?? null,
+      paymentMethod: value?.paymentMethod ?? null,
+      paid: value?.paid !== undefined
+        ? value.paid
+        : (value?.paymentStatus === "paid"
+            ? (value?.paymentMethod || "cash")
+            : null),
+    }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value?.id]);
 
@@ -185,27 +261,27 @@ export default function CalendarEventModal({
 
   // custom price locking
   const [customPrice, setCustomPrice] = useState(() => {
-    const existing = Number(value?.priceRsd ?? 0);
-    return existing > 0 && existing !== initialAutoSum;
+    return !!value?.id && initialPriceRsd > 0 && initialPriceRsd !== initialAutoSum;
   });
 
   useEffect(() => {
-    if (isBlock) return;
+    if (isBlock || !value?.id) return;
 
-    const byId = new Map((services || []).map(s => [s.id, s]));
-    const sum = (form.services || []).reduce((acc, id) => {
-      const s = byId.get(id);
+    const resolvedPrice = resolveAppointmentPrice(value, services || [], initialServiceIds);
+    if (resolvedPrice <= 0) return;
+
+    const byId = new Map((services || []).map(s => [String(s.id), s]));
+    const sum = (initialServiceIds || []).reduce((acc, id) => {
+      const s = byId.get(String(id));
       return acc + (Number(s?.priceRsd) || 0);
     }, 0);
 
-    const existing = Number(value?.priceRsd ?? form.priceRsd ?? 0);
-
-    if (existing > 0 && existing !== sum) {
-      setCustomPrice(true);
-      setForm(f => ({ ...f, priceRsd: existing }));
-    }
+    // Postojeći termin mora da ostane po ceni sa termina/snapshot-a,
+    // ne po trenutnom cenovniku.
+    setCustomPrice(sum > 0 ? resolvedPrice !== sum : true);
+    setForm(f => (Number(f.priceRsd || 0) === resolvedPrice ? f : { ...f, priceRsd: resolvedPrice }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value?.id, services]);
+  }, [value?.id, services, initialServiceIds]);
 
   const [manualEnd, setManualEnd] = useState(!!value?.manualEnd);
   // --- original times for edit-confirm ---
@@ -324,11 +400,32 @@ useEffect(() => {
     return fromValue.filter(s => typeof s === "object" && !knownIds.has(sid(s)));
   }, [value?.services, services]);
 
-  // Izabrane usluge kao objekti iz kataloga
+  // Izabrane usluge kao objekti iz kataloga, a za stare/obrisane usluge iz snapshot-a termina
   const selectedServiceObjs = useMemo(() => {
-    const byId = new Map((services || []).map(s => [s.id, s]));
-    return (form.services || []).map(id => byId.get(id)).filter(Boolean);
-  }, [form.services, services]);
+    const byId = new Map((services || []).map(s => [String(s.id), s]));
+    const snapshotById = new Map();
+    const snapshotRows = Array.isArray(value?.serviceSnapshots) && value.serviceSnapshots.length
+      ? value.serviceSnapshots
+      : (Array.isArray(value?.services) && typeof value.services[0] === "object" ? value.services : []);
+
+    snapshotRows.forEach(s => {
+      const id = sid(s);
+      if (!id) return;
+      snapshotById.set(String(id), {
+        id,
+        serviceId: id,
+        name: s.name || s.serviceName || "—",
+        durationMin: Number(s.durationMin || 0),
+        priceRsd: Number(s.priceRsd ?? s.price ?? 0),
+        categoryId: s.categoryId || null,
+        categoryName: s.categoryName || null,
+      });
+    });
+
+    return (form.services || [])
+      .map(id => byId.get(String(id)) || snapshotById.get(String(id)))
+      .filter(Boolean);
+  }, [form.services, services, value?.serviceSnapshots, value?.services]);
 
   // Grupisano po kategoriji
   const groupedByCat = useMemo(() => {
@@ -499,7 +596,7 @@ function onServiceToggle(id, checked) {
     serviceSnapshots,
     start: form.start,
     end: form.end,
-    priceRsd: Number(form.priceRsd)||0,
+    priceRsd: Number(form.priceRsd) || autoTotal || resolveAppointmentPrice(value, services || [], serviceIds),
     source: "manual",
     pickedEmployee: false,
     paid: (role === "admin" || role === "salon") ? (form.paid ?? null) : null,
@@ -509,7 +606,7 @@ function onServiceToggle(id, checked) {
     isOnline,
     bookedVia: form.bookedVia ?? value?.bookedVia ?? null,
     status,
-    totalAmountRsd: Number(form.priceRsd) || 0,
+    totalAmountRsd: Number(form.priceRsd) || autoTotal || resolveAppointmentPrice(value, services || [], serviceIds),
     totalDurationMin: Math.max(15, totalDurationMin),
     servicesLabel,
     paymentStatus, paymentMethod, isPaid,
@@ -627,7 +724,7 @@ function onServiceToggle(id, checked) {
         serviceSnapshots,
         start: form.start,
         end: form.end,
-        priceRsd: Number(form.priceRsd)||0,
+        priceRsd: Number(form.priceRsd) || autoTotal || resolveAppointmentPrice(value, services || [], serviceIds),
         source: "manual",
         pickedEmployee: false,
         paid: _canSetPayment ? (form.paid ?? null) : null,
@@ -635,7 +732,7 @@ function onServiceToggle(id, checked) {
         updatedAt: serverTimestamp(),
         noShow: !!form.noShow,
         isOnline, bookedVia: form.bookedVia ?? value?.bookedVia ?? null, status,
-        totalAmountRsd: Number(form.priceRsd) || 0,
+        totalAmountRsd: Number(form.priceRsd) || autoTotal || resolveAppointmentPrice(value, services || [], serviceIds),
         totalDurationMin: Math.max(15, totalDurationMin),
         servicesLabel,
         paymentStatus, paymentMethod, isPaid,

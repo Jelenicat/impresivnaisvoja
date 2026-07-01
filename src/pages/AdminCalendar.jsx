@@ -69,22 +69,68 @@ function getApptTs(a) {
   return toJsDate(a?.updatedAt) || toJsDate(a?.createdAt) || toJsDate(a?.start) || new Date(0);
 }
 function normalizeServices(a, services) {
-  const svcMap = new Map((services || []).map(s => [s.id, s]));
-  const raw = a?.services || [];
+  const svcMap = new Map((services || []).map(s => [String(s.id), s]));
+  const raw = Array.isArray(a?.services) ? a.services : [];
+  const snapshots = Array.isArray(a?.serviceSnapshots) ? a.serviceSnapshots : [];
+
+  const rawId = (x) => String(x?.serviceId ?? x?.id ?? x ?? "");
+  const snapId = (x, fallback = "") => String(x?.serviceId ?? x?.id ?? fallback ?? "");
+
+  // Najbitnije: za već zakazane termine prvo koristi snapshot sa termina.
+  // Tako prikaz u kalendaru ostaje tačan i ako se usluga kasnije preimenuje,
+  // promeni joj se cena ili se obriše iz kataloga.
+  if (snapshots.length) {
+    const snapById = new Map();
+    snapshots.forEach((s, i) => snapById.set(snapId(s, rawId(raw[i]) || i), s));
+
+    const baseList = raw.length ? raw : snapshots;
+    return baseList.map((x, i) => {
+      const id = raw.length ? rawId(x) : snapId(x, i);
+      const snap = snapById.get(id) || snapshots[i] || null;
+      const base = id ? svcMap.get(String(id)) : null;
+      const rawObj = typeof x === "object" && x ? x : {};
+
+      return {
+        id: id || snapId(snap, i),
+        name: snap?.name || snap?.serviceName || rawObj.name || base?.name || "—",
+        categoryId: snap?.categoryId || rawObj.categoryId || base?.categoryId || null,
+        priceRsd: Number(snap?.priceRsd ?? snap?.price ?? rawObj.priceRsd ?? base?.priceRsd ?? 0) || 0,
+        durationMin: Number(snap?.durationMin ?? rawObj.durationMin ?? base?.durationMin ?? 0) || 0,
+      };
+    });
+  }
+
   if (!raw.length) return [];
+
   if (typeof raw[0] === "string") {
     return raw.map(id => {
-      const base = svcMap.get(id);
-      return base ? { id: base.id, name: base.name || "—", categoryId: base.categoryId || null, priceRsd: Number(base.priceRsd) || 0 } : { id, name: "—", categoryId: null, priceRsd: 0 };
+      const base = svcMap.get(String(id));
+      return base
+        ? {
+            id: base.id,
+            name: base.name || "—",
+            categoryId: base.categoryId || null,
+            priceRsd: Number(base.priceRsd) || 0,
+            durationMin: Number(base.durationMin) || 0,
+          }
+        : { id, name: "—", categoryId: null, priceRsd: 0, durationMin: 0 };
     });
   }
+
   if (typeof raw[0] === "object") {
     return raw.map(x => {
-      const id = x.serviceId || x.id;
-      const base = id ? svcMap.get(id) : null;
-      return { id: id || (base?.id ?? null), name: x.name || base?.name || "—", categoryId: x.categoryId || base?.categoryId || null, priceRsd: Number(x.priceRsd ?? base?.priceRsd ?? 0) || 0 };
+      const id = rawId(x);
+      const base = id ? svcMap.get(String(id)) : null;
+      return {
+        id: id || (base?.id ?? null),
+        name: x.name || base?.name || "—",
+        categoryId: x.categoryId || base?.categoryId || null,
+        priceRsd: Number(x.priceRsd ?? base?.priceRsd ?? 0) || 0,
+        durationMin: Number(x.durationMin ?? base?.durationMin ?? 0) || 0,
+      };
     });
   }
+
   return [];
 }
 function hmToMin(s) { if (typeof s !== "string") return null; const [h, m] = s.split(":").map(Number); if (Number.isNaN(h) || Number.isNaN(m)) return null; return h * 60 + m; }

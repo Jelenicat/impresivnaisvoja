@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   collection, onSnapshot, query, orderBy, where,
-  addDoc, serverTimestamp, getDocs, setDoc, doc
+  addDoc, serverTimestamp, getDocs, getDoc, setDoc, doc
 } from "firebase/firestore";
 import { db } from "../../firebase";
 
@@ -467,6 +467,70 @@ return { slots: resultSlots, anyWork };
     setTimeout(()=>setToasts(ts=>ts.filter(t=>t.id!==id)), 2600);
   }
 
+  // Real-time osvežavanje korpe dok je klijent na izboru termina.
+  // Ako admin promeni cenu/trajanje/naziv ili obriše uslugu, rezime se odmah uskladi.
+  useEffect(() => {
+    if (!cart?.length) return;
+
+    const unsub = onSnapshot(collection(db, "services"), snap => {
+      const byId = new Map();
+      snap.docs.forEach(d => byId.set(d.id, { id: d.id, ...d.data() }));
+
+      let changed = false;
+      const removedNames = [];
+
+      const nextCart = cart
+        .map(item => {
+          const serviceId = item.serviceId || item.id;
+          const fresh = byId.get(serviceId);
+
+          if (!serviceId || !fresh) {
+            changed = true;
+            removedNames.push(item.name || "usluga");
+            return null;
+          }
+
+          const next = {
+            ...item,
+            serviceId,
+            name: fresh.name ?? item.name,
+            durationMin: Number(fresh.durationMin ?? item.durationMin) || 0,
+            priceRsd: Number(fresh.priceRsd ?? item.priceRsd) || 0,
+            categoryId: fresh.categoryId ?? item.categoryId ?? null,
+            categoryName: item.categoryName ?? fresh.categoryName ?? null,
+            description: fresh.description ?? item.description ?? "",
+          };
+
+          if (
+            String(next.name || "") !== String(item.name || "") ||
+            Number(next.durationMin || 0) !== Number(item.durationMin || 0) ||
+            Number(next.priceRsd || 0) !== Number(item.priceRsd || 0) ||
+            String(next.categoryId || "") !== String(item.categoryId || "") ||
+            String(next.description || "") !== String(item.description || "")
+          ) {
+            changed = true;
+          }
+
+          return next;
+        })
+        .filter(Boolean);
+
+      if (!changed) return;
+
+      localStorage.setItem(getCartKey(), JSON.stringify(nextCart));
+      setCart(nextCart);
+
+      const validIds = new Set(nextCart.map(s => s.serviceId));
+      setSelectedIds(prev => prev.filter(id => validIds.has(id)));
+
+      if (removedNames.length) {
+        pushToast(`Usluga više nije dostupna: ${removedNames.join(", ")}.`);
+      }
+    });
+
+    return () => unsub && unsub();
+  }, [cart]);
+
   /* ---------- Gatekeeper helpers ---------- */
   function splitByCanDo(list, employee){
     const doable=[], notDoable=[];
@@ -591,6 +655,71 @@ return { slots: resultSlots, anyWork };
     return Array.from(map.values());
   }
 
+
+  function saveCart(nextCart){
+    localStorage.setItem(getCartKey(), JSON.stringify(nextCart));
+    setCart(nextCart);
+  }
+
+  // Pred finalno čuvanje termina povlačimo NAJNOVIJE stanje usluga iz Firestore-a.
+  // Tako neko ne može da potvrdi termin sa starom cenom koja mu je ostala u localStorage korpi.
+  async function refreshCartWithLatestServices(){
+    const selectedSet = new Set(selectedIds);
+
+    const results = await Promise.all(
+      cart.map(async (item) => {
+        const serviceId = item.serviceId || item.id;
+        if (!serviceId) return { item, missing: true };
+
+        const snap = await getDoc(doc(db, "services", serviceId));
+        if (!snap.exists()) return { item, missing: true };
+
+        const fresh = snap.data() || {};
+        const next = {
+          ...item,
+          serviceId,
+          name: fresh.name ?? item.name,
+          durationMin: Number(fresh.durationMin ?? item.durationMin) || 0,
+          priceRsd: Number(fresh.priceRsd ?? item.priceRsd) || 0,
+          categoryId: fresh.categoryId ?? item.categoryId ?? null,
+          categoryName: item.categoryName ?? fresh.categoryName ?? null,
+          description: fresh.description ?? item.description ?? "",
+        };
+
+        const changed =
+          String(next.name || "") !== String(item.name || "") ||
+          Number(next.durationMin || 0) !== Number(item.durationMin || 0) ||
+          Number(next.priceRsd || 0) !== Number(item.priceRsd || 0) ||
+          String(next.categoryId || "") !== String(item.categoryId || "");
+
+        return { item, next, changed };
+      })
+    );
+
+    const removed = results.filter(r => r.missing).map(r => r.item);
+    const refreshedCart = results.filter(r => r.next).map(r => r.next);
+    const changedSelected = results
+      .filter(r => r.changed && r.next && selectedSet.has(r.next.serviceId))
+      .map(r => r.next);
+    const removedSelected = removed.filter(r => selectedSet.has(r.serviceId || r.id));
+
+    const refreshedIds = new Set(refreshedCart.map(s => s.serviceId));
+    const nextSelectedIds = selectedIds.filter(id => refreshedIds.has(id));
+
+    saveCart(refreshedCart);
+    if (nextSelectedIds.length !== selectedIds.length) {
+      setSelectedIds(nextSelectedIds);
+    }
+
+    return {
+      refreshedCart,
+      bookingServices: refreshedCart.filter(s => selectedSet.has(s.serviceId)),
+      changedSelected,
+      removedSelected,
+      removed,
+    };
+  }
+
   // proveri konflikt pre upisa
   async function hasConflict(empUsername, start, end){
     const qConf = query(
@@ -626,6 +755,43 @@ return { slots: resultSlots, anyWork };
 
     try{
       setSaving(true);
+
+      // ✅ Finalna provera cenovnika: korpa može da ima staru cenu iz localStorage-a.
+      // Ako je izabrana usluga obrisana ili izmenjena, ne čuvamo termin odmah,
+      // nego osvežimo prikaz i tražimo da korisnik potvrdi još jednom.
+      const latest = await refreshCartWithLatestServices();
+
+      if (latest.removedSelected.length) {
+        const names = latest.removedSelected.map(s => s.name || "usluga").join(", ");
+        pushToast(`Usluga više nije dostupna: ${names}. Izaberi ponovo.`);
+        setConfirmOpen(false);
+        return;
+      }
+
+      if (latest.changedSelected.length) {
+        pushToast("Cene/trajanja su osveženi. Proveri iznos i potvrdi ponovo.");
+        setConfirmOpen(false);
+        return;
+      }
+
+      const bookingServices = latest.bookingServices;
+      const latestCartForBooking = latest.refreshedCart;
+      const bookingTotalAmount = bookingServices.reduce((a,b)=>a+(Number(b.priceRsd)||0),0);
+
+      if (!bookingServices.length) {
+        pushToast("Nema izabranih usluga za zakazivanje.");
+        setConfirmOpen(false);
+        return;
+      }
+
+      if (confirmData.employeeId){
+        const emp = employees.find(e => e.username === confirmData.employeeId);
+        if (!bookingServices.every(s=>canEmployeeDo(s, emp))) {
+          pushToast("Ova radnica više ne radi sve izabrane usluge. Izaberi drugu ili smanji izbor.");
+          setConfirmOpen(false);
+          return;
+        }
+      }
 
       // ✅ izračunaj jednom, koristi svuda
       const safeClientName =
@@ -680,7 +846,7 @@ return { slots: resultSlots, anyWork };
         );
       }
 
-      const groups = groupServicesByCategory(selectedServices);
+      const groups = groupServicesByCategory(bookingServices);
       let rollingStart = new Date(confirmData.start);
       const createdIds = [];
 
@@ -710,6 +876,16 @@ return { slots: resultSlots, anyWork };
         const names = g.services.map(s => s.name).filter(Boolean);
         const servicesLabel = names.join(", ");
         const servicesFirstName = names[0] || null;
+        const serviceSnapshots = g.services.map(s => ({
+          id: s.serviceId,
+          serviceId: s.serviceId,
+          name: s.name,
+          durationMin: Number(s.durationMin)||0,
+          priceRsd: Number(s.priceRsd)||0,
+          categoryId: s.categoryId || null,
+          categoryName: s.categoryName || null,
+          description: s.description || "",
+        }));
 
         const ref = await addDoc(collection(db, "appointments"), {
           start: new Date(rollingStart),
@@ -719,15 +895,10 @@ return { slots: resultSlots, anyWork };
           employeeId: confirmData.employeeId || null,
           employeeUsername: confirmData.employeeId || null,
 
-          services: g.services.map(s=>({
-            serviceId: s.serviceId,
-            name: s.name,
-            durationMin: Number(s.durationMin)||0,
-            priceRsd: Number(s.priceRsd)||0,
-            categoryId: s.categoryId || null,
-            categoryName: s.categoryName || null,
-          })),
+          services: serviceSnapshots,
+          serviceSnapshots,
           servicesIds: g.services.map(s => s.serviceId),
+          serviceIds: g.services.map(s => s.serviceId),
           totalDurationMin: gDuration,
           totalAmountRsd:   gAmount,
           priceRsd:         gAmount,
@@ -771,10 +942,10 @@ return { slots: resultSlots, anyWork };
         const title = "📅 Zakazan termin";
         const body =
           `${safeClientName || "Klijent"} – ` +
-          `${(selectedServices[0]?.name || "usluga")}` +
-          `${selectedServices.length > 1 ? ` (+${selectedServices.length - 1})` : ""} · ` +
+          `${(bookingServices[0]?.name || "usluga")}` +
+          `${bookingServices.length > 1 ? ` (+${bookingServices.length - 1})` : ""} · ` +
           `${niceDate(confirmData.start)} ${hhmm(confirmData.start)} · ` +
-          `${totalAmountRsd.toLocaleString("sr-RS")} RSD`;
+          `${bookingTotalAmount.toLocaleString("sr-RS")} RSD`;
 
         const url = `/admin/kalendar?appointmentId=${createdIds?.[0] || ""}${
           employeeDocId ? `&employeeId=${emp?.username || ""}` : ""
@@ -806,7 +977,7 @@ return { slots: resultSlots, anyWork };
       setConfirmOpen(false);
 
       // očisti korpu (po korisniku)
-      const remaining = cart.filter(s=>!selectedIds.includes(s.serviceId));
+      const remaining = latestCartForBooking.filter(s=>!selectedIds.includes(s.serviceId));
       localStorage.setItem(getCartKey(), JSON.stringify(remaining));
       setCart(remaining);
       setSelectedIds([]);

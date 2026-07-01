@@ -93,7 +93,45 @@ export default function BookingServices(){
       orderBy("order")
     );
     return onSnapshot(q, snap => {
-      setServices(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const freshServices = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setServices(freshServices);
+
+      // Ako je klijent već dodao uslugu u korpu, a ti u adminu promeniš cenu/trajanje/naziv,
+      // odmah osveži i localStorage korpu. Izgled se ne menja, samo podaci.
+      const byId = new Map(freshServices.map(s => [s.id, s]));
+      const currentCart = readCart();
+
+      let changed = false;
+      const nextCart = currentCart.map(item => {
+        const serviceId = item.serviceId || item.id;
+        const fresh = byId.get(serviceId);
+        if (!fresh) return item;
+
+        const next = {
+          ...item,
+          serviceId,
+          name: fresh.name ?? item.name,
+          durationMin: Number(fresh.durationMin ?? item.durationMin) || 0,
+          priceRsd: Number(fresh.priceRsd ?? item.priceRsd) || 0,
+          categoryId: fresh.categoryId ?? item.categoryId ?? null,
+          categoryName: fresh.categoryName ?? item.categoryName ?? null,
+          description: fresh.description ?? item.description ?? "",
+        };
+
+        if (
+          String(next.name || "") !== String(item.name || "") ||
+          Number(next.durationMin || 0) !== Number(item.durationMin || 0) ||
+          Number(next.priceRsd || 0) !== Number(item.priceRsd || 0) ||
+          String(next.categoryId || "") !== String(item.categoryId || "") ||
+          String(next.description || "") !== String(item.description || "")
+        ) {
+          changed = true;
+        }
+
+        return next;
+      });
+
+      if (changed) writeCart(nextCart);
     });
   }, [catId]);
 
@@ -106,9 +144,11 @@ export default function BookingServices(){
       items.push({
         serviceId: svc.id,
         name: svc.name,
-        durationMin: svc.durationMin,
-        priceRsd: svc.priceRsd,
-        categoryId: svc.categoryId,
+        durationMin: Number(svc.durationMin) || 0,
+        priceRsd: Number(svc.priceRsd) || 0,
+        categoryId: svc.categoryId || null,
+        categoryName: svc.categoryName || null,
+        description: svc.description || "",
       });
     }
     writeCart(items);
